@@ -1856,12 +1856,50 @@ const AIRPORT_TZ_EXTRA = {
 };
 Object.assign(AIRPORT_TZ, AIRPORT_TZ_EXTRA);
 
-// Local-only lookup. The artifact sandbox blocks outbound fetches at runtime, so this
-// deliberately does NOT hit the network - everything must be embedded in AIRPORT_TZ /
-// AIRPORT_TZ_EXTRA above. Add new codes there as you run into them.
+// Remote fallback: full global airport-to-timezone database (fetched once, cached in memory).
+// Only consulted when a code isn't in the curated lists above. This requires the app to be
+// served from a real host (not the Claude artifact sandbox) since it makes an outbound fetch.
+let AIRPORT_TZ_REMOTE = null;
+let AIRPORT_TZ_REMOTE_LOADING = false;
+const AIRPORT_TZ_REMOTE_URL = 'https://raw.githubusercontent.com/mwgg/Airports/master/airports.json';
+
+function loadRemoteAirportTZ(){
+  if(AIRPORT_TZ_REMOTE || AIRPORT_TZ_REMOTE_LOADING) return;
+  AIRPORT_TZ_REMOTE_LOADING = true;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  fetch(AIRPORT_TZ_REMOTE_URL, { signal: controller.signal })
+    .then(r => { clearTimeout(timeoutId); return r.ok ? r.json() : Promise.reject(new Error('bad response')); })
+    .then(data => {
+      const map = {};
+      Object.keys(data).forEach(key => {
+        const rec = data[key];
+        if(!rec || !rec.tz) return;
+        if(rec.icao) map[rec.icao] = rec.tz;
+        if(rec.iata) map[rec.iata] = rec.tz;
+      });
+      AIRPORT_TZ_REMOTE = map;
+      AIRPORT_TZ_REMOTE_LOADING = false;
+      if(typeof refreshOpenTZFields === 'function') refreshOpenTZFields();
+    })
+    .catch(() => { clearTimeout(timeoutId); AIRPORT_TZ_REMOTE_LOADING = false; });
+}
+
+function refreshOpenTZFields(){
+  if(typeof renderMain === 'function') renderMain();
+}
+
 function lookupAirportTZ(code){
   if(!code) return null;
-  return AIRPORT_TZ[code] || null;
+  const hit = AIRPORT_TZ[code];
+  if(hit) return hit;
+  if(AIRPORT_TZ_REMOTE){
+    const remoteHit = AIRPORT_TZ_REMOTE[code];
+    if(remoteHit) return remoteHit;
+  } else {
+    loadRemoteAirportTZ();
+  }
+  return null;
 }
 
 function getOffsetMinutes(dateMs, tz){
@@ -2131,7 +2169,11 @@ function setupTZAutofill(cfg){
       showHint(tz);
     } else {
       cfg.leg[cfg.subObjKey].tz = '';
-      hintEl.textContent = 'Not in our database - manual input required';
+      if(AIRPORT_TZ_REMOTE_LOADING){
+        hintEl.textContent = 'Checking global airport database...';
+      } else {
+        hintEl.textContent = 'Not in our database - manual input required';
+      }
       hintEl.className = 'tz-hint unknown';
     }
   }
@@ -2473,6 +2515,7 @@ document.getElementById('feedbackSubmitBtn').addEventListener('click', async () 
 });
 
 loadLegs();
+loadRemoteAirportTZ();
 </script>
 </body>
 </html>
