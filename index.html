@@ -2614,13 +2614,6 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
 const appRoot = document.getElementById('appRoot');
 
 
-if(!hasNativeStorage){
-  const noteEl = document.getElementById('teamNote');
-  if(noteEl){
-    noteEl.textContent = 'Local-only mode: this copy isn\u2019t connected to shared team storage, so legs saved here stay on this device only.';
-    noteEl.style.color = 'var(--amber-500)';
-  }
-}
 
 function feedbackUid(){ return 'fb_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
