@@ -1224,11 +1224,7 @@ if(!window.__homeSubtitleResizeHooked){
   });
 }
 
-function renderDashboardView(){
-  const topNavBar = document.getElementById('topNavBar');
-  if(topNavBar) topNavBar.style.display = '';
-  const main = document.getElementById('mainPanel');
-  const q = (state.dashboardFilter || '').trim().toLowerCase();
+function dashboardCardsHtml(q){
   const matchesQuery = (leg) => {
     if(!q) return true;
     const hay = [leg.tripNumber, leg.legNumber, leg.cityPair, leg.dep.airportId, leg.arr.airportId].join(' ').toLowerCase();
@@ -1242,19 +1238,38 @@ function renderDashboardView(){
   const cardsHtml = shownTrips.length === 0
     ? '<div class="dash-empty">' + (allActiveTrips.length === 0 ? 'No missions yet. Tap "+ New leg" to start planning one.' : 'No matches for that search.') + '</div>'
     : '<div class="dash-grid">' + shownTrips.map(tripCardHTML).join('') + '</div>';
+  return { cardsHtml, allActiveTrips };
+}
+
+function updateDashboardCards(){
+  const q = (state.dashboardFilter || '').trim().toLowerCase();
+  const { cardsHtml, allActiveTrips } = dashboardCardsHtml(q);
+  const container = document.getElementById('dashboardCardsContainer');
+  if(container) container.innerHTML = cardsHtml;
+  const subtitle = document.getElementById('dashboardSubtitle');
+  if(subtitle) subtitle.textContent = allActiveTrips.length + ' active trip' + (allActiveTrips.length === 1 ? '' : 's');
+  wireCardClicks('dashboard');
+}
+
+function renderDashboardView(){
+  const topNavBar = document.getElementById('topNavBar');
+  if(topNavBar) topNavBar.style.display = '';
+  const main = document.getElementById('mainPanel');
+  const q = (state.dashboardFilter || '').trim().toLowerCase();
+  const { cardsHtml, allActiveTrips } = dashboardCardsHtml(q);
   main.innerHTML =
     '<div class="view-header">' +
-      '<div><div class="view-title">Departures Board</div><div class="view-subtitle">' + allActiveTrips.length + ' active trip' + (allActiveTrips.length === 1 ? '' : 's') + '</div></div>' +
+      '<div><div class="view-title">Departures Board</div><div class="view-subtitle" id="dashboardSubtitle">' + allActiveTrips.length + ' active trip' + (allActiveTrips.length === 1 ? '' : 's') + '</div></div>' +
       '<button type="button" class="btn btn-steel" id="newTripBtn">+ New trip</button>' +
     '</div>' +
     '<input class="search" id="dashboardSearchInput" placeholder="Search missions by route, airport, trip #..." style="width:100%; max-width:420px; margin-bottom:18px;" value="' + escapeHtml(state.dashboardFilter) + '" />' +
     legStatusLegendHTML() +
-    cardsHtml;
+    '<div id="dashboardCardsContainer">' + cardsHtml + '</div>';
   const dashboardSearchInput = document.getElementById('dashboardSearchInput');
   if(dashboardSearchInput){
     dashboardSearchInput.addEventListener('input', (e) => {
       state.dashboardFilter = e.target.value;
-      renderDashboardView();
+      updateDashboardCards();
     });
   }
   const newTripBtn = document.getElementById('newTripBtn');
@@ -1269,11 +1284,7 @@ function renderDashboardView(){
   wireCardClicks('dashboard');
 }
 
-function renderHistoryView(){
-  const topNavBar = document.getElementById('topNavBar');
-  if(topNavBar) topNavBar.style.display = '';
-  const main = document.getElementById('mainPanel');
-  const q = (state.historyFilter || '').trim().toLowerCase();
+function historyCardsHtml(q){
   const matchesQuery = (leg) => {
     if(!q) return true;
     const hay = [leg.tripNumber, leg.legNumber, leg.cityPair, leg.dep.airportId, leg.arr.airportId].join(' ').toLowerCase();
@@ -1285,18 +1296,37 @@ function renderHistoryView(){
   const cardsHtml = shownTrips.length === 0
     ? '<div class="dash-empty">' + (allFlownTrips.length === 0 ? 'No flown legs yet.' : 'No matches for that search.') + '</div>'
     : '<div class="dash-grid">' + shownTrips.map(tripCardHTML).join('') + '</div>';
+  return { cardsHtml, allFlownTrips };
+}
+
+function updateHistoryCards(){
+  const q = (state.historyFilter || '').trim().toLowerCase();
+  const { cardsHtml, allFlownTrips } = historyCardsHtml(q);
+  const container = document.getElementById('historyCardsContainer');
+  if(container) container.innerHTML = cardsHtml;
+  const subtitle = document.getElementById('historySubtitle');
+  if(subtitle) subtitle.textContent = allFlownTrips.length + ' flown trip' + (allFlownTrips.length === 1 ? '' : 's');
+  wireCardClicks('history');
+}
+
+function renderHistoryView(){
+  const topNavBar = document.getElementById('topNavBar');
+  if(topNavBar) topNavBar.style.display = '';
+  const main = document.getElementById('mainPanel');
+  const q = (state.historyFilter || '').trim().toLowerCase();
+  const { cardsHtml, allFlownTrips } = historyCardsHtml(q);
   main.innerHTML =
     '<div class="view-header">' +
-      '<div><div class="view-title">Debrief Library</div><div class="view-subtitle">' + allFlownTrips.length + ' flown trip' + (allFlownTrips.length === 1 ? '' : 's') + '</div></div>' +
+      '<div><div class="view-title">Debrief Library</div><div class="view-subtitle" id="historySubtitle">' + allFlownTrips.length + ' flown trip' + (allFlownTrips.length === 1 ? '' : 's') + '</div></div>' +
     '</div>' +
     '<input class="search" id="historySearchInput" placeholder="Search past trips by route, airport, trip #..." style="width:100%; max-width:420px; margin-bottom:18px;" value="' + escapeHtml(state.historyFilter) + '" />' +
     legStatusLegendHTML() +
-    cardsHtml;
+    '<div id="historyCardsContainer">' + cardsHtml + '</div>';
   const historySearchInput = document.getElementById('historySearchInput');
   if(historySearchInput){
     historySearchInput.addEventListener('input', (e) => {
       state.historyFilter = e.target.value;
-      renderHistoryView();
+      updateHistoryCards();
     });
   }
   wireCardClicks('history');
