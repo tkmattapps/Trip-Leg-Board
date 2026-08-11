@@ -207,6 +207,7 @@
   .field-row-inline > .field:last-child{ flex:1 1 auto; min-width:0; }
   .field-row-inline > .field:last-child textarea{ height:60px; min-height:60px; }
   @media (max-width:820px){
+    .grid{ grid-template-columns:1fr 1fr; }
     .grid-2{ grid-template-columns:1fr; }
     .grid-3{ grid-template-columns:1fr; }
     .grid-5{ grid-template-columns:1fr; }
@@ -261,8 +262,10 @@
   .field input[type=text], .field input[type=date], .field input[type=number], .field select, .field textarea{
     background:var(--panel-800); border:1px solid var(--hairline); color:var(--paper-050);
     font-family:'JetBrains Mono',monospace; font-size:13px; padding:9px 10px; border-radius:3px;
-    outline:none; width:100%;
+    outline:none; width:100%; box-sizing:border-box;
   }
+  .field input[type=date]{ min-width:0; }
+  .field input[type=date]::-webkit-calendar-picker-indicator{ margin-left:4px; }
   .field textarea{ font-family:'Inter',sans-serif; resize:vertical; min-height:56px; }
   .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--amber-700); }
   .field input::placeholder, .field textarea::placeholder{ color:var(--fog-500); }
