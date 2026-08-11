@@ -2723,14 +2723,13 @@ document.getElementById('refreshFab').addEventListener('click', async () => {
   const originalText = btn.innerHTML;
   btn.innerHTML = '&#128260; Refreshing...';
   try{
-    await loadLegs();
-    showToast('Refreshed');
+    if(state.view === 'editor' && state.activeId){
+      await autoSaveIfEditing();
+    }
   }catch(e){
-    console.error('refresh failed', e);
-    showToast('Refresh failed. Try again.');
+    console.error('autosave before reload failed', e);
   }
-  btn.innerHTML = originalText;
-  btn.disabled = false;
+  window.location.reload();
 });
 document.getElementById('installCloseBtn').addEventListener('click', () => {
   document.getElementById('installOverlay').classList.remove('open');
