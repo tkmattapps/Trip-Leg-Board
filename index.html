@@ -316,6 +316,13 @@
   .view-title{ font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:30px; }
   .view-subtitle{ font-size:12px; color:var(--fog-500); font-family:'JetBrains Mono',monospace; }
   .dash-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:16px; }
+  .import-leg-list{ display:flex; flex-direction:column; gap:12px; margin-bottom:24px; }
+  .import-leg-card{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; }
+  .import-leg-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; }
+  .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
+  .import-leg-date{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--fog-500); }
+  .import-leg-body{ display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--fog-300); line-height:1.5; }
+  .import-actions{ display:flex; gap:10px; justify-content:flex-end; }
   .dash-card{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; cursor:pointer; transition:border-color 0.15s ease; }
   .dash-card:hover{ border-color:var(--amber-500); }
   .dash-card-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; }
@@ -1177,11 +1184,16 @@ function renderHomeView(){
           '<span class="home-btn-title">Debrief Library</span>' +
           '<span class="home-btn-count">' + historicCount + ' flown trip' + (historicCount === 1 ? '' : 's') + '</span>' +
         '</button>' +
+        '<button type="button" class="home-btn" id="homeImportBtn">' +
+          '<span class="home-btn-title">Import Trip Sheet</span>' +
+          '<span class="home-btn-count">Review before adding</span>' +
+        '</button>' +
       '</div>' +
     '</div>';
   document.getElementById('homeActiveBtn').addEventListener('click', () => goToListView('dashboard'));
   document.getElementById('homeHistoryBtn').addEventListener('click', () => goToListView('history'));
   document.getElementById('homeLogoutBtn').addEventListener('click', handleLogout);
+  document.getElementById('homeImportBtn').addEventListener('click', () => goToListView('importPreview'));
   const runStretch = () => requestAnimationFrame(() => requestAnimationFrame(stretchHomeSubtitle));
   if(document.fonts && document.fonts.ready){
     document.fonts.ready.then(runStretch).catch(runStretch);
@@ -1288,6 +1300,84 @@ function renderHistoryView(){
   wireCardClicks('history');
 }
 
+function sampleImportedLegsForPreview(){
+  // PREVIEW-ONLY placeholder data, shaped like what the future AI extraction
+  // step would return from a provider trip sheet PDF, for building/testing the
+  // staging review screen before real AI extraction is wired up.
+  const l1 = blankLeg();
+  Object.assign(l1, { tripNumber:'415129', legNumber:'1', date:'2026-08-30', cityPair:'Windsor Locks \u2192 Westhampton Beach', status:'planning' });
+  l1.dep.airportId = 'KBDL'; l1.dep.etdLocal = '20:00'; l1.dep.etdZ = '00:00'; l1.dep.agent = 'Atlantic Aviation'; l1.dep.agentPhone = '+1 860 627 3300'; l1.dep.frequency = 'UNICOM 122.95 / ARINC 129.725';
+  l1.arr.airportId = 'KFOK'; l1.arr.etaLocal = '20:30'; l1.arr.etaZ = '00:30'; l1.arr.agent = 'Modern Aviation'; l1.arr.agentPhone = '+1 631 288 9866'; l1.arr.frequency = 'ARINC 130.2';
+
+  const l2 = blankLeg();
+  Object.assign(l2, { tripNumber:'415129', legNumber:'2', date:'2026-08-30', cityPair:'Westhampton Beach \u2192 Fortaleza', status:'planning' });
+  l2.dep.airportId = 'KFOK'; l2.dep.etdLocal = '22:30'; l2.dep.etdZ = '02:30'; l2.dep.agent = 'Modern Aviation'; l2.dep.agentPhone = '+1 631 288 9866'; l2.dep.frequency = 'ARINC 130.2';
+  l2.arr.airportId = 'SBFZ'; l2.arr.etaLocal = '07:00'; l2.arr.etaZ = '10:00'; l2.arr.agent = 'Lider Aviacao'; l2.arr.agentPhone = '+55 11 5090 4016';
+
+  const l3 = blankLeg();
+  Object.assign(l3, { tripNumber:'415129', legNumber:'3', date:'2026-08-31', cityPair:'Fortaleza \u2192 Jijoca de Jericoacoara', status:'planning' });
+  l3.dep.airportId = 'SBFZ'; l3.dep.etdLocal = '08:00'; l3.dep.etdZ = '11:00'; l3.dep.agent = 'Lider Aviacao'; l3.dep.agentPhone = '+55 11 5090 4016';
+  l3.arr.airportId = 'SBJE'; l3.arr.etaLocal = '08:36'; l3.arr.etaZ = '11:36'; l3.arr.agent = 'Dnata Executive Aviation'; l3.arr.agentPhone = '+55 81 3093 9393';
+
+  return [l1, l2, l3];
+}
+
+function importLegCardHTML(leg, index){
+  return '<div class="import-leg-card" data-index="' + index + '">' +
+    '<div class="import-leg-card-head">' +
+      '<span class="import-leg-title">Leg ' + escapeHtml(leg.legNumber) + ' \u2014 ' + escapeHtml(leg.cityPair) + '</span>' +
+      '<span class="import-leg-date">' + escapeHtml(leg.date) + '</span>' +
+    '</div>' +
+    '<div class="import-leg-body">' +
+      '<div><strong>Departure:</strong> ' + escapeHtml(leg.dep.airportId) + ' at ' + escapeHtml(leg.dep.etdLocal) + ' local / ' + escapeHtml(leg.dep.etdZ) + ' Z \u2014 ' + escapeHtml(leg.dep.agent) + ' (' + escapeHtml(leg.dep.agentPhone) + ')</div>' +
+      '<div><strong>Arrival:</strong> ' + escapeHtml(leg.arr.airportId) + ' at ' + escapeHtml(leg.arr.etaLocal) + ' local / ' + escapeHtml(leg.arr.etaZ) + ' Z \u2014 ' + escapeHtml(leg.arr.agent) + ' (' + escapeHtml(leg.arr.agentPhone) + ')</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderImportPreviewView(){
+  const topNavBar = document.getElementById('topNavBar');
+  if(topNavBar) topNavBar.style.display = '';
+  const main = document.getElementById('mainPanel');
+  if(!state.importStagedLegs){
+    state.importStagedLegs = sampleImportedLegsForPreview();
+  }
+  const legs = state.importStagedLegs;
+  main.innerHTML =
+    '<div class="view-header">' +
+      '<div><div class="view-title">Import Trip Sheet</div><div class="view-subtitle">Review extracted legs below, then confirm to add them to your board. Nothing is saved until you confirm.</div></div>' +
+    '</div>' +
+    '<div style="margin-bottom:16px; color:var(--fog-300); font-size:13px;">Showing sample extracted data for trip 415129 to preview this screen. Real PDF upload and AI extraction are not wired up yet.</div>' +
+    '<div class="import-leg-list">' + legs.map((l, i) => importLegCardHTML(l, i)).join('') + '</div>' +
+    '<div class="import-actions">' +
+      '<button type="button" class="btn" id="importCancelBtn">Cancel</button>' +
+      '<button type="button" class="btn btn-primary" id="importConfirmBtn">Confirm and add ' + legs.length + ' legs</button>' +
+    '</div>';
+  document.getElementById('importCancelBtn').addEventListener('click', () => {
+    state.importStagedLegs = null;
+    goToListView('home');
+  });
+  document.getElementById('importConfirmBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('importConfirmBtn');
+    btn.disabled = true;
+    btn.textContent = 'Adding...';
+    try{
+      for(const leg of state.importStagedLegs){
+        await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
+      }
+      await loadLegs();
+      state.importStagedLegs = null;
+      showToast('Legs added');
+      goToListView('dashboard');
+    }catch(e){
+      console.error('import confirm failed', e);
+      showToast('Import failed. Try again.');
+      btn.disabled = false;
+      btn.textContent = 'Confirm and add ' + legs.length + ' legs';
+    }
+  });
+}
+
 function renderTripDetailView(){
   const topNavBar = document.getElementById('topNavBar');
   if(topNavBar) topNavBar.style.display = '';
@@ -1345,6 +1435,7 @@ function renderMain(){
   if(state.view === 'dashboard'){ renderDashboardView(); return; }
   if(state.view === 'history'){ renderHistoryView(); return; }
   if(state.view === 'tripDetail'){ renderTripDetailView(); return; }
+  if(state.view === 'importPreview'){ renderImportPreviewView(); return; }
 
   const main = document.getElementById('mainPanel');
   const leg = state.legs.find(l => l.id === state.activeId);
