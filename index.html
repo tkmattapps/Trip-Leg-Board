@@ -1437,7 +1437,17 @@ async function processImportFile(file){
     state.importUnmatched = [];
     const extractedLegs = Array.isArray(data.legs) ? data.legs : [];
     if(state.importDocType === 'trip_sheet'){
-      state.importNewLegs = extractedLegs.map(buildLegFromExtraction);
+      // Defensive dedup: some source documents repeat a leg reference in a
+      // secondary handling-worksheet section. Keep only the first entry
+      // seen for each unique leg number + dep/arr airport pair.
+      const seenLegKeys = new Set();
+      const dedupedLegs = extractedLegs.filter(ex => {
+        const key = [ex.legNumber || '', ex.dep?.airportId || '', ex.arr?.airportId || ''].join('|').toLowerCase();
+        if(seenLegKeys.has(key)) return false;
+        seenLegKeys.add(key);
+        return true;
+      });
+      state.importNewLegs = dedupedLegs.map(buildLegFromExtraction);
     } else if(state.importDocType === 'handling_notes'){
       extractedLegs.forEach(ex => {
         const match = findMatchingLegForEnrichment(ex);
