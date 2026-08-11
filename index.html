@@ -1427,6 +1427,9 @@ async function processImportFile(file){
     });
     const data = await res.json();
     if(!res.ok || data.error){
+      if(data.raw){
+        console.error('AI raw response that failed to parse:', data.raw);
+      }
       throw new Error(data.error || ('Extraction failed (' + res.status + ')'));
     }
     state.importDocType = data.documentType || 'unknown';
