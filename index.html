@@ -264,8 +264,9 @@
     font-family:'JetBrains Mono',monospace; font-size:13px; padding:9px 10px; border-radius:3px;
     outline:none; width:100%; box-sizing:border-box;
   }
-  .field input[type=date]{ min-width:0; }
-  .field input[type=date]::-webkit-calendar-picker-indicator{ margin-left:4px; }
+  .field input[type=date]{ min-width:0; height:36px; line-height:normal; padding-top:0; padding-bottom:0; -webkit-appearance:none; appearance:none; }
+  .field input[type=date]::-webkit-calendar-picker-indicator{ margin-left:4px; padding:0; }
+  .field input[type=date]::-webkit-date-and-time-value{ text-align:left; }
   .field textarea{ font-family:'Inter',sans-serif; resize:vertical; min-height:56px; }
   .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--amber-700); }
   .field input::placeholder, .field textarea::placeholder{ color:var(--fog-500); }
