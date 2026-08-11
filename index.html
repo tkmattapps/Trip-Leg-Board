@@ -2181,6 +2181,89 @@ function renderMain(){
     });
   }
 
+
+  // --- Section auto-complete logic ---
+  const autoCompleteFieldSections = {
+    overview: ['tripNumber', 'legNumber', 'date', 'cityPair'],
+    performance: ['trim', 'levelOff', 'minBRF'],
+    airports: ['depAirportId', 'depAgent', 'depAgentPhone', 'depFrequency', 'depEtdLocal', 'depEtdZ',
+               'arrAirportId', 'arrAgent', 'arrAgentPhone', 'arrFrequency', 'arrEtaLocal', 'arrEtaZ'],
+    enroute: ['maxShear', 'ete'],
+    nextLeg: ['nextLegDestination', 'nextLegDate', 'nextLegEtd', 'nextLegEta']
+  };
+  const autoCompleteToggleSections = {
+    dispatch: 'fratRelease'
+  };
+  // Permits and permissions is intentionally excluded: manual-only.
+
+  function setSectionCompleteState(key, isComplete){
+    const cb = main.querySelector('.section-complete-checkbox[data-section-key="' + key + '"]');
+    if(!cb) return;
+    if(cb.checked === isComplete) return;
+    cb.checked = isComplete;
+    if(!leg.sectionComplete) leg.sectionComplete = {};
+    leg.sectionComplete[key] = isComplete;
+    const label = cb.closest('.section-complete-toggle');
+    if(label) label.classList.toggle('is-complete', isComplete);
+    const statusSelect = document.getElementById('statusSelect');
+    if(statusSelect && statusSelect.value !== 'flown'){
+      if(checkAllSectionsComplete()){
+        if(statusSelect.value === 'planning'){
+          statusSelect.value = 'ready';
+          statusSelect.classList.remove('status-planning', 'status-ready', 'status-flown');
+          statusSelect.classList.add('status-ready');
+        }
+      } else if(statusSelect.value === 'ready'){
+        statusSelect.value = 'planning';
+        statusSelect.classList.remove('status-planning', 'status-ready', 'status-flown');
+        statusSelect.classList.add('status-planning');
+      }
+    }
+    syncReadyOptionAvailability();
+  }
+
+  function evaluateFieldSection(key, fieldIds){
+    const allFilled = fieldIds.every(fid => {
+      const el = document.getElementById(fid);
+      return el && el.value.trim() !== '';
+    });
+    setSectionCompleteState(key, allFilled);
+  }
+
+  function evaluateToggleSection(key, toggleId){
+    const hiddenInput = document.getElementById(toggleId);
+    const isYes = !!hiddenInput && hiddenInput.value === 'Y';
+    setSectionCompleteState(key, isYes);
+  }
+
+  function runAllAutoCompleteChecks(){
+    Object.keys(autoCompleteFieldSections).forEach(key => evaluateFieldSection(key, autoCompleteFieldSections[key]));
+    Object.keys(autoCompleteToggleSections).forEach(key => evaluateToggleSection(key, autoCompleteToggleSections[key]));
+  }
+
+  Object.keys(autoCompleteFieldSections).forEach(key => {
+    autoCompleteFieldSections[key].forEach(fid => {
+      const el = document.getElementById(fid);
+      if(!el) return;
+      el.addEventListener('input', () => evaluateFieldSection(key, autoCompleteFieldSections[key]));
+      el.addEventListener('change', () => evaluateFieldSection(key, autoCompleteFieldSections[key]));
+    });
+  });
+
+  Object.keys(autoCompleteToggleSections).forEach(key => {
+    const toggleId = autoCompleteToggleSections[key];
+    const hiddenInput = document.getElementById(toggleId);
+    if(!hiddenInput) return;
+    const group = hiddenInput.previousElementSibling;
+    if(group){
+      group.querySelectorAll('.yn-btn').forEach(btn => {
+        btn.addEventListener('click', () => evaluateToggleSection(key, toggleId));
+      });
+    }
+  });
+
+  runAllAutoCompleteChecks();
+
   document.getElementById('saveBtn').addEventListener('click', () => collectAndSave(leg.id));
   document.getElementById('saveBtnBottom').addEventListener('click', () => collectAndSave(leg.id));
   document.getElementById('deleteBtn').addEventListener('click', () => handleDelete(leg.id));
