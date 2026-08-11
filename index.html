@@ -253,6 +253,7 @@
     .nav-tab-btn{ min-height:40px; }
     .feedback-fab{ bottom:max(20px, env(safe-area-inset-bottom)); left:16px; }
     .install-fab{ bottom:max(76px, calc(env(safe-area-inset-bottom) + 56px)); left:16px; }
+    .refresh-fab{ bottom:max(132px, calc(env(safe-area-inset-bottom) + 112px)); left:16px; }
     .feedback-modal{ padding:16px; }
     .feedback-close-btn{ min-height:36px; min-width:36px; }
   }
@@ -371,6 +372,16 @@
     border-radius:24px; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,0.35);
     transition:background 0.15s ease;
   }
+  .refresh-fab{ display:none; }
+  body.authed .refresh-fab{ display:block; }
+  .refresh-fab{
+    position:fixed; bottom:24px; left:264px; z-index:60;
+    background:var(--panel-700); border:1px solid var(--fog-500); color:var(--fog-300);
+    font-family:'Inter',sans-serif; font-weight:600; font-size:13px; padding:11px 16px;
+    border-radius:24px; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,0.35);
+    transition:background 0.15s ease;
+  }
+  .refresh-fab:hover{ background:var(--panel-800); }
   .install-fab:hover{ background:var(--panel-800); }
   .install-platform{ margin-bottom:18px; }
   .install-platform-title{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--amber-500); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
@@ -2705,6 +2716,21 @@ document.getElementById('feedbackFab').addEventListener('click', openFeedbackMod
 document.getElementById('installFab').addEventListener('click', () => {
   document.getElementById('installOverlay').classList.add('open');
 });
+document.getElementById('refreshFab').addEventListener('click', async () => {
+  const btn = document.getElementById('refreshFab');
+  btn.disabled = true;
+  const originalText = btn.innerHTML;
+  btn.innerHTML = '&#128260; Refreshing...';
+  try{
+    await loadLegs();
+    showToast('Refreshed');
+  }catch(e){
+    console.error('refresh failed', e);
+    showToast('Refresh failed. Try again.');
+  }
+  btn.innerHTML = originalText;
+  btn.disabled = false;
+});
 document.getElementById('installCloseBtn').addEventListener('click', () => {
   document.getElementById('installOverlay').classList.remove('open');
 });
@@ -2787,6 +2813,40 @@ async function handleLoginSubmit(){
 document.getElementById('loginSubmitBtn').addEventListener('click', handleLoginSubmit);
 document.getElementById('loginPassword').addEventListener('keydown', function(e){
   if(e.key === 'Enter') handleLoginSubmit();
+});
+
+// PREVIEW-ONLY shortcut: press "p" five times in a row on the login screen to
+// skip sign-in and load sample legs for visual/formatting checks. Never touches
+// Supabase or real data. Safe to leave in for real deployments.
+let previewPKeyCount = 0;
+let previewPKeyTimer = null;
+function sampleLegsForPreview(){
+  const l1 = blankLeg();
+  Object.assign(l1, { tripNumber:'4521', legNumber:'1', date:'2026-08-15', cityPair:'New York \u2192 London', status:'planning' });
+  l1.dep.airportId = 'KTEB'; l1.arr.airportId = 'EGGW';
+  const l2 = blankLeg();
+  Object.assign(l2, { tripNumber:'4521', legNumber:'2', date:'2026-08-18', cityPair:'London \u2192 Paris', status:'planning' });
+  l2.dep.airportId = 'EGGW'; l2.arr.airportId = 'LFPG';
+  const l3 = blankLeg();
+  Object.assign(l3, { tripNumber:'4488', legNumber:'1', date:'2026-07-02', cityPair:'Teterboro \u2192 Palm Beach', status:'flown' });
+  l3.dep.airportId = 'KTEB'; l3.arr.airportId = 'KPBI';
+  return [l1, l2, l3];
+}
+document.addEventListener('keydown', function(e){
+  const loginVisible = document.getElementById('loginOverlay') && document.getElementById('loginOverlay').style.display !== 'none';
+  if(!loginVisible) return;
+  if(e.key !== 'p' && e.key !== 'P') { previewPKeyCount = 0; return; }
+  previewPKeyCount++;
+  clearTimeout(previewPKeyTimer);
+  previewPKeyTimer = setTimeout(() => { previewPKeyCount = 0; }, 1500);
+  if(previewPKeyCount >= 5){
+    previewPKeyCount = 0;
+    state.legs = sampleLegsForPreview();
+    state.view = 'home';
+    renderList();
+    renderMain();
+    hideLoginOverlay();
+  }
 });
 
 (async function initAuth(){
