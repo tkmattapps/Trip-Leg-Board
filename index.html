@@ -2815,40 +2815,6 @@ document.getElementById('loginPassword').addEventListener('keydown', function(e)
   if(e.key === 'Enter') handleLoginSubmit();
 });
 
-// PREVIEW-ONLY shortcut: press "p" five times in a row on the login screen to
-// skip sign-in and load sample legs for visual/formatting checks. Never touches
-// Supabase or real data. Safe to leave in for real deployments.
-let previewPKeyCount = 0;
-let previewPKeyTimer = null;
-function sampleLegsForPreview(){
-  const l1 = blankLeg();
-  Object.assign(l1, { tripNumber:'4521', legNumber:'1', date:'2026-08-15', cityPair:'New York \u2192 London', status:'planning' });
-  l1.dep.airportId = 'KTEB'; l1.arr.airportId = 'EGGW';
-  const l2 = blankLeg();
-  Object.assign(l2, { tripNumber:'4521', legNumber:'2', date:'2026-08-18', cityPair:'London \u2192 Paris', status:'planning' });
-  l2.dep.airportId = 'EGGW'; l2.arr.airportId = 'LFPG';
-  const l3 = blankLeg();
-  Object.assign(l3, { tripNumber:'4488', legNumber:'1', date:'2026-07-02', cityPair:'Teterboro \u2192 Palm Beach', status:'flown' });
-  l3.dep.airportId = 'KTEB'; l3.arr.airportId = 'KPBI';
-  return [l1, l2, l3];
-}
-document.addEventListener('keydown', function(e){
-  const loginVisible = document.getElementById('loginOverlay') && document.getElementById('loginOverlay').style.display !== 'none';
-  if(!loginVisible) return;
-  if(e.key !== 'p' && e.key !== 'P') { previewPKeyCount = 0; return; }
-  previewPKeyCount++;
-  clearTimeout(previewPKeyTimer);
-  previewPKeyTimer = setTimeout(() => { previewPKeyCount = 0; }, 1500);
-  if(previewPKeyCount >= 5){
-    previewPKeyCount = 0;
-    state.legs = sampleLegsForPreview();
-    state.view = 'home';
-    renderList();
-    renderMain();
-    hideLoginOverlay();
-  }
-});
-
 (async function initAuth(){
   const { data: { session } } = await sb.auth.getSession();
   if(session){
