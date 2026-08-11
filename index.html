@@ -323,6 +323,8 @@
   .import-leg-date{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--fog-500); }
   .import-leg-body{ display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--fog-300); line-height:1.5; }
   .import-actions{ display:flex; gap:10px; justify-content:flex-end; }
+  .import-upload-box{ background:var(--panel-800); border:1px dashed var(--hairline); border-radius:6px; padding:32px 20px; text-align:center; margin-bottom:24px; }
+  .import-unmatched-select{ background:var(--panel-900, #0f1115); color:var(--paper-050); border:1px solid var(--hairline); border-radius:4px; padding:8px; font-size:13px; }
   .dash-card{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; cursor:pointer; transition:border-color 0.15s ease; }
   .dash-card:hover{ border-color:var(--amber-500); }
   .dash-card-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; }
@@ -1300,82 +1302,299 @@ function renderHistoryView(){
   wireCardClicks('history');
 }
 
-function sampleImportedLegsForPreview(){
-  // PREVIEW-ONLY placeholder data, shaped like what the future AI extraction
-  // step would return from a provider trip sheet PDF, for building/testing the
-  // staging review screen before real AI extraction is wired up.
-  const l1 = blankLeg();
-  Object.assign(l1, { tripNumber:'415129', legNumber:'1', date:'2026-08-30', cityPair:'Windsor Locks \u2192 Westhampton Beach', status:'planning' });
-  l1.dep.airportId = 'KBDL'; l1.dep.etdLocal = '20:00'; l1.dep.etdZ = '00:00'; l1.dep.agent = 'Atlantic Aviation'; l1.dep.agentPhone = '+1 860 627 3300'; l1.dep.frequency = 'UNICOM 122.95 / ARINC 129.725';
-  l1.arr.airportId = 'KFOK'; l1.arr.etaLocal = '20:30'; l1.arr.etaZ = '00:30'; l1.arr.agent = 'Modern Aviation'; l1.arr.agentPhone = '+1 631 288 9866'; l1.arr.frequency = 'ARINC 130.2';
+const EXTRACT_TRIP_DOC_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co/functions/v1/extract-trip-document';
 
-  const l2 = blankLeg();
-  Object.assign(l2, { tripNumber:'415129', legNumber:'2', date:'2026-08-30', cityPair:'Westhampton Beach \u2192 Fortaleza', status:'planning' });
-  l2.dep.airportId = 'KFOK'; l2.dep.etdLocal = '22:30'; l2.dep.etdZ = '02:30'; l2.dep.agent = 'Modern Aviation'; l2.dep.agentPhone = '+1 631 288 9866'; l2.dep.frequency = 'ARINC 130.2';
-  l2.arr.airportId = 'SBFZ'; l2.arr.etaLocal = '07:00'; l2.arr.etaZ = '10:00'; l2.arr.agent = 'Lider Aviacao'; l2.arr.agentPhone = '+55 11 5090 4016';
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result || '';
+      const commaIdx = result.indexOf(',');
+      resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error || new Error('file read failed'));
+    reader.readAsDataURL(file);
+  });
+}
 
-  const l3 = blankLeg();
-  Object.assign(l3, { tripNumber:'415129', legNumber:'3', date:'2026-08-31', cityPair:'Fortaleza \u2192 Jijoca de Jericoacoara', status:'planning' });
-  l3.dep.airportId = 'SBFZ'; l3.dep.etdLocal = '08:00'; l3.dep.etdZ = '11:00'; l3.dep.agent = 'Lider Aviacao'; l3.dep.agentPhone = '+55 11 5090 4016';
-  l3.arr.airportId = 'SBJE'; l3.arr.etaLocal = '08:36'; l3.arr.etaZ = '11:36'; l3.arr.agent = 'Dnata Executive Aviation'; l3.arr.agentPhone = '+55 81 3093 9393';
+function buildLegFromExtraction(extracted){
+  const leg = blankLeg();
+  leg.tripNumber = extracted.tripNumber || '';
+  leg.legNumber = extracted.legNumber || '';
+  leg.date = extracted.date || '';
+  leg.cityPair = extracted.cityPair || '';
+  const ed = extracted.dep || {};
+  const ea = extracted.arr || {};
+  Object.assign(leg.dep, {
+    airportId: ed.airportId || '', etdLocal: ed.etdLocal || '', etdZ: ed.etdZ || '',
+    agent: ed.agent || '', agentPhone: ed.agentPhone || '', frequency: ed.frequency || ''
+  });
+  Object.assign(leg.arr, {
+    airportId: ea.airportId || '', etaLocal: ea.etaLocal || '', etaZ: ea.etaZ || '',
+    agent: ea.agent || '', agentPhone: ea.agentPhone || '', frequency: ea.frequency || ''
+  });
+  return leg;
+}
 
-  return [l1, l2, l3];
+function findMatchingLegForEnrichment(extracted){
+  const depCode = ((extracted.dep && extracted.dep.airportId) || '').trim().toUpperCase();
+  const arrCode = ((extracted.arr && extracted.arr.airportId) || '').trim().toUpperCase();
+  const date = (extracted.date || '').trim();
+  if(!date || (!depCode && !arrCode)) return null;
+  return state.legs.find(l => {
+    if((l.date || '').trim() !== date) return false;
+    const ld = ((l.dep && l.dep.airportId) || '').trim().toUpperCase();
+    const la = ((l.arr && l.arr.airportId) || '').trim().toUpperCase();
+    return (depCode && (ld === depCode || la === depCode)) || (arrCode && (ld === arrCode || la === arrCode));
+  }) || null;
+}
+
+function enrichmentPatchFromExtraction(extracted){
+  const patch = { dep: {}, arr: {} };
+  const ed = extracted.dep || {};
+  const ea = extracted.arr || {};
+  ['agent', 'agentPhone', 'frequency', 'etdLocal', 'etdZ'].forEach(k => { if(ed[k]) patch.dep[k] = ed[k]; });
+  ['agent', 'agentPhone', 'frequency', 'etaLocal', 'etaZ'].forEach(k => { if(ea[k]) patch.arr[k] = ea[k]; });
+  return patch;
 }
 
 function importLegCardHTML(leg, index){
   return '<div class="import-leg-card" data-index="' + index + '">' +
     '<div class="import-leg-card-head">' +
-      '<span class="import-leg-title">Leg ' + escapeHtml(leg.legNumber) + ' \u2014 ' + escapeHtml(leg.cityPair) + '</span>' +
+      '<span class="import-leg-title">Leg ' + escapeHtml(leg.legNumber) + ' &mdash; ' + escapeHtml(leg.cityPair) + '</span>' +
       '<span class="import-leg-date">' + escapeHtml(leg.date) + '</span>' +
     '</div>' +
     '<div class="import-leg-body">' +
-      '<div><strong>Departure:</strong> ' + escapeHtml(leg.dep.airportId) + ' at ' + escapeHtml(leg.dep.etdLocal) + ' local / ' + escapeHtml(leg.dep.etdZ) + ' Z \u2014 ' + escapeHtml(leg.dep.agent) + ' (' + escapeHtml(leg.dep.agentPhone) + ')</div>' +
-      '<div><strong>Arrival:</strong> ' + escapeHtml(leg.arr.airportId) + ' at ' + escapeHtml(leg.arr.etaLocal) + ' local / ' + escapeHtml(leg.arr.etaZ) + ' Z \u2014 ' + escapeHtml(leg.arr.agent) + ' (' + escapeHtml(leg.arr.agentPhone) + ')</div>' +
+      '<div><strong>Departure:</strong> ' + escapeHtml(leg.dep.airportId) + ' at ' + escapeHtml(leg.dep.etdLocal) + ' local / ' + escapeHtml(leg.dep.etdZ) + ' Z &mdash; ' + escapeHtml(leg.dep.agent) + ' (' + escapeHtml(leg.dep.agentPhone) + ')</div>' +
+      '<div><strong>Arrival:</strong> ' + escapeHtml(leg.arr.airportId) + ' at ' + escapeHtml(leg.arr.etaLocal) + ' local / ' + escapeHtml(leg.arr.etaZ) + ' Z &mdash; ' + escapeHtml(leg.arr.agent) + ' (' + escapeHtml(leg.arr.agentPhone) + ')</div>' +
     '</div>' +
   '</div>';
+}
+
+function importEnrichmentCardHTML(item, index){
+  const leg = item.targetLeg;
+  const p = item.patch;
+  const parts = [];
+  if(p.dep.agent || p.dep.agentPhone) parts.push('Dep handler &rarr; ' + escapeHtml(p.dep.agent || leg.dep.agent) + ' (' + escapeHtml(p.dep.agentPhone || leg.dep.agentPhone) + ')');
+  if(p.dep.frequency) parts.push('Dep frequency &rarr; ' + escapeHtml(p.dep.frequency));
+  if(p.arr.agent || p.arr.agentPhone) parts.push('Arr handler &rarr; ' + escapeHtml(p.arr.agent || leg.arr.agent) + ' (' + escapeHtml(p.arr.agentPhone || leg.arr.agentPhone) + ')');
+  if(p.arr.frequency) parts.push('Arr frequency &rarr; ' + escapeHtml(p.arr.frequency));
+  return '<div class="import-leg-card" data-enrich-index="' + index + '">' +
+    '<div class="import-leg-card-head">' +
+      '<span class="import-leg-title">Updates existing leg: ' + escapeHtml(leg.cityPair || (leg.dep.airportId + ' \u2192 ' + leg.arr.airportId)) + '</span>' +
+      '<span class="import-leg-date">' + escapeHtml(leg.date) + '</span>' +
+    '</div>' +
+    '<div class="import-leg-body">' + parts.map(p => '<div>' + p + '</div>').join('') + '</div>' +
+  '</div>';
+}
+
+function importUnmatchedCardHTML(item, index){
+  const ex = item.extracted;
+  const label = (ex.cityPair || ((ex.dep && ex.dep.airportId) || '?') + ' \u2192 ' + ((ex.arr && ex.arr.airportId) || '?')) + ' &mdash; ' + escapeHtml(ex.date || 'no date');
+  const options = ['<option value="">Skip this item</option>'].concat(
+    state.legs.map(l => '<option value="' + escapeHtml(l.id) + '">' + escapeHtml(l.cityPair || (l.dep.airportId + ' \u2192 ' + l.arr.airportId)) + ' (' + escapeHtml(l.date) + ')</option>')
+  );
+  return '<div class="import-leg-card" data-unmatched-index="' + index + '">' +
+    '<div class="import-leg-card-head">' +
+      '<span class="import-leg-title">No matching leg found</span>' +
+    '</div>' +
+    '<div class="import-leg-body">' +
+      '<div>' + label + '</div>' +
+      '<div style="margin-top:8px; color:var(--fog-300); font-size:13px;">This looks like handling info, but no leg on your board matches that airport and date yet. Link it to an existing leg, or skip it for now and re-upload once the leg exists.</div>' +
+      '<select class="import-unmatched-select" data-unmatched-select="' + index + '" style="margin-top:8px; width:100%;">' + options.join('') + '</select>' +
+    '</div>' +
+  '</div>';
+}
+
+function resetImportState(){
+  state.importPhase = 'upload';
+  state.importDocType = null;
+  state.importNote = '';
+  state.importNewLegs = [];
+  state.importEnrichments = [];
+  state.importUnmatched = [];
+}
+
+async function processImportFile(file){
+  state.importPhase = 'processing';
+  renderMain();
+  try{
+    const fileBase64 = await fileToBase64(file);
+    const res = await fetch(EXTRACT_TRIP_DOC_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fileName: file.name, fileBase64: fileBase64 })
+    });
+    const data = await res.json();
+    if(!res.ok || data.error){
+      throw new Error(data.error || ('Extraction failed (' + res.status + ')'));
+    }
+    state.importDocType = data.documentType || 'unknown';
+    state.importNote = data.note || '';
+    state.importNewLegs = [];
+    state.importEnrichments = [];
+    state.importUnmatched = [];
+    const extractedLegs = Array.isArray(data.legs) ? data.legs : [];
+    if(state.importDocType === 'trip_sheet'){
+      state.importNewLegs = extractedLegs.map(buildLegFromExtraction);
+    } else if(state.importDocType === 'handling_notes'){
+      extractedLegs.forEach(ex => {
+        const match = findMatchingLegForEnrichment(ex);
+        if(match){
+          state.importEnrichments.push({ targetLeg: match, patch: enrichmentPatchFromExtraction(ex) });
+        } else {
+          state.importUnmatched.push({ extracted: ex, selectedLegId: '' });
+        }
+      });
+    }
+    state.importPhase = 'results';
+  }catch(e){
+    console.error('import extraction failed', e);
+    state.importPhase = 'error';
+    state.importNote = e.message || 'Something went wrong reading that file.';
+  }
+  renderMain();
 }
 
 function renderImportPreviewView(){
   const topNavBar = document.getElementById('topNavBar');
   if(topNavBar) topNavBar.style.display = '';
   const main = document.getElementById('mainPanel');
-  if(!state.importStagedLegs){
-    state.importStagedLegs = sampleImportedLegsForPreview();
+  if(!state.importPhase) resetImportState();
+
+  const header = '<div class="view-header">' +
+      '<div><div class="view-title">Import Trip Documents</div><div class="view-subtitle">Upload a trip sheet from dispatch or handling notes from ITPS. Nothing is saved to your board until you confirm.</div></div>' +
+    '</div>';
+
+  if(state.importPhase === 'upload'){
+    main.innerHTML = header +
+      '<div class="import-upload-box">' +
+        '<input type="file" id="importFileInput" accept="application/pdf" style="display:none;" />' +
+        '<button type="button" class="btn btn-primary" id="importChooseFileBtn">Choose PDF to import</button>' +
+        '<div style="margin-top:10px; color:var(--fog-300); font-size:13px;">Accepts a trip sheet PDF (builds new legs) or an ITPS handling notes PDF (updates a matching existing leg).</div>' +
+      '</div>' +
+      '<div class="import-actions"><button type="button" class="btn" id="importCancelBtn">Back</button></div>';
+    document.getElementById('importChooseFileBtn').addEventListener('click', () => {
+      document.getElementById('importFileInput').click();
+    });
+    document.getElementById('importFileInput').addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if(file) processImportFile(file);
+    });
+    document.getElementById('importCancelBtn').addEventListener('click', () => {
+      resetImportState();
+      goToListView('home');
+    });
+    return;
   }
-  const legs = state.importStagedLegs;
-  main.innerHTML =
-    '<div class="view-header">' +
-      '<div><div class="view-title">Import Trip Sheet</div><div class="view-subtitle">Review extracted legs below, then confirm to add them to your board. Nothing is saved until you confirm.</div></div>' +
-    '</div>' +
-    '<div style="margin-bottom:16px; color:var(--fog-300); font-size:13px;">Showing sample extracted data for trip 415129 to preview this screen. Real PDF upload and AI extraction are not wired up yet.</div>' +
-    '<div class="import-leg-list">' + legs.map((l, i) => importLegCardHTML(l, i)).join('') + '</div>' +
+
+  if(state.importPhase === 'processing'){
+    main.innerHTML = header + '<div style="color:var(--fog-300); padding:24px 0;">Reading document and extracting trip data&hellip;</div>';
+    return;
+  }
+
+  if(state.importPhase === 'error'){
+    main.innerHTML = header +
+      '<div style="color:var(--warn-400, #e0a030); padding:16px 0;">' + escapeHtml(state.importNote) + '</div>' +
+      '<div class="import-actions">' +
+        '<button type="button" class="btn" id="importCancelBtn">Back</button>' +
+        '<button type="button" class="btn btn-primary" id="importRetryBtn">Try another file</button>' +
+      '</div>';
+    document.getElementById('importCancelBtn').addEventListener('click', () => { resetImportState(); goToListView('home'); });
+    document.getElementById('importRetryBtn').addEventListener('click', () => { resetImportState(); renderMain(); });
+    return;
+  }
+
+  // results
+  if(state.importDocType === 'unknown'){
+    main.innerHTML = header +
+      '<div style="color:var(--fog-300); padding:16px 0;">' + (escapeHtml(state.importNote) || "Couldn't tell what kind of document this was.") + '</div>' +
+      '<div class="import-actions">' +
+        '<button type="button" class="btn" id="importCancelBtn">Back</button>' +
+        '<button type="button" class="btn btn-primary" id="importRetryBtn">Try another file</button>' +
+      '</div>';
+    document.getElementById('importCancelBtn').addEventListener('click', () => { resetImportState(); goToListView('home'); });
+    document.getElementById('importRetryBtn').addEventListener('click', () => { resetImportState(); renderMain(); });
+    return;
+  }
+
+  const sections = [];
+  if(state.importNote){
+    sections.push('<div style="margin-bottom:16px; color:var(--fog-300); font-size:13px;">' + escapeHtml(state.importNote) + '</div>');
+  }
+  if(state.importNewLegs.length){
+    sections.push('<div class="view-subtitle" style="margin-bottom:8px;">New legs to add (' + state.importNewLegs.length + ')</div>');
+    sections.push('<div class="import-leg-list">' + state.importNewLegs.map((l, i) => importLegCardHTML(l, i)).join('') + '</div>');
+  }
+  if(state.importEnrichments.length){
+    sections.push('<div class="view-subtitle" style="margin:16px 0 8px;">Existing legs to update (' + state.importEnrichments.length + ')</div>');
+    sections.push('<div class="import-leg-list">' + state.importEnrichments.map((it, i) => importEnrichmentCardHTML(it, i)).join('') + '</div>');
+  }
+  if(state.importUnmatched.length){
+    sections.push('<div class="view-subtitle" style="margin:16px 0 8px;">Needs review (' + state.importUnmatched.length + ')</div>');
+    sections.push('<div class="import-leg-list">' + state.importUnmatched.map((it, i) => importUnmatchedCardHTML(it, i)).join('') + '</div>');
+  }
+  if(!state.importNewLegs.length && !state.importEnrichments.length && !state.importUnmatched.length){
+    sections.push('<div style="color:var(--fog-300); padding:16px 0;">No legs could be extracted from that document.</div>');
+  }
+
+  const totalActionable = state.importNewLegs.length + state.importEnrichments.length;
+  main.innerHTML = header + sections.join('') +
     '<div class="import-actions">' +
       '<button type="button" class="btn" id="importCancelBtn">Cancel</button>' +
-      '<button type="button" class="btn btn-primary" id="importConfirmBtn">Confirm and add ' + legs.length + ' legs</button>' +
+      (totalActionable ? '<button type="button" class="btn btn-primary" id="importConfirmBtn">Confirm and apply</button>' : '') +
     '</div>';
+
   document.getElementById('importCancelBtn').addEventListener('click', () => {
-    state.importStagedLegs = null;
+    resetImportState();
     goToListView('home');
   });
-  document.getElementById('importConfirmBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('importConfirmBtn');
-    btn.disabled = true;
-    btn.textContent = 'Adding...';
-    try{
-      for(const leg of state.importStagedLegs){
-        await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
-      }
-      await loadLegs();
-      state.importStagedLegs = null;
-      showToast('Legs added');
-      goToListView('dashboard');
-    }catch(e){
-      console.error('import confirm failed', e);
-      showToast('Import failed. Try again.');
-      btn.disabled = false;
-      btn.textContent = 'Confirm and add ' + legs.length + ' legs';
-    }
+
+  document.querySelectorAll('[data-unmatched-select]').forEach(sel => {
+    sel.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.getAttribute('data-unmatched-select'), 10);
+      state.importUnmatched[idx].selectedLegId = e.target.value;
+    });
   });
+
+  const confirmBtn = document.getElementById('importConfirmBtn');
+  if(confirmBtn){
+    confirmBtn.addEventListener('click', async () => {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Applying...';
+      try{
+        for(const leg of state.importNewLegs){
+          await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
+        }
+        for(const item of state.importEnrichments){
+          const leg = item.targetLeg;
+          Object.assign(leg.dep, item.patch.dep);
+          Object.assign(leg.arr, item.patch.arr);
+          leg.updatedAt = Date.now();
+          await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
+        }
+        for(const item of state.importUnmatched){
+          if(!item.selectedLegId) continue;
+          const leg = state.legs.find(l => l.id === item.selectedLegId);
+          if(!leg) continue;
+          const patch = enrichmentPatchFromExtraction(item.extracted);
+          Object.assign(leg.dep, patch.dep);
+          Object.assign(leg.arr, patch.arr);
+          leg.updatedAt = Date.now();
+          await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
+        }
+        await loadLegs();
+        resetImportState();
+        showToast('Import applied');
+        goToListView('dashboard');
+      }catch(e){
+        console.error('import confirm failed', e);
+        showToast('Import failed. Try again.');
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Confirm and apply';
+      }
+    });
+  }
 }
 
 function renderTripDetailView(){
