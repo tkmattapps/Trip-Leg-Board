@@ -2774,8 +2774,9 @@ async function handleLoginSubmit(){
     errEl.textContent = 'Sign in failed. Check your email and password.';
     return;
   }
+  state.view = 'home';
+  await bootApp();
   hideLoginOverlay();
-  bootApp();
 }
 
 document.getElementById('loginSubmitBtn').addEventListener('click', handleLoginSubmit);
@@ -2786,8 +2787,9 @@ document.getElementById('loginPassword').addEventListener('keydown', function(e)
 (async function initAuth(){
   const { data: { session } } = await sb.auth.getSession();
   if(session){
+    state.view = 'home';
+    await bootApp();
     hideLoginOverlay();
-    bootApp();
   } else {
     showLoginOverlay();
   }
