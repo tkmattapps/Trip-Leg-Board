@@ -246,7 +246,8 @@
     .field input, .field select, .field textarea, .search{ font-size:16px !important; }
 
     /* Bigger tap targets */
-    .yn-btn{ min-height:44px; }
+    /* Y/N buttons match the 36px input height beside them (was 44px, caused misalignment) */
+    .yn-btn{ min-height:36px; height:36px; }
     .btn, .new-btn, .status-select{ min-height:44px; }
     .leg-row{ padding:14px 12px; }
     .ovf-remove-btn{ min-height:32px; min-width:32px; }
@@ -1994,7 +1995,7 @@ function renderMain(){
             field('Ramp fee', 'depRampFee', leg.dep.rampFee, {placeholder:'$150'}) +
             ynField('Waived w/ fuel', 'depRampFeeWaived', leg.dep.rampFeeWaived) +
             field('Min GAL to waive', 'depRampFeeMinGallons', leg.dep.rampFeeMinGallons, {placeholder:'200'}) +
-            field('Min lbs to waive', 'depRampFeeMinLbs', '', {readonly:true, placeholder:'auto'}) +
+            field('Min LBS to waive', 'depRampFeeMinLbs', '', {readonly:true, placeholder:'auto'}) +
           '</div>' +
           '<div style="margin-top:14px">' + field(airfieldNotesLabel('dep', leg.dep.airportId), 'depNotes', leg.dep.notes, {type:'textarea', labelId:'depNotesLabel'}) + '</div>' +
         '</div>' +
@@ -2018,7 +2019,7 @@ function renderMain(){
             field('Ramp fee', 'arrRampFee', leg.arr.rampFee, {placeholder:'$150'}) +
             ynField('Waived w/ fuel', 'arrRampFeeWaived', leg.arr.rampFeeWaived) +
             field('Min GAL to waive', 'arrRampFeeMinGallons', leg.arr.rampFeeMinGallons, {placeholder:'200'}) +
-            field('Min lbs to waive', 'arrRampFeeMinLbs', '', {readonly:true, placeholder:'auto'}) +
+            field('Min LBS to waive', 'arrRampFeeMinLbs', '', {readonly:true, placeholder:'auto'}) +
           '</div>' +
           '<div style="margin-top:14px">' + field(airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotes', leg.arr.notes, {type:'textarea', labelId:'arrNotesLabel'}) + '</div>' +
         '</div>' +
