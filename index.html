@@ -1674,16 +1674,14 @@ function reconcileRemoveCardHTML(leg, index){
 function importUnmatchedCardHTML(item, index){
   const ex = item.extracted;
   const label = (ex.cityPair || ((ex.dep && ex.dep.airportId) || '?') + ' \u2192 ' + ((ex.arr && ex.arr.airportId) || '?')) + ' &mdash; ' + escapeHtml(ex.date || 'no date');
-  const options = ['<option value="">Skip this item</option>', '<option value="__new__">Create as a new leg</option>'].concat(
-    state.legs.map(l => '<option value="' + escapeHtml(l.id) + '">' + escapeHtml(l.cityPair || (l.dep.airportId + ' \u2192 ' + l.arr.airportId)) + ' (' + escapeHtml(l.date) + ')</option>')
-  );
+  const options = ['<option value="">Skip this item</option>', '<option value="__new__">Create as a new leg</option>'];
   return '<div class="import-leg-card" data-unmatched-index="' + index + '">' +
     '<div class="import-leg-card-head">' +
       '<span class="import-leg-title">No matching leg found</span>' +
     '</div>' +
     '<div class="import-leg-body">' +
       '<div>' + label + '</div>' +
-      '<div style="margin-top:8px; color:var(--fog-300); font-size:13px;">This looks like handling info, but no leg on your board matches that airport and date yet. Create it as a new leg, link it to an existing leg, or skip it for now.</div>' +
+      '<div style="margin-top:8px; color:var(--fog-300); font-size:13px;">This looks like handling info, but no leg on your board matches that airport and date yet. Create it as a new leg, or skip it for now.</div>' +
       '<select class="import-unmatched-select" data-unmatched-select="' + index + '" style="margin-top:8px; width:100%;">' + options.join('') + '</select>' +
     '</div>' +
   '</div>';
@@ -2001,7 +1999,8 @@ function renderImportPreviewView(){
     sections.push('<div style="color:var(--fog-300); padding:16px 0;">No legs could be extracted from that document.</div>');
   }
 
-  const totalActionable = state.importNewLegs.length + state.importEnrichments.length;
+  const decidedUnmatched = state.importUnmatched.filter(it => it.selectedLegId).length;
+  const totalActionable = state.importNewLegs.length + state.importEnrichments.length + decidedUnmatched;
   main.innerHTML = header + sections.join('') +
     '<div class="import-actions">' +
       '<button type="button" class="btn" id="importCancelBtn">Cancel</button>' +
@@ -2017,6 +2016,7 @@ function renderImportPreviewView(){
     sel.addEventListener('change', (e) => {
       const idx = parseInt(e.target.getAttribute('data-unmatched-select'), 10);
       state.importUnmatched[idx].selectedLegId = e.target.value;
+      renderMain();
     });
   });
 
