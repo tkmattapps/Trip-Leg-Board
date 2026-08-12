@@ -1660,7 +1660,10 @@ function renderTripDetailView(){
     '<button type="button" class="back-link" id="tripDetailBackBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
     '<div class="view-header">' +
       '<div><div class="view-title">Trip Legs</div><div class="view-subtitle">Trip ' + escapeHtml(trip.tripNumber) + ' &middot; ' + trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') + '</div></div>' +
-      '<button type="button" class="btn btn-primary" id="addLegToTripBtn">+ Add leg to this trip</button>' +
+      '<div class="main-actions">' +
+        '<button type="button" class="btn btn-danger" id="deleteTripBtn">Delete trip</button>' +
+        '<button type="button" class="btn btn-primary" id="addLegToTripBtn">+ Add leg to this trip</button>' +
+      '</div>' +
     '</div>' +
     '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') + '</div>';
 
@@ -1676,9 +1679,30 @@ function renderTripDetailView(){
     state.legs.unshift(newLeg);
     openLegEditor(newLeg.id);
   });
+  document.getElementById('deleteTripBtn').addEventListener('click', () => handleDeleteTrip(trip.tripNumber));
   document.querySelectorAll('.dash-card').forEach(card => {
     card.addEventListener('click', () => openLegEditor(card.dataset.id));
   });
+}
+
+async function handleDeleteTrip(tripNumber){
+  const allTrips = groupIntoTrips(state.legs);
+  const trip = allTrips.find(t => t.key === tripNumber);
+  if(!trip) return;
+  const legCount = trip.legs.length;
+  const confirmed = await showConfirm('Delete trip ' + tripNumber + '? This will permanently delete all ' + legCount + ' leg' + (legCount === 1 ? '' : 's') + '. This cannot be undone.');
+  if(!confirmed) return;
+  const idsToDelete = trip.legs.map(l => l.id);
+  for(const id of idsToDelete){
+    await deleteLeg(id);
+  }
+  state.legs = state.legs.filter(l => !idsToDelete.includes(l.id));
+  state.activeId = null;
+  state.view = state.tripDetailOrigin === 'history' ? 'history' : 'dashboard';
+  showToast('Trip ' + tripNumber + ' deleted');
+  updateNavTabs();
+  renderList();
+  renderMain();
 }
 
 
