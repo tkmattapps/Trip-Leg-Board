@@ -1674,7 +1674,7 @@ function reconcileRemoveCardHTML(leg, index){
 function importUnmatchedCardHTML(item, index){
   const ex = item.extracted;
   const label = (ex.cityPair || ((ex.dep && ex.dep.airportId) || '?') + ' \u2192 ' + ((ex.arr && ex.arr.airportId) || '?')) + ' &mdash; ' + escapeHtml(ex.date || 'no date');
-  const options = ['<option value="">Skip this item</option>'].concat(
+  const options = ['<option value="">Skip this item</option>', '<option value="__new__">Create as a new leg</option>'].concat(
     state.legs.map(l => '<option value="' + escapeHtml(l.id) + '">' + escapeHtml(l.cityPair || (l.dep.airportId + ' \u2192 ' + l.arr.airportId)) + ' (' + escapeHtml(l.date) + ')</option>')
   );
   return '<div class="import-leg-card" data-unmatched-index="' + index + '">' +
@@ -1683,7 +1683,7 @@ function importUnmatchedCardHTML(item, index){
     '</div>' +
     '<div class="import-leg-body">' +
       '<div>' + label + '</div>' +
-      '<div style="margin-top:8px; color:var(--fog-300); font-size:13px;">This looks like handling info, but no leg on your board matches that airport and date yet. Link it to an existing leg, or skip it for now and re-upload once the leg exists.</div>' +
+      '<div style="margin-top:8px; color:var(--fog-300); font-size:13px;">This looks like handling info, but no leg on your board matches that airport and date yet. Create it as a new leg, link it to an existing leg, or skip it for now.</div>' +
       '<select class="import-unmatched-select" data-unmatched-select="' + index + '" style="margin-top:8px; width:100%;">' + options.join('') + '</select>' +
     '</div>' +
   '</div>';
@@ -2038,6 +2038,14 @@ function renderImportPreviewView(){
         }
         for(const item of state.importUnmatched){
           if(!item.selectedLegId) continue;
+          if(item.selectedLegId === '__new__'){
+            // Standalone partial brief with no leg to enrich: build a fresh
+            // orphan leg from the extraction (leg number defaults to '?').
+            // A brief still cannot remove anything -- it only ever adds here.
+            const newLeg = buildLegFromExtraction(item.extracted);
+            await storage.set('leg:' + newLeg.id, JSON.stringify(newLeg), true);
+            continue;
+          }
           const leg = state.legs.find(l => l.id === item.selectedLegId);
           if(!leg) continue;
           const patch = enrichmentPatchFromExtraction(item.extracted);
