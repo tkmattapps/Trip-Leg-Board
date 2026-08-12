@@ -329,6 +329,7 @@
   .dash-card:hover{ border-color:var(--amber-500); }
   .dash-card-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; }
   .dash-card-code{ font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:600; }
+  .dash-card-orphan-banner{ background:var(--alert-600, #E2574C); color:#fff; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; letter-spacing:0.02em; padding:6px 10px; border-radius:4px; margin-bottom:10px; text-align:center; }
   .dash-status-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
   .dash-status-dot.ok{ background:var(--ok-500); }
   .dash-status-dot.pending{ background:var(--alert-600); }
@@ -1073,7 +1074,9 @@ function computeLegCompleteness(leg){
 function dashboardCardHTML(leg){
   const completeness = computeLegCompleteness(leg);
   const route = leg.cityPair || [leg.dep.airportId, leg.arr.airportId].filter(Boolean).join(' \u2192 ') || 'No city pair defined';
+  const isUnassigned = !(leg.tripNumber || '').trim();
   return '<div class="dash-card" data-id="' + leg.id + '">' +
+    (isUnassigned ? '<div class="dash-card-orphan-banner">Unassigned leg. Please add trip number.</div>' : '') +
     '<div class="dash-card-top">' +
       '<span class="dash-card-code">' + escapeHtml(legLabel(leg)) + '</span>' +
     '</div>' +
@@ -1088,7 +1091,9 @@ function tripBriefLegCardHTML(leg){
   const completeness = computeLegCompleteness(leg);
   const route = leg.cityPair || [leg.dep.airportId, leg.arr.airportId].filter(Boolean).join(' \u2192 ') || 'No city pair defined';
   const tripNumLabel = (leg.tripNumber || '').trim() || 'UNTITLED';
+  const isUnassignedBrief = !(leg.tripNumber || '').trim();
   return '<div class="dash-card" data-id="' + leg.id + '">' +
+    (isUnassignedBrief ? '<div class="dash-card-orphan-banner">Unassigned leg. Please add trip number.</div>' : '') +
     '<div class="dash-card-top">' +
       '<span class="dash-card-code">Trip ' + escapeHtml(tripNumLabel) + '</span>' +
     '</div>' +
