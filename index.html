@@ -413,6 +413,9 @@
   .install-platform{ margin-bottom:18px; }
   .install-platform-title{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--amber-500); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
   .install-steps{ margin:0; padding-left:20px; font-size:13px; color:var(--paper-050); line-height:1.9; }
+  .install-url{ display:inline-block; margin-top:5px; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--amber-500); background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:5px 9px; cursor:pointer; word-break:break-all; text-align:left; line-height:1.4; }
+  .install-url:hover{ border-color:var(--amber-500); }
+  .install-url.copied{ color:var(--ok-500); border-color:var(--ok-500); }
   .feedback-overlay{
     display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:70;
     align-items:center; justify-content:center; padding:20px;
@@ -525,12 +528,12 @@
       <button class="feedback-close-btn" id="installCloseBtn" aria-label="Close">&times;</button>
     </div>
     <p style="font-size:12px; color:var(--fog-500); line-height:1.6; margin:0 0 16px;">
-      This uses the same shared data everywhere \u2014 add it to each device below and your trips stay in sync automatically. Just make sure you're signed into a paid Claude account on each one.
+      No paid account, no app store, no nonsense. Beacon lives in your browser and syncs across all your devices automatically. Add it below. You know you want to.
     </p>
     <div class="install-platform">
       <div class="install-platform-title">iPhone / iPad (Safari)</div>
       <ol class="install-steps">
-        <li>Open this link in Safari</li>
+        <li>Open this link in Safari:<br><button type="button" class="install-url" data-install-url>&hellip;</button></li>
         <li>Tap the Share icon (square with an arrow)</li>
         <li>Tap "Add to Home Screen"</li>
       </ol>
@@ -538,7 +541,7 @@
     <div class="install-platform">
       <div class="install-platform-title">Mac (Safari)</div>
       <ol class="install-steps">
-        <li>Open this link in Safari</li>
+        <li>Open this link in Safari:<br><button type="button" class="install-url" data-install-url>&hellip;</button></li>
         <li>File menu &rarr; "Add to Dock"</li>
         <li>It opens in its own window from then on</li>
       </ol>
@@ -546,7 +549,7 @@
     <div class="install-platform">
       <div class="install-platform-title">Mac / Windows (Chrome)</div>
       <ol class="install-steps">
-        <li>Open this link in Chrome</li>
+        <li>Open this link in Chrome:<br><button type="button" class="install-url" data-install-url>&hellip;</button></li>
         <li>Click the install icon in the address bar (or menu &rarr; "Cast, save, and share" &rarr; "Install page as app")</li>
       </ol>
     </div>
@@ -3384,6 +3387,32 @@ document.getElementById('feedbackFab').addEventListener('click', openFeedbackMod
 document.getElementById('installFab').addEventListener('click', () => {
   document.getElementById('installOverlay').classList.add('open');
 });
+(function setupInstallUrls(){
+  var appUrl = (window.location && /^https?:/.test(window.location.origin || ''))
+    ? window.location.origin
+    : 'https://zingy-macaron-17a8d2.netlify.app';
+  document.querySelectorAll('[data-install-url]').forEach(function(el){
+    el.textContent = appUrl;
+    el.addEventListener('click', function(){
+      var done = function(ok){
+        if(!ok) return;
+        el.classList.add('copied');
+        el.textContent = 'Copied!';
+        setTimeout(function(){ el.classList.remove('copied'); el.textContent = appUrl; }, 1500);
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(appUrl).then(function(){ done(true); }).catch(function(){ done(false); });
+      } else {
+        try{
+          var t=document.createElement('textarea');
+          t.value=appUrl; t.style.position='fixed'; t.style.opacity='0';
+          document.body.appendChild(t); t.select();
+          document.execCommand('copy'); document.body.removeChild(t); done(true);
+        }catch(e){ done(false); }
+      }
+    });
+  });
+})();
 document.getElementById('refreshFab').addEventListener('click', async () => {
   const btn = document.getElementById('refreshFab');
   btn.disabled = true;
