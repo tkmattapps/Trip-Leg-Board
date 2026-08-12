@@ -213,7 +213,10 @@
     /* Next pax leg: wrap fields horizontally first, then down, instead of one tall stack.
        Each cell stays >=150px so date/time values remain fully visible. */
     .grid-5{ grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); }
-    .field-row-inline{ flex-direction:column; }
+    /* Keep Notes on the same row as the Y/N buttons on mobile (was stacked/column),
+       so EAPIS / Customs / Landing permit boxes take less vertical space.
+       Y/N field stays 140px; Notes fills the remaining width. */
+    .field-row-inline{ flex-direction:row; }
 
     .mobile-topbar{
       display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:20;
