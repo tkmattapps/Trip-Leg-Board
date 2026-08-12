@@ -1659,7 +1659,7 @@ function renderTripDetailView(){
   main.innerHTML =
     '<button type="button" class="back-link" id="tripDetailBackBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
     '<div class="view-header">' +
-      '<div><div class="view-title">Trip Sectors</div><div class="view-subtitle">Trip ' + escapeHtml(trip.tripNumber) + ' &middot; ' + trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') + '</div></div>' +
+      '<div><div class="view-title">Trip Legs</div><div class="view-subtitle">Trip ' + escapeHtml(trip.tripNumber) + ' &middot; ' + trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') + '</div></div>' +
       '<button type="button" class="btn btn-primary" id="addLegToTripBtn">+ Add leg to this trip</button>' +
     '</div>' +
     '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') + '</div>';
@@ -1714,7 +1714,7 @@ function renderMain(){
   let backLabel = 'Active Trips';
   if(state.previousView === 'tripDetail' && state.previousTripKey){
     const prevTrip = groupIntoTrips(state.legs).find(t => t.key === state.previousTripKey);
-    backLabel = prevTrip ? 'Trip Sectors' : 'Active Trips';
+    backLabel = prevTrip ? 'Trip Legs' : 'Active Trips';
   } else if(state.previousView === 'history'){
     backLabel = 'Flown Trips';
   }
@@ -1746,7 +1746,7 @@ function renderMain(){
     '<button type="button" class="back-link" id="backToDashboardBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
     '<div class="main-header">' +
       '<div class="main-title-group">' +
-        '<div class="main-title">Sector Brief</div>' +
+        '<div class="main-title">Leg Brief</div>' +
       '</div>' +
       '<div class="main-actions">' +
         '<button class="btn btn-danger" id="deleteBtn">Delete leg</button>' +
