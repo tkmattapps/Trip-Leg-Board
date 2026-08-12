@@ -273,15 +273,15 @@
   .field input[type=date]::-webkit-date-and-time-value{ text-align:left; }
   .field textarea{ font-family:'Inter',sans-serif; resize:vertical; min-height:56px; }
   .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--amber-700); }
-  /* Temporary expand-on-focus: a single-line input whose text overflows becomes a
-     wrapped, taller view while focused, then snaps back to one line on blur.
-     .is-overflowing is added by JS only when the value actually exceeds the box,
-     so fields that fit never move and there's no jumpiness on every tap. */
-  .field input.is-overflowing:focus{
-    height:auto; min-height:36px; white-space:normal; overflow-wrap:anywhere;
-    line-height:1.35; padding-top:8px; padding-bottom:8px; text-align:left;
+  /* Temporary expand-on-focus. Plain <input> elements cannot wrap, so when an
+     overflowing input is focused, JS swaps in a temporary textarea (.expand-clone)
+     that wraps and grows; on blur we sync the value back and restore the input. */
+  .field textarea.expand-clone{
+    height:auto; min-height:36px; overflow:hidden; resize:none; line-height:1.35;
+    padding:8px 10px; white-space:pre-wrap; overflow-wrap:anywhere;
+    font-family:'JetBrains Mono',monospace; font-size:13px;
   }
-  .field textarea.is-overflowing:focus{ min-height:120px; }
+  .field textarea.is-overflowing{ overflow:hidden; }
   .field input::placeholder, .field textarea::placeholder{ color:var(--fog-500); }
   .field input[readonly]{ color:var(--fog-300); cursor:default; }
   .subpanel.compact{ padding:12px; }
@@ -3491,44 +3491,69 @@ document.getElementById('loginPassword').addEventListener('keydown', function(e)
 </script>
 <script>
 /* ---- Temporary field expand-on-focus (global, all text fields) ----
-   Single-line inputs whose text overflows the 36px box grow to reveal the full
-   value while focused, then snap back on blur. Textareas grow a little too.
-   Delegated on document so it covers fields rendered now or in the future. */
+   A native <input> can't wrap to multiple lines. So for single-line text inputs
+   whose value overflows the box, we swap in a temporary <textarea> clone on focus
+   that wraps and auto-grows, then sync the value back and restore the input on blur.
+   Textareas just auto-grow. Delegated on document to cover current + future fields. */
 (function(){
-  function inputOverflows(el){
-    // horizontal overflow: content wider than the visible box
-    return el.scrollWidth > el.clientWidth + 1;
+  function inputOverflows(el){ return el.scrollWidth > el.clientWidth + 1; }
+
+  function autoGrow(ta){
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
   }
-  function expandInput(el){
-    if(el.tagName === 'INPUT'){
-      if(!inputOverflows(el)) return;          // fits fine -> leave it alone
-      el.classList.add('is-overflowing');
-      // measure wrapped height against a mirror, then set it
-      el.style.height = 'auto';
-      el.style.height = Math.max(36, el.scrollHeight) + 'px';
-    } else if(el.tagName === 'TEXTAREA'){
-      if(el.scrollHeight <= el.clientHeight + 1) return;
-      el.classList.add('is-overflowing');
-      el.style.height = 'auto';
-      el.style.height = el.scrollHeight + 'px';
-    }
+
+  function expandInputToClone(input){
+    if(!inputOverflows(input)) return;               // fits fine -> leave alone
+    if(input.dataset.expandActive === '1') return;
+    var ta = document.createElement('textarea');
+    ta.className = 'expand-clone is-overflowing';
+    ta.value = input.value;
+    // carry over identity so save/collect logic still finds it if it reads by id
+    ta.setAttribute('data-clone-for', input.id || '');
+    input.dataset.expandActive = '1';
+    input.style.display = 'none';
+    input.parentNode.insertBefore(ta, input.nextSibling);
+    autoGrow(ta);
+    ta.focus();
+    // keep caret at end
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+
+    ta.addEventListener('input', function(){
+      autoGrow(ta);
+      input.value = ta.value;          // keep hidden input live so val()/autosave is never stale
+    });
+    ta.addEventListener('blur', function(){
+      input.value = ta.value;                        // sync edits back
+      input.style.display = '';
+      delete input.dataset.expandActive;
+      ta.remove();
+      // fire an input event so any autosave/derived logic picks up the change
+      input.dispatchEvent(new Event('input', { bubbles:true }));
+      input.dispatchEvent(new Event('change', { bubbles:true }));
+    });
   }
-  function collapse(el){
-    el.classList.remove('is-overflowing');
-    el.style.height = '';                       // back to formatted size, top-left
-    el.scrollLeft = 0; el.scrollTop = 0;
+
+  function expandTextarea(ta){
+    if(ta.scrollHeight <= ta.clientHeight + 1) return;
+    ta.classList.add('is-overflowing');
+    autoGrow(ta);
   }
+  function collapseTextarea(ta){
+    ta.classList.remove('is-overflowing');
+    ta.style.height = '';
+    ta.scrollTop = 0;
+  }
+
   document.addEventListener('focusin', function(e){
     var el = e.target;
-    if(el.matches && el.matches('.field input[type=text], .field textarea')) expandInput(el);
-  });
-  document.addEventListener('input', function(e){
-    var el = e.target;
-    if(el.classList && el.classList.contains('is-overflowing')) expandInput(el);
+    if(!el.matches) return;
+    if(el.matches('.field input[type=text]')) expandInputToClone(el);
+    else if(el.matches('.field textarea:not(.expand-clone)')) expandTextarea(el);
   });
   document.addEventListener('focusout', function(e){
     var el = e.target;
-    if(el.matches && el.matches('.field input[type=text], .field textarea')) collapse(el);
+    if(el.matches && el.matches('.field textarea:not(.expand-clone)')) collapseTextarea(el);
   });
 })();
 </script>
