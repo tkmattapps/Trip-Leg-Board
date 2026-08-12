@@ -1634,6 +1634,11 @@ function describeLegChanges(leg, built){
       changes.push({ label: RECONCILE_FIELD_LABELS[path] || path, oldVal: oldVal || '(blank)', newVal: newVal || '(blank)' });
     }
   };
+  const dlcBuiltNum = String(built.legNumber || '').trim();
+  const dlcLegNum = String(leg.legNumber || '').trim();
+  if(dlcBuiltNum && dlcBuiltNum !== '?' && dlcBuiltNum !== dlcLegNum){
+    changes.push({ label: 'Leg number', oldVal: dlcLegNum || '(unassigned)', newVal: dlcBuiltNum });
+  }
   check('date', leg.date, built.date);
   check('cityPair', leg.cityPair, built.cityPair);
   ['airportId', 'etdLocal', 'etdZ', 'agent', 'agentPhone', 'frequency'].forEach(k => check('dep.' + k, leg.dep[k], built.dep[k]));
@@ -1756,6 +1761,11 @@ async function processImportFile(file){
         });
         const toAdd = [];
         const toUpdate = [];
+        // Track every existing leg an incoming leg claims (by number OR by
+        // dep/arr/date identity). A matched leg must never also be flagged for
+        // removal -- otherwise a numberless orphan (leg "?") that a new sheet
+        // adopts would get enriched and then immediately deleted.
+        const matchedExisting = new Set();
         incomingByIdentity.forEach((built) => {
           const numKey = String(built.legNumber || '').trim();
           // Match to an existing leg by leg number when we have a real one,
@@ -1765,6 +1775,7 @@ async function processImportFile(file){
           let existing = (numKey && numKey !== '?') ? existingByLegNum.get(numKey) : null;
           if(!existing) existing = existingByIdentity.get(legIdentityKey(built));
           if(existing){
+            matchedExisting.add(existing);
             if(fieldsDiffer(existing, built)){
               toUpdate.push({ existingLeg: existing, extracted: null, built: built });
             }
@@ -1772,7 +1783,10 @@ async function processImportFile(file){
             toAdd.push(built);
           }
         });
-        const toRemove = existingLegs.filter(l => !incomingLegNums.has(String(l.legNumber || '').trim()));
+        // Only remove existing legs that NO incoming leg matched. Keying this
+        // off matchedExisting (not raw leg numbers) protects a "?" orphan the
+        // sheet just adopted instead of deleting it.
+        const toRemove = existingLegs.filter(l => !matchedExisting.has(l));
         state.importTripReconcile = { tripNumber: tripNumber, existingCount: existingLegs.length, toAdd: toAdd, toUpdate: toUpdate, toRemove: toRemove };
       } else {
         // No existing trip to reconcile against. Build the legs, then collapse
@@ -1921,6 +1935,8 @@ function renderImportPreviewView(){
           for(const item of rec.toUpdate){
             const leg = item.existingLeg;
             const built = item.built;
+            const builtNum = String(built.legNumber || '').trim();
+            if(builtNum && builtNum !== '?') leg.legNumber = builtNum;
             leg.date = built.date;
             leg.cityPair = built.cityPair;
             Object.assign(leg.dep, built.dep);
