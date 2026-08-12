@@ -1387,15 +1387,34 @@ function buildLegFromExtraction(extracted){
   leg.legNumber = extracted.legNumber || '';
   leg.date = extracted.date || '';
   leg.cityPair = extracted.cityPair || '';
+  leg.ete = extracted.ete || '';
+  leg.enrouteNotes = extracted.enrouteNotes || '';
+  leg.windDirection = extracted.windDirection || '';
+  leg.windComponent = extracted.windComponent || '';
+  const ec = extracted.compliance || {};
+  Object.assign(leg.compliance, {
+    eapisReqd: ec.eapisReqd || '', eapisNotes: ec.eapisNotes || '',
+    customsReqd: ec.customsReqd || '', customsNotes: ec.customsNotes || '',
+    overflightReqd: ec.overflightReqd || ''
+  });
   const ed = extracted.dep || {};
   const ea = extracted.arr || {};
   Object.assign(leg.dep, {
     airportId: ed.airportId || '', etdLocal: ed.etdLocal || '', etdZ: ed.etdZ || '',
-    agent: ed.agent || '', agentPhone: ed.agentPhone || '', frequency: ed.frequency || ''
+    agent: ed.agent || '', agentPhone: ed.agentPhone || '', frequency: ed.frequency || '',
+    slotReqd: ed.slotReqd || '', slotTimeNumber: ed.slotTimeNumber || '', slotAllowance: ed.slotAllowance || '',
+    fuelVendor: ed.fuelVendor || '',
+    groundTransportReqd: ed.groundTransportReqd || '', groundTransportDetails: ed.groundTransportDetails || '',
+    notes: ed.notes || ''
   });
   Object.assign(leg.arr, {
     airportId: ea.airportId || '', etaLocal: ea.etaLocal || '', etaZ: ea.etaZ || '',
-    agent: ea.agent || '', agentPhone: ea.agentPhone || '', frequency: ea.frequency || ''
+    agent: ea.agent || '', agentPhone: ea.agentPhone || '', frequency: ea.frequency || '',
+    slotReqd: ea.slotReqd || '', slotTimeNumber: ea.slotTimeNumber || '', slotAllowance: ea.slotAllowance || '',
+    fuelVendor: ea.fuelVendor || '',
+    groundTransportReqd: ea.groundTransportReqd || '', groundTransportDetails: ea.groundTransportDetails || '',
+    permitReqd: ea.permitReqd || '', permitNumber: ea.permitNumber || '',
+    notes: ea.notes || ''
   });
   return leg;
 }
@@ -1423,15 +1442,40 @@ function enrichmentPatchFromExtraction(extracted){
 }
 
 function importLegCardHTML(leg, index){
+  const dep = leg.dep || {}, arr = leg.arr || {}, comp = leg.compliance || {};
+  const rows = [];
+  rows.push('<div><strong>Departure:</strong> ' + escapeHtml(dep.airportId) + ' at ' + escapeHtml(dep.etdLocal) + ' local / ' + escapeHtml(dep.etdZ) + ' Z &mdash; ' + escapeHtml(dep.agent) + ' (' + escapeHtml(dep.agentPhone) + ')</div>');
+  rows.push('<div><strong>Arrival:</strong> ' + escapeHtml(arr.airportId) + ' at ' + escapeHtml(arr.etaLocal) + ' local / ' + escapeHtml(arr.etaZ) + ' Z &mdash; ' + escapeHtml(arr.agent) + ' (' + escapeHtml(arr.agentPhone) + ')</div>');
+  const enrouteBits = [];
+  if(leg.ete) enrouteBits.push('ETE ' + escapeHtml(leg.ete));
+  if(leg.windComponent || leg.windDirection){
+    const w = ((leg.windDirection ? leg.windDirection + ' ' : '') + (leg.windComponent || '')).trim();
+    enrouteBits.push('Wind ' + escapeHtml(w));
+  }
+  if(enrouteBits.length) rows.push('<div><strong>Enroute:</strong> ' + enrouteBits.join(' &middot; ') + '</div>');
+  if(leg.enrouteNotes) rows.push('<div><strong>Enroute notes:</strong> ' + escapeHtml(leg.enrouteNotes) + '</div>');
+  if(arr.permitReqd === 'Y' || arr.permitNumber) rows.push('<div><strong>Landing permit / PPR:</strong> ' + escapeHtml(arr.permitNumber || 'required') + '</div>');
+  if(comp.customsReqd === 'Y' || comp.customsNotes) rows.push('<div><strong>Customs:</strong> ' + escapeHtml(comp.customsNotes || 'landing rights required') + '</div>');
+  if(comp.eapisReqd === 'Y' || comp.eapisNotes) rows.push('<div><strong>EAPIS:</strong> ' + escapeHtml(comp.eapisNotes || 'required') + '</div>');
+  if(comp.overflightReqd === 'Y') rows.push('<div><strong>Overflight permits:</strong> required</div>');
+  const fuelBits = [];
+  if(dep.fuelVendor) fuelBits.push(escapeHtml((dep.airportId || 'Dep') + ': ' + dep.fuelVendor));
+  if(arr.fuelVendor) fuelBits.push(escapeHtml((arr.airportId || 'Arr') + ': ' + arr.fuelVendor));
+  if(fuelBits.length) rows.push('<div><strong>Fuel:</strong> ' + fuelBits.join(' &middot; ') + '</div>');
+  const slotBits = [];
+  if(dep.slotReqd === 'Y' || dep.slotTimeNumber) slotBits.push(escapeHtml((dep.airportId || 'Dep') + ' ' + (dep.slotTimeNumber || 'slot required')));
+  if(arr.slotReqd === 'Y' || arr.slotTimeNumber) slotBits.push(escapeHtml((arr.airportId || 'Arr') + ' ' + (arr.slotTimeNumber || 'slot required')));
+  if(slotBits.length) rows.push('<div><strong>Slots:</strong> ' + slotBits.join(' &middot; ') + '</div>');
+  const gtBits = [];
+  if(dep.groundTransportReqd === 'Y' || dep.groundTransportDetails) gtBits.push(escapeHtml((dep.airportId || 'Dep') + ': ' + (dep.groundTransportDetails || 'required')));
+  if(arr.groundTransportReqd === 'Y' || arr.groundTransportDetails) gtBits.push(escapeHtml((arr.airportId || 'Arr') + ': ' + (arr.groundTransportDetails || 'required')));
+  if(gtBits.length) rows.push('<div><strong>Ground transport:</strong> ' + gtBits.join(' &middot; ') + '</div>');
   return '<div class="import-leg-card" data-index="' + index + '">' +
     '<div class="import-leg-card-head">' +
       '<span class="import-leg-title">Leg ' + escapeHtml(leg.legNumber) + ' &mdash; ' + escapeHtml(leg.cityPair) + '</span>' +
       '<span class="import-leg-date">' + escapeHtml(leg.date) + '</span>' +
     '</div>' +
-    '<div class="import-leg-body">' +
-      '<div><strong>Departure:</strong> ' + escapeHtml(leg.dep.airportId) + ' at ' + escapeHtml(leg.dep.etdLocal) + ' local / ' + escapeHtml(leg.dep.etdZ) + ' Z &mdash; ' + escapeHtml(leg.dep.agent) + ' (' + escapeHtml(leg.dep.agentPhone) + ')</div>' +
-      '<div><strong>Arrival:</strong> ' + escapeHtml(leg.arr.airportId) + ' at ' + escapeHtml(leg.arr.etaLocal) + ' local / ' + escapeHtml(leg.arr.etaZ) + ' Z &mdash; ' + escapeHtml(leg.arr.agent) + ' (' + escapeHtml(leg.arr.agentPhone) + ')</div>' +
-    '</div>' +
+    '<div class="import-leg-body">' + rows.join('') + '</div>' +
   '</div>';
 }
 
