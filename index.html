@@ -1265,7 +1265,7 @@ function renderDashboardView(){
   main.innerHTML =
     '<div class="view-header">' +
       '<div><div class="view-title">Active Trips</div><div class="view-subtitle" id="dashboardSubtitle">' + allActiveTrips.length + ' active trip' + (allActiveTrips.length === 1 ? '' : 's') + '</div></div>' +
-      '<button type="button" class="btn btn-steel" id="newTripBtn">+ New trip</button>' +
+      '<button type="button" class="btn btn-primary" id="newTripBtn">+ Create new trip</button>' +
     '</div>' +
     '<input class="search" id="dashboardSearchInput" placeholder="Search missions by route, airport, trip #..." style="width:100%; max-width:420px; margin-bottom:18px;" value="' + escapeHtml(state.dashboardFilter) + '" />' +
     legStatusLegendHTML() +
