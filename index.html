@@ -210,7 +210,9 @@
     .grid{ grid-template-columns:1fr 1fr; }
     .grid-2{ grid-template-columns:1fr; }
     .grid-3{ grid-template-columns:1fr; }
-    .grid-5{ grid-template-columns:1fr; }
+    /* Next pax leg: wrap fields horizontally first, then down, instead of one tall stack.
+       Each cell stays >=150px so date/time values remain fully visible. */
+    .grid-5{ grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); }
     .field-row-inline{ flex-direction:column; }
 
     .mobile-topbar{
