@@ -1425,14 +1425,51 @@ function importEnrichmentCardHTML(item, index){
   '</div>';
 }
 
+const RECONCILE_FIELD_LABELS = {
+  date: 'Date',
+  cityPair: 'City pair',
+  'dep.airportId': 'Departure airport',
+  'dep.etdLocal': 'Departure time (local)',
+  'dep.etdZ': 'Departure time (Z)',
+  'dep.agent': 'Departure handler',
+  'dep.agentPhone': 'Departure handler phone',
+  'dep.frequency': 'Departure frequency',
+  'arr.airportId': 'Arrival airport',
+  'arr.etaLocal': 'Arrival time (local)',
+  'arr.etaZ': 'Arrival time (Z)',
+  'arr.agent': 'Arrival handler',
+  'arr.agentPhone': 'Arrival handler phone',
+  'arr.frequency': 'Arrival frequency'
+};
+
+function describeLegChanges(leg, built){
+  const changes = [];
+  const check = (path, oldVal, newVal) => {
+    oldVal = oldVal || '';
+    newVal = newVal || '';
+    if(oldVal !== newVal){
+      changes.push({ label: RECONCILE_FIELD_LABELS[path] || path, oldVal: oldVal || '(blank)', newVal: newVal || '(blank)' });
+    }
+  };
+  check('date', leg.date, built.date);
+  check('cityPair', leg.cityPair, built.cityPair);
+  ['airportId', 'etdLocal', 'etdZ', 'agent', 'agentPhone', 'frequency'].forEach(k => check('dep.' + k, leg.dep[k], built.dep[k]));
+  ['airportId', 'etaLocal', 'etaZ', 'agent', 'agentPhone', 'frequency'].forEach(k => check('arr.' + k, leg.arr[k], built.arr[k]));
+  return changes;
+}
+
 function reconcileUpdateCardHTML(item, index){
   const leg = item.existingLeg;
+  const changes = describeLegChanges(leg, item.built);
+  const changeLines = changes.map(c =>
+    '<div>' + escapeHtml(c.label) + ': ' + escapeHtml(c.oldVal) + ' &rarr; ' + escapeHtml(c.newVal) + '</div>'
+  ).join('');
   return '<div class="import-leg-card" data-reconcile-update-index="' + index + '">' +
     '<div class="import-leg-card-head">' +
       '<span class="import-leg-title">Leg ' + escapeHtml(leg.legNumber) + ' &mdash; ' + escapeHtml(item.built.cityPair || leg.cityPair) + '</span>' +
       '<span class="import-leg-date">' + escapeHtml(item.built.date || leg.date) + '</span>' +
     '</div>' +
-    '<div class="import-leg-body">Schedule and routing will be refreshed from the new trip sheet. Performance, dispatch, and other checklist data already on this leg is left untouched.</div>' +
+    '<div class="import-leg-body">' + (changeLines || 'Schedule and routing will be refreshed from the new trip sheet.') + '<div style="margin-top:8px; color:var(--fog-300); font-size:12px;">Performance, dispatch, and other checklist data already on this leg is left untouched.</div></div>' +
   '</div>';
 }
 
@@ -1520,15 +1557,7 @@ async function processImportFile(file){
         // listed (or re-saved) for no reason.
         const existingByLegNum = new Map(existingLegs.map(l => [String(l.legNumber || '').trim(), l]));
         const incomingLegNums = new Set(dedupedLegs.map(ex => String(ex.legNumber || '').trim()));
-        const fieldsDiffer = (leg, built) => {
-          if((leg.date || '') !== (built.date || '')) return true;
-          if((leg.cityPair || '') !== (built.cityPair || '')) return true;
-          const depKeys = ['airportId', 'etdLocal', 'etdZ', 'agent', 'agentPhone', 'frequency'];
-          const arrKeys = ['airportId', 'etaLocal', 'etaZ', 'agent', 'agentPhone', 'frequency'];
-          for(const k of depKeys){ if((leg.dep[k] || '') !== (built.dep[k] || '')) return true; }
-          for(const k of arrKeys){ if((leg.arr[k] || '') !== (built.arr[k] || '')) return true; }
-          return false;
-        };
+        const fieldsDiffer = (leg, built) => describeLegChanges(leg, built).length > 0;
         const toAdd = [];
         const toUpdate = [];
         dedupedLegs.forEach(ex => {
