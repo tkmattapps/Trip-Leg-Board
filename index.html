@@ -467,6 +467,20 @@
   .toast.show{ opacity:1; transform:translateY(0); }
   ::-webkit-scrollbar{ width:8px; }
   ::-webkit-scrollbar-thumb{ background:var(--panel-700); border-radius:4px; }
+
+/* import extraction loading spinner + rotating messages */
+@keyframes beacon-spin { to { transform: rotate(360deg); } }
+.import-loading { display:flex; flex-direction:column; align-items:center; gap:16px; padding:36px 0; }
+.import-spinner {
+  width:34px; height:34px; border-radius:50%;
+  border:3px solid var(--fog-700, #2a3340);
+  border-top-color: var(--accent-400, #4a9eff);
+  animation: beacon-spin 0.9s linear infinite;
+}
+.import-loading-msg {
+  color:var(--fog-300); font-size:14px; text-align:center;
+  min-height:20px; transition:opacity 0.35s ease;
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
@@ -1834,7 +1848,12 @@ function renderImportPreviewView(){
   }
 
   if(state.importPhase === 'processing'){
-    main.innerHTML = header + '<div style="color:var(--fog-300); padding:24px 0;">Reading document and extracting trip data&hellip;</div>';
+    main.innerHTML = header +
+      '<div class="import-loading">' +
+        '<div class="import-spinner" role="status" aria-label="Extracting"></div>' +
+        '<div class="import-loading-msg" id="importLoadingMsg">Reading document&hellip;</div>' +
+      '</div>';
+    startImportLoadingMessages();
     return;
   }
 
@@ -2096,7 +2115,41 @@ function updateNavTabs(){
   if(histBtn) histBtn.classList.toggle('active', state.view === 'history' || (isTripDetail && state.tripDetailOrigin === 'history'));
 }
 
+const IMPORT_LOADING_MESSAGES = [
+  'Patience is a virtue\u2026 and a required checklist item.',
+  'Slow is smooth, and smooth is fast.',
+  'Reading the fine print so you don\u2019t have to.',
+  'Cross-checking the cross-checks.',
+  'Still working \u2014 big documents take a minute.',
+  'Don\u2019t taxi off now \u2014 we\u2019re nearly cleared for departure.'
+];
+let importLoadingTimer = null;
+let importLoadingIndex = 0;
+function stopImportLoadingMessages(){
+  if(importLoadingTimer){ clearInterval(importLoadingTimer); importLoadingTimer = null; }
+}
+function startImportLoadingMessages(){
+  stopImportLoadingMessages();
+  importLoadingIndex = 0;
+  const el = document.getElementById('importLoadingMsg');
+  if(!el) return;
+  el.textContent = IMPORT_LOADING_MESSAGES[0];
+  importLoadingTimer = setInterval(() => {
+    const msgEl = document.getElementById('importLoadingMsg');
+    if(!msgEl){ stopImportLoadingMessages(); return; }
+    importLoadingIndex = (importLoadingIndex + 1) % IMPORT_LOADING_MESSAGES.length;
+    msgEl.style.opacity = '0';
+    setTimeout(() => {
+      const inner = document.getElementById('importLoadingMsg');
+      if(!inner) return;
+      inner.textContent = IMPORT_LOADING_MESSAGES[importLoadingIndex];
+      inner.style.opacity = '1';
+    }, 350);
+  }, 4000);
+}
+
 function renderMain(){
+  stopImportLoadingMessages();
   const appRootEl = document.getElementById('appRoot');
   if(appRootEl){
     const hideSidebar = true;
