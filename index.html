@@ -1184,15 +1184,15 @@ function renderHomeView(){
       '</div>' +
       '<div class="home-right-col">' +
         '<button type="button" class="home-btn" id="homeActiveBtn">' +
-          '<span class="home-btn-title">Departures Board</span>' +
+          '<span class="home-btn-title">Active Trips</span>' +
           '<span class="home-btn-count">' + activeCount + ' active trip' + (activeCount === 1 ? '' : 's') + '</span>' +
         '</button>' +
         '<button type="button" class="home-btn" id="homeHistoryBtn">' +
-          '<span class="home-btn-title">Debrief Library</span>' +
+          '<span class="home-btn-title">Flown Trips</span>' +
           '<span class="home-btn-count">' + historicCount + ' flown trip' + (historicCount === 1 ? '' : 's') + '</span>' +
         '</button>' +
         '<button type="button" class="home-btn" id="homeImportBtn">' +
-          '<span class="home-btn-title">Import Trip Sheet</span>' +
+          '<span class="home-btn-title">Import Trip Docs</span>' +
           '<span class="home-btn-count">Review before adding</span>' +
         '</button>' +
       '</div>' +
@@ -1264,7 +1264,7 @@ function renderDashboardView(){
   const { cardsHtml, allActiveTrips } = dashboardCardsHtml(q);
   main.innerHTML =
     '<div class="view-header">' +
-      '<div><div class="view-title">Departures Board</div><div class="view-subtitle" id="dashboardSubtitle">' + allActiveTrips.length + ' active trip' + (allActiveTrips.length === 1 ? '' : 's') + '</div></div>' +
+      '<div><div class="view-title">Active Trips</div><div class="view-subtitle" id="dashboardSubtitle">' + allActiveTrips.length + ' active trip' + (allActiveTrips.length === 1 ? '' : 's') + '</div></div>' +
       '<button type="button" class="btn btn-steel" id="newTripBtn">+ New trip</button>' +
     '</div>' +
     '<input class="search" id="dashboardSearchInput" placeholder="Search missions by route, airport, trip #..." style="width:100%; max-width:420px; margin-bottom:18px;" value="' + escapeHtml(state.dashboardFilter) + '" />' +
@@ -1322,7 +1322,7 @@ function renderHistoryView(){
   const { cardsHtml, allFlownTrips } = historyCardsHtml(q);
   main.innerHTML =
     '<div class="view-header">' +
-      '<div><div class="view-title">Debrief Library</div><div class="view-subtitle" id="historySubtitle">' + allFlownTrips.length + ' flown trip' + (allFlownTrips.length === 1 ? '' : 's') + '</div></div>' +
+      '<div><div class="view-title">Flown Trips</div><div class="view-subtitle" id="historySubtitle">' + allFlownTrips.length + ' flown trip' + (allFlownTrips.length === 1 ? '' : 's') + '</div></div>' +
     '</div>' +
     '<input class="search" id="historySearchInput" placeholder="Search past trips by route, airport, trip #..." style="width:100%; max-width:420px; margin-bottom:18px;" value="' + escapeHtml(state.historyFilter) + '" />' +
     legStatusLegendHTML() +
@@ -1655,11 +1655,11 @@ function renderTripDetailView(){
     renderMain();
     return;
   }
-  const backLabel = state.tripDetailOrigin === 'history' ? 'Debrief Library' : 'Departures Board';
+  const backLabel = state.tripDetailOrigin === 'history' ? 'Flown Trips' : 'Active Trips';
   main.innerHTML =
     '<button type="button" class="back-link" id="tripDetailBackBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
     '<div class="view-header">' +
-      '<div><div class="view-title">Trip Brief</div><div class="view-subtitle">Trip ' + escapeHtml(trip.tripNumber) + ' &middot; ' + trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') + '</div></div>' +
+      '<div><div class="view-title">Trip Sectors</div><div class="view-subtitle">Trip ' + escapeHtml(trip.tripNumber) + ' &middot; ' + trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') + '</div></div>' +
       '<button type="button" class="btn btn-primary" id="addLegToTripBtn">+ Add leg to this trip</button>' +
     '</div>' +
     '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') + '</div>';
@@ -1711,12 +1711,12 @@ function renderMain(){
     return;
   }
 
-  let backLabel = 'Departures Board';
+  let backLabel = 'Active Trips';
   if(state.previousView === 'tripDetail' && state.previousTripKey){
     const prevTrip = groupIntoTrips(state.legs).find(t => t.key === state.previousTripKey);
-    backLabel = prevTrip ? 'Trip Brief' : 'Departures Board';
+    backLabel = prevTrip ? 'Trip Sectors' : 'Active Trips';
   } else if(state.previousView === 'history'){
-    backLabel = 'Debrief Library';
+    backLabel = 'Flown Trips';
   }
 
   const tripNumForLeg = (leg.tripNumber || '').trim();
