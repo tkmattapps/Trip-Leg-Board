@@ -259,7 +259,6 @@
     .nav-tab-btn{ min-height:40px; }
     .feedback-fab{ bottom:max(20px, env(safe-area-inset-bottom)); left:16px; }
     .install-fab{ bottom:max(76px, calc(env(safe-area-inset-bottom) + 56px)); left:16px; }
-    .refresh-fab{ bottom:max(132px, calc(env(safe-area-inset-bottom) + 112px)); left:16px; }
     .feedback-modal{ padding:16px; }
     .feedback-close-btn{ min-height:36px; min-width:36px; }
   }
@@ -399,16 +398,6 @@
     border-radius:24px; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,0.35);
     transition:background 0.15s ease;
   }
-  .refresh-fab{ display:none; }
-  body.authed .refresh-fab{ display:block; }
-  .refresh-fab{
-    position:fixed; bottom:24px; left:264px; z-index:60;
-    background:var(--panel-700); border:1px solid var(--fog-500); color:var(--fog-300);
-    font-family:'Inter',sans-serif; font-weight:600; font-size:13px; padding:11px 16px;
-    border-radius:24px; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,0.35);
-    transition:background 0.15s ease;
-  }
-  .refresh-fab:hover{ background:var(--panel-800); }
   .install-fab:hover{ background:var(--panel-800); }
   .install-platform{ margin-bottom:18px; }
   .install-platform-title{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--amber-500); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
@@ -417,6 +406,8 @@
   .install-url:hover{ border-color:var(--amber-500); }
   .install-url.copied{ color:var(--ok-500); border-color:var(--ok-500); }
   .install-qr-wrap{ display:flex; flex-direction:column; align-items:center; gap:8px; margin:4px 0 20px; }
+  .install-link-wrap{ margin:0 0 20px; text-align:center; }
+  .install-link-label{ color:var(--fog-400); font-size:13px; line-height:1.5; margin-bottom:8px; }
   .install-qr-box{ background:#fff; padding:12px; border-radius:10px; line-height:0; }
   .install-qr-box img, .install-qr-box canvas{ display:block; }
   .install-qr-caption{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--fog-500); text-align:center; }
@@ -538,7 +529,6 @@
 
 <button class="feedback-fab" id="feedbackFab" aria-label="Send feedback">&#128172; Feedback</button>
 <button class="install-fab" id="installFab" aria-label="How to install">&#128241; Install</button>
-<button class="refresh-fab" id="refreshFab" aria-label="Refresh legs">&#128260; Refresh</button>
 
 <div class="feedback-overlay" id="installOverlay">
   <div class="feedback-modal">
@@ -553,10 +543,14 @@
       <div class="install-qr-box" id="installQr"></div>
       <div class="install-qr-caption">Point another device's camera here to open Beacon</div>
     </div>
+    <div class="install-link-wrap">
+      <div class="install-link-label">Or open this link on the device you want to install Beacon on (tap to copy):</div>
+      <button type="button" class="install-url" data-install-url>&hellip;</button>
+    </div>
     <div class="install-platform">
-      <div class="install-platform-title">iPhone / iPad (Safari)</div>
+      <div class="install-platform-title">iPhone / iPad (Safari or Chrome)</div>
       <ol class="install-steps">
-        <li>Open this link in Safari:<br><button type="button" class="install-url" data-install-url>&hellip;</button></li>
+        <li>Using the link above, open Beacon in Safari or Chrome</li>
         <li>Tap the Share icon (square with an arrow)</li>
         <li>Tap "Add to Home Screen"</li>
       </ol>
@@ -564,7 +558,7 @@
     <div class="install-platform">
       <div class="install-platform-title">Mac (Safari)</div>
       <ol class="install-steps">
-        <li>Open this link in Safari:<br><button type="button" class="install-url" data-install-url>&hellip;</button></li>
+        <li>Using the link above, open Beacon in Safari</li>
         <li>File menu &rarr; "Add to Dock"</li>
         <li>It opens in its own window from then on</li>
       </ol>
@@ -572,7 +566,7 @@
     <div class="install-platform">
       <div class="install-platform-title">Mac / Windows (Chrome)</div>
       <ol class="install-steps">
-        <li>Open this link in Chrome:<br><button type="button" class="install-url" data-install-url>&hellip;</button></li>
+        <li>Using the link above, open Beacon in Chrome</li>
         <li>Click the install icon in the address bar (or menu &rarr; "Cast, save, and share" &rarr; "Install page as app")</li>
       </ol>
     </div>
@@ -3710,20 +3704,6 @@ document.getElementById('installFab').addEventListener('click', () => {
     box.setAttribute('data-rendered', '1');
   };
 })();
-document.getElementById('refreshFab').addEventListener('click', async () => {
-  const btn = document.getElementById('refreshFab');
-  btn.disabled = true;
-  const originalText = btn.innerHTML;
-  btn.innerHTML = '&#128260; Refreshing...';
-  try{
-    if(state.view === 'editor' && state.activeId){
-      await autoSaveIfEditing();
-    }
-  }catch(e){
-    console.error('autosave before reload failed', e);
-  }
-  window.location.reload();
-});
 document.getElementById('installCloseBtn').addEventListener('click', () => {
   document.getElementById('installOverlay').classList.remove('open');
 });
