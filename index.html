@@ -1513,9 +1513,22 @@ async function processImportFile(file){
         // This trip number already exists on the board. Reconcile instead
         // of blindly appending duplicate legs: match incoming legs to
         // existing ones by leg number, and surface adds/updates/removes
-        // for the user to confirm before anything is written.
+        // for the user to confirm before anything is written. A matched
+        // leg only counts as an "update" if the schedule/routing fields
+        // actually differ from what's already saved -- otherwise it's
+        // left out of the summary entirely so unchanged legs don't get
+        // listed (or re-saved) for no reason.
         const existingByLegNum = new Map(existingLegs.map(l => [String(l.legNumber || '').trim(), l]));
         const incomingLegNums = new Set(dedupedLegs.map(ex => String(ex.legNumber || '').trim()));
+        const fieldsDiffer = (leg, built) => {
+          if((leg.date || '') !== (built.date || '')) return true;
+          if((leg.cityPair || '') !== (built.cityPair || '')) return true;
+          const depKeys = ['airportId', 'etdLocal', 'etdZ', 'agent', 'agentPhone', 'frequency'];
+          const arrKeys = ['airportId', 'etaLocal', 'etaZ', 'agent', 'agentPhone', 'frequency'];
+          for(const k of depKeys){ if((leg.dep[k] || '') !== (built.dep[k] || '')) return true; }
+          for(const k of arrKeys){ if((leg.arr[k] || '') !== (built.arr[k] || '')) return true; }
+          return false;
+        };
         const toAdd = [];
         const toUpdate = [];
         dedupedLegs.forEach(ex => {
@@ -1523,7 +1536,9 @@ async function processImportFile(file){
           const existing = key ? existingByLegNum.get(key) : null;
           const built = buildLegFromExtraction(ex);
           if(existing){
-            toUpdate.push({ existingLeg: existing, extracted: ex, built: built });
+            if(fieldsDiffer(existing, built)){
+              toUpdate.push({ existingLeg: existing, extracted: ex, built: built });
+            }
           } else {
             toAdd.push(built);
           }
