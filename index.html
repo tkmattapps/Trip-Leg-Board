@@ -739,8 +739,8 @@ function blankLeg(){
     tripNumber: '', legNumber: '', date: '', cityPair: '',
     eapisRequired: '',
     compliance: { eapisReqd:'', eapisNotes:'', overflightReqd:'', overflightPermits:[], customsReqd:'', customsNotes:'' },
-    dep: { airportId:'', tz:'', etdLocal:'', etdZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', notes:'' },
-    arr: { airportId:'', tz:'', etaLocal:'', etaZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', hotelCarNotes:'', permitReqd:'', permitNumber:'', notes:'' },
+    dep: { airportId:'', tz:'', etdLocal:'', etdZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', notes:'' },
+    arr: { airportId:'', tz:'', etaLocal:'', etaZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', hotelCarNotes:'', permitReqd:'', permitNumber:'', notes:'' },
     permitReqd: '', permitNumber: '',
     trim:'', levelOff:'', minBRF:'', fratRelease:'',
     departureNotes:'', paxBagsTransport:'', enrouteNotes:'', maxShear:'', ete:'', windDirection:'', windComponent:'', paxTotalNotes:'', crewHotelCarNotes:'',
@@ -2279,11 +2279,11 @@ function renderMain(){
             field('Phone number', 'depAgentPhone', leg.dep.agentPhone) +
             field('ARINC Frequency', 'depFrequency', leg.dep.frequency) +
             field('Fuel vendor', 'depFuelVendor', leg.dep.fuelVendor) +
-            field('Price per gallon', 'depFuelPricePerGallon', leg.dep.fuelPricePerGallon, {placeholder:'$6.25'}) +
+            field('Fuel price', 'depFuelPricePerGallon', leg.dep.fuelPricePerGallon, {placeholder:'$6.25'}) +
+            field('Payment method', 'depFuelPaymentMethod', leg.dep.fuelPaymentMethod, {placeholder:'AVCARD / contract'}) +
             field('Ramp fee', 'depRampFee', leg.dep.rampFee, {placeholder:'$150'}) +
             ynField('Waived w/ fuel', 'depRampFeeWaived', leg.dep.rampFeeWaived) +
             field('Min GAL to waive', 'depRampFeeMinGallons', leg.dep.rampFeeMinGallons, {placeholder:'200'}) +
-            field('Min LBS to waive', 'depRampFeeMinLbs', '', {readonly:true, placeholder:'auto'}) +
           '</div>' +
           '<div style="margin-top:14px">' + field(airfieldNotesLabel('dep', leg.dep.airportId), 'depNotes', leg.dep.notes, {type:'textarea', labelId:'depNotesLabel'}) + '</div>' +
         '</div>' +
@@ -2303,11 +2303,11 @@ function renderMain(){
             field('Phone number', 'arrAgentPhone', leg.arr.agentPhone) +
             field('ARINC Frequency', 'arrFrequency', leg.arr.frequency) +
             field('Fuel vendor', 'arrFuelVendor', leg.arr.fuelVendor) +
-            field('Price per gallon', 'arrFuelPricePerGallon', leg.arr.fuelPricePerGallon, {placeholder:'$6.25'}) +
+            field('Fuel price', 'arrFuelPricePerGallon', leg.arr.fuelPricePerGallon, {placeholder:'$6.25'}) +
+            field('Payment method', 'arrFuelPaymentMethod', leg.arr.fuelPaymentMethod, {placeholder:'AVCARD / contract'}) +
             field('Ramp fee', 'arrRampFee', leg.arr.rampFee, {placeholder:'$150'}) +
             ynField('Waived w/ fuel', 'arrRampFeeWaived', leg.arr.rampFeeWaived) +
             field('Min GAL to waive', 'arrRampFeeMinGallons', leg.arr.rampFeeMinGallons, {placeholder:'200'}) +
-            field('Min LBS to waive', 'arrRampFeeMinLbs', '', {readonly:true, placeholder:'auto'}) +
           '</div>' +
           '<div style="margin-top:14px">' + field(airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotes', leg.arr.notes, {type:'textarea', labelId:'arrNotesLabel'}) + '</div>' +
         '</div>' +
@@ -2838,8 +2838,6 @@ function renderMain(){
 
   ['depFuelPricePerGallon', 'arrFuelPricePerGallon', 'depRampFee', 'arrRampFee'].forEach(attachCurrencyFormatting);
 
-  attachGallonsToLbsConversion('depRampFeeMinGallons', 'depRampFeeMinLbs');
-  attachGallonsToLbsConversion('arrRampFeeMinGallons', 'arrRampFeeMinLbs');
 
   const depAirportIdEl = document.getElementById('depAirportId');
   const arrAirportIdEl = document.getElementById('arrAirportId');
@@ -3500,14 +3498,14 @@ async function collectAndSave(id, opts){
     airportId: val('depAirportId'), tz: leg.dep.tz || '', etdLocal: val('depEtdLocal'), etdZ: val('depEtdZ'),
     hours: val('depHours'), slotReqd: val('depSlotReqd'), slotTimeNumber: val('depSlotTimeNumber'),
     slotAllowance: val('depSlotAllowance'), agent: val('depAgent'), agentPhone: val('depAgentPhone'), frequency: val('depFrequency'), fuelVendor: val('depFuelVendor'),
-    fuelPricePerGallon: val('depFuelPricePerGallon'), rampFee: val('depRampFee'), rampFeeWaived: val('depRampFeeWaived'), rampFeeMinGallons: val('depRampFeeMinGallons'), groundTransportReqd: val('depGroundTransportReqd'), groundTransportDetails: val('depGroundTransportDetails'), utcOffsetManual: val('depUtcOffset'),
+    fuelPaymentMethod: val('depFuelPaymentMethod'), fuelPricePerGallon: val('depFuelPricePerGallon'), rampFee: val('depRampFee'), rampFeeWaived: val('depRampFeeWaived'), rampFeeMinGallons: val('depRampFeeMinGallons'), groundTransportReqd: val('depGroundTransportReqd'), groundTransportDetails: val('depGroundTransportDetails'), utcOffsetManual: val('depUtcOffset'),
     notes: val('depNotes')
   };
   leg.arr = {
     airportId: val('arrAirportId'), tz: leg.arr.tz || '', etaLocal: val('arrEtaLocal'), etaZ: val('arrEtaZ'),
     hours: val('arrHours'), slotReqd: val('arrSlotReqd'), slotTimeNumber: val('arrSlotTimeNumber'),
     slotAllowance: val('arrSlotAllowance'), agent: val('arrAgent'), agentPhone: val('arrAgentPhone'), frequency: val('arrFrequency'),
-    fuelVendor: val('arrFuelVendor'), fuelPricePerGallon: val('arrFuelPricePerGallon'), rampFee: val('arrRampFee'), rampFeeWaived: val('arrRampFeeWaived'), rampFeeMinGallons: val('arrRampFeeMinGallons'), groundTransportReqd: val('arrGroundTransportReqd'), groundTransportDetails: val('arrGroundTransportDetails'), utcOffsetManual: val('arrUtcOffset'), notes: val('arrNotes'),
+    fuelVendor: val('arrFuelVendor'), fuelPaymentMethod: val('arrFuelPaymentMethod'), fuelPricePerGallon: val('arrFuelPricePerGallon'), rampFee: val('arrRampFee'), rampFeeWaived: val('arrRampFeeWaived'), rampFeeMinGallons: val('arrRampFeeMinGallons'), groundTransportReqd: val('arrGroundTransportReqd'), groundTransportDetails: val('arrGroundTransportDetails'), utcOffsetManual: val('arrUtcOffset'), notes: val('arrNotes'),
     permitReqd: val('arrPermitReqd'), permitNumber: val('arrPermitNumber')
   };
   leg.trim = val('trim');
