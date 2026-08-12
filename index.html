@@ -1516,11 +1516,29 @@ function findMatchingLegForEnrichment(extracted){
   const arrCode = ((extracted.arr && extracted.arr.airportId) || '').trim().toUpperCase();
   const date = (extracted.date || '').trim();
   if(!date || (!depCode && !arrCode)) return null;
-  return state.legs.find(l => {
-    if((l.date || '').trim() !== date) return false;
+  const sameDate = state.legs.filter(l => (l.date || '').trim() === date);
+  // Strongest match: BOTH endpoints line up in the same direction (dep->dep,
+  // arr->arr). This prevents a brief from latching onto an unrelated leg that
+  // merely shares ONE airport (e.g. a Zurich->Teterboro brief wrongly matching
+  // a Teterboro->Windsor Locks leg just because both touch Teterboro).
+  if(depCode && arrCode){
+    const exact = sameDate.find(l => {
+      const ld = ((l.dep && l.dep.airportId) || '').trim().toUpperCase();
+      const la = ((l.arr && l.arr.airportId) || '').trim().toUpperCase();
+      return ld === depCode && la === arrCode;
+    });
+    if(exact) return exact;
+    // Both endpoints known but no full-route match on this date: do NOT fall
+    // back to a single-airport guess -- that is what caused the mis-match.
+    return null;
+  }
+  // Only one endpoint known: fall back to matching that single endpoint in
+  // its correct role (a dep-only brief matches on dep, an arr-only on arr).
+  return sameDate.find(l => {
     const ld = ((l.dep && l.dep.airportId) || '').trim().toUpperCase();
     const la = ((l.arr && l.arr.airportId) || '').trim().toUpperCase();
-    return (depCode && (ld === depCode || la === depCode)) || (arrCode && (ld === arrCode || la === arrCode));
+    if(depCode) return ld === depCode;
+    return la === arrCode;
   }) || null;
 }
 
