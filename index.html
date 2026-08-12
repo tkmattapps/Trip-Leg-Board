@@ -273,6 +273,15 @@
   .field input[type=date]::-webkit-date-and-time-value{ text-align:left; }
   .field textarea{ font-family:'Inter',sans-serif; resize:vertical; min-height:56px; }
   .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--amber-700); }
+  /* Temporary expand-on-focus: a single-line input whose text overflows becomes a
+     wrapped, taller view while focused, then snaps back to one line on blur.
+     .is-overflowing is added by JS only when the value actually exceeds the box,
+     so fields that fit never move and there's no jumpiness on every tap. */
+  .field input.is-overflowing:focus{
+    height:auto; min-height:36px; white-space:normal; overflow-wrap:anywhere;
+    line-height:1.35; padding-top:8px; padding-bottom:8px; text-align:left;
+  }
+  .field textarea.is-overflowing:focus{ min-height:120px; }
   .field input::placeholder, .field textarea::placeholder{ color:var(--fog-500); }
   .field input[readonly]{ color:var(--fog-300); cursor:default; }
   .subpanel.compact{ padding:12px; }
@@ -3478,6 +3487,49 @@ document.getElementById('loginPassword').addEventListener('keydown', function(e)
   } else {
     showLoginOverlay();
   }
+})();
+</script>
+<script>
+/* ---- Temporary field expand-on-focus (global, all text fields) ----
+   Single-line inputs whose text overflows the 36px box grow to reveal the full
+   value while focused, then snap back on blur. Textareas grow a little too.
+   Delegated on document so it covers fields rendered now or in the future. */
+(function(){
+  function inputOverflows(el){
+    // horizontal overflow: content wider than the visible box
+    return el.scrollWidth > el.clientWidth + 1;
+  }
+  function expandInput(el){
+    if(el.tagName === 'INPUT'){
+      if(!inputOverflows(el)) return;          // fits fine -> leave it alone
+      el.classList.add('is-overflowing');
+      // measure wrapped height against a mirror, then set it
+      el.style.height = 'auto';
+      el.style.height = Math.max(36, el.scrollHeight) + 'px';
+    } else if(el.tagName === 'TEXTAREA'){
+      if(el.scrollHeight <= el.clientHeight + 1) return;
+      el.classList.add('is-overflowing');
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+    }
+  }
+  function collapse(el){
+    el.classList.remove('is-overflowing');
+    el.style.height = '';                       // back to formatted size, top-left
+    el.scrollLeft = 0; el.scrollTop = 0;
+  }
+  document.addEventListener('focusin', function(e){
+    var el = e.target;
+    if(el.matches && el.matches('.field input[type=text], .field textarea')) expandInput(el);
+  });
+  document.addEventListener('input', function(e){
+    var el = e.target;
+    if(el.classList && el.classList.contains('is-overflowing')) expandInput(el);
+  });
+  document.addEventListener('focusout', function(e){
+    var el = e.target;
+    if(el.matches && el.matches('.field input[type=text], .field textarea')) collapse(el);
+  });
 })();
 </script>
 </body>
