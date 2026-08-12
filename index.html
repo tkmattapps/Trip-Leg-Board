@@ -2191,7 +2191,11 @@ function renderMain(){
   // --- Section auto-complete logic ---
   // manualOverrideKeys: once the user manually toggles a section's checkbox, we stop
   // auto-driving that section until the underlying tracked fields/toggle actually change again.
-  const manualOverrideKeys = new Set();
+  // Kept in a module-level map keyed by leg id (NOT on the leg object, so it never gets
+  // serialized/saved to the server) so it survives the re-render that happens after every autosave.
+  if(!window._legSectionOverrides) window._legSectionOverrides = new Map();
+  if(!window._legSectionOverrides.has(leg.id)) window._legSectionOverrides.set(leg.id, new Set());
+  const manualOverrideKeys = window._legSectionOverrides.get(leg.id);
 
   const autoCompleteFieldSections = {
     overview: ['tripNumber', 'legNumber', 'date', 'cityPair'],
