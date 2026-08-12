@@ -318,6 +318,8 @@
   .dash-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:16px; }
   .import-leg-list{ display:flex; flex-direction:column; gap:12px; margin-bottom:24px; }
   .import-leg-card{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; }
+  .import-leg-card-remove{ border-color:var(--alert-600); border-left-width:3px; }
+  .import-reconcile-summary{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; margin-bottom:20px; font-size:14px; color:var(--paper-050); }
   .import-leg-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; }
   .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
   .import-leg-date{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--fog-500); }
@@ -1423,6 +1425,27 @@ function importEnrichmentCardHTML(item, index){
   '</div>';
 }
 
+function reconcileUpdateCardHTML(item, index){
+  const leg = item.existingLeg;
+  return '<div class="import-leg-card" data-reconcile-update-index="' + index + '">' +
+    '<div class="import-leg-card-head">' +
+      '<span class="import-leg-title">Leg ' + escapeHtml(leg.legNumber) + ' &mdash; ' + escapeHtml(item.built.cityPair || leg.cityPair) + '</span>' +
+      '<span class="import-leg-date">' + escapeHtml(item.built.date || leg.date) + '</span>' +
+    '</div>' +
+    '<div class="import-leg-body">Schedule and routing will be refreshed from the new trip sheet. Performance, dispatch, and other checklist data already on this leg is left untouched.</div>' +
+  '</div>';
+}
+
+function reconcileRemoveCardHTML(leg, index){
+  return '<div class="import-leg-card import-leg-card-remove" data-reconcile-remove-index="' + index + '">' +
+    '<div class="import-leg-card-head">' +
+      '<span class="import-leg-title">Leg ' + escapeHtml(leg.legNumber) + ' &mdash; ' + escapeHtml(leg.cityPair) + '</span>' +
+      '<span class="import-leg-date">' + escapeHtml(leg.date) + '</span>' +
+    '</div>' +
+    '<div class="import-leg-body">No longer on the new trip sheet. Will be removed from the board.</div>' +
+  '</div>';
+}
+
 function importUnmatchedCardHTML(item, index){
   const ex = item.extracted;
   const label = (ex.cityPair || ((ex.dep && ex.dep.airportId) || '?') + ' \u2192 ' + ((ex.arr && ex.arr.airportId) || '?')) + ' &mdash; ' + escapeHtml(ex.date || 'no date');
@@ -1448,6 +1471,7 @@ function resetImportState(){
   state.importNewLegs = [];
   state.importEnrichments = [];
   state.importUnmatched = [];
+  state.importTripReconcile = null;
 }
 
 async function processImportFile(file){
@@ -1470,6 +1494,7 @@ async function processImportFile(file){
     state.importNewLegs = [];
     state.importEnrichments = [];
     state.importUnmatched = [];
+    state.importTripReconcile = null;
     const extractedLegs = Array.isArray(data.legs) ? data.legs : [];
     if(state.importDocType === 'trip_sheet'){
       // Defensive dedup: some source documents repeat a leg reference in a
@@ -1482,7 +1507,32 @@ async function processImportFile(file){
         seenLegKeys.add(key);
         return true;
       });
-      state.importNewLegs = dedupedLegs.map(buildLegFromExtraction);
+      const tripNumber = (dedupedLegs[0] && dedupedLegs[0].tripNumber || '').trim();
+      const existingLegs = tripNumber ? state.legs.filter(l => (l.tripNumber || '').trim() === tripNumber) : [];
+      if(existingLegs.length){
+        // This trip number already exists on the board. Reconcile instead
+        // of blindly appending duplicate legs: match incoming legs to
+        // existing ones by leg number, and surface adds/updates/removes
+        // for the user to confirm before anything is written.
+        const existingByLegNum = new Map(existingLegs.map(l => [String(l.legNumber || '').trim(), l]));
+        const incomingLegNums = new Set(dedupedLegs.map(ex => String(ex.legNumber || '').trim()));
+        const toAdd = [];
+        const toUpdate = [];
+        dedupedLegs.forEach(ex => {
+          const key = String(ex.legNumber || '').trim();
+          const existing = key ? existingByLegNum.get(key) : null;
+          const built = buildLegFromExtraction(ex);
+          if(existing){
+            toUpdate.push({ existingLeg: existing, extracted: ex, built: built });
+          } else {
+            toAdd.push(built);
+          }
+        });
+        const toRemove = existingLegs.filter(l => !incomingLegNums.has(String(l.legNumber || '').trim()));
+        state.importTripReconcile = { tripNumber: tripNumber, existingCount: existingLegs.length, toAdd: toAdd, toUpdate: toUpdate, toRemove: toRemove };
+      } else {
+        state.importNewLegs = dedupedLegs.map(buildLegFromExtraction);
+      }
     } else if(state.importDocType === 'handling_notes'){
       extractedLegs.forEach(ex => {
         const match = findMatchingLegForEnrichment(ex);
@@ -1548,6 +1598,83 @@ function renderImportPreviewView(){
       '</div>';
     document.getElementById('importCancelBtn').addEventListener('click', () => { resetImportState(); goToListView('home'); });
     document.getElementById('importRetryBtn').addEventListener('click', () => { resetImportState(); renderMain(); });
+    return;
+  }
+
+  // trip-sheet reconcile (this trip number already has legs on the board)
+  if(state.importTripReconcile){
+    const rec = state.importTripReconcile;
+    const summaryParts = [];
+    if(rec.toAdd.length) summaryParts.push(rec.toAdd.length + ' leg' + (rec.toAdd.length === 1 ? '' : 's') + ' added');
+    if(rec.toUpdate.length) summaryParts.push(rec.toUpdate.length + ' leg' + (rec.toUpdate.length === 1 ? '' : 's') + ' updated');
+    if(rec.toRemove.length) summaryParts.push(rec.toRemove.length + ' leg' + (rec.toRemove.length === 1 ? '' : 's') + ' removed');
+    const summaryText = 'Trip ' + escapeHtml(rec.tripNumber) + ' currently has ' + rec.existingCount + ' leg' + (rec.existingCount === 1 ? '' : 's') + ' on your board. This trip sheet would result in: ' + (summaryParts.join(', ') || 'no changes') + '.';
+
+    const recSections = [];
+    if(rec.toAdd.length){
+      recSections.push('<div class="view-subtitle" style="margin-bottom:8px;">New legs to add (' + rec.toAdd.length + ')</div>');
+      recSections.push('<div class="import-leg-list">' + rec.toAdd.map((l, i) => importLegCardHTML(l, i)).join('') + '</div>');
+    }
+    if(rec.toUpdate.length){
+      recSections.push('<div class="view-subtitle" style="margin:16px 0 8px;">Existing legs to update (' + rec.toUpdate.length + ')</div>');
+      recSections.push('<div class="import-leg-list">' + rec.toUpdate.map((it, i) => reconcileUpdateCardHTML(it, i)).join('') + '</div>');
+    }
+    if(rec.toRemove.length){
+      recSections.push('<div class="view-subtitle" style="margin:16px 0 8px;">Legs to remove (' + rec.toRemove.length + ')</div>');
+      recSections.push('<div class="import-leg-list">' + rec.toRemove.map((l, i) => reconcileRemoveCardHTML(l, i)).join('') + '</div>');
+    }
+
+    const hasChanges = rec.toAdd.length || rec.toUpdate.length || rec.toRemove.length;
+    main.innerHTML = header +
+      '<div class="import-reconcile-summary">' + summaryText + '</div>' +
+      recSections.join('') +
+      (!hasChanges ? '<div style="color:var(--fog-300); padding:16px 0;">This trip sheet matches your board exactly. Nothing to change.</div>' : '') +
+      '<div class="import-actions">' +
+        '<button type="button" class="btn" id="importCancelBtn">Cancel</button>' +
+        (hasChanges ? '<button type="button" class="btn btn-primary" id="importReconcileConfirmBtn">Confirm and apply</button>' : '') +
+      '</div>';
+
+    document.getElementById('importCancelBtn').addEventListener('click', () => {
+      resetImportState();
+      goToListView('home');
+    });
+
+    const reconcileConfirmBtn = document.getElementById('importReconcileConfirmBtn');
+    if(reconcileConfirmBtn){
+      reconcileConfirmBtn.addEventListener('click', async () => {
+        const confirmed = await showConfirm(summaryText + ' This cannot be undone. Continue?');
+        if(!confirmed) return;
+        reconcileConfirmBtn.disabled = true;
+        reconcileConfirmBtn.textContent = 'Applying...';
+        try{
+          for(const leg of rec.toAdd){
+            await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
+          }
+          for(const item of rec.toUpdate){
+            const leg = item.existingLeg;
+            const built = item.built;
+            leg.date = built.date;
+            leg.cityPair = built.cityPair;
+            Object.assign(leg.dep, built.dep);
+            Object.assign(leg.arr, built.arr);
+            leg.updatedAt = Date.now();
+            await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
+          }
+          for(const leg of rec.toRemove){
+            await deleteLeg(leg.id);
+          }
+          await loadLegs();
+          resetImportState();
+          showToast('Trip ' + rec.tripNumber + ' reconciled');
+          goToListView('dashboard');
+        }catch(e){
+          console.error('trip reconcile confirm failed', e);
+          showToast('Import failed. Try again.');
+          reconcileConfirmBtn.disabled = false;
+          reconcileConfirmBtn.textContent = 'Confirm and apply';
+        }
+      });
+    }
     return;
   }
 
