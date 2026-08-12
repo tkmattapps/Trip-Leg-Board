@@ -1468,11 +1468,31 @@ function enrichmentPatchFromExtraction(extracted){
   return patch;
 }
 
+function importEndLineHTML(labelText, end){
+  end = end || {};
+  const local = escapeHtml(end.etaLocal || end.etdLocal || '');
+  // The Zulu value sometimes already ends in 'Z'; strip it so we don't double it.
+  let z = String(end.etaZ || end.etdZ || '').trim().replace(/z$/i, '').trim();
+  z = escapeHtml(z);
+  const bits = [];
+  if(local) bits.push(local + ' local');
+  if(z) bits.push(z + ' Z');
+  let line = escapeHtml(end.airportId || '');
+  if(bits.length) line += ' at ' + bits.join(' / ');
+  // Only show the handler segment if there is an agent or phone.
+  const agent = escapeHtml(end.agent || '');
+  const phone = escapeHtml(end.agentPhone || '');
+  if(agent && phone) line += ' &mdash; ' + agent + ' (' + phone + ')';
+  else if(agent) line += ' &mdash; ' + agent;
+  else if(phone) line += ' &mdash; (' + phone + ')';
+  return '<div><strong>' + labelText + ':</strong> ' + line + '</div>';
+}
+
 function importLegCardHTML(leg, index){
   const dep = leg.dep || {}, arr = leg.arr || {}, comp = leg.compliance || {};
   const rows = [];
-  rows.push('<div><strong>Departure:</strong> ' + escapeHtml(dep.airportId) + ' at ' + escapeHtml(dep.etdLocal) + ' local / ' + escapeHtml(dep.etdZ) + ' Z &mdash; ' + escapeHtml(dep.agent) + ' (' + escapeHtml(dep.agentPhone) + ')</div>');
-  rows.push('<div><strong>Arrival:</strong> ' + escapeHtml(arr.airportId) + ' at ' + escapeHtml(arr.etaLocal) + ' local / ' + escapeHtml(arr.etaZ) + ' Z &mdash; ' + escapeHtml(arr.agent) + ' (' + escapeHtml(arr.agentPhone) + ')</div>');
+  rows.push(importEndLineHTML('Departure', dep));
+  rows.push(importEndLineHTML('Arrival', arr));
   const enrouteBits = [];
   if(leg.ete) enrouteBits.push('ETE ' + escapeHtml(leg.ete));
   if(leg.windComponent || leg.windDirection){
@@ -1500,7 +1520,7 @@ function importLegCardHTML(leg, index){
   return '<div class="import-leg-card" data-index="' + index + '">' +
     '<div class="import-leg-card-head">' +
       '<span class="import-leg-title">Leg ' + escapeHtml(leg.legNumber) + ' &mdash; ' + escapeHtml(leg.cityPair) + '</span>' +
-      '<span class="import-leg-date">' + escapeHtml(leg.date) + '</span>' +
+      '<span class="import-leg-date">' + escapeHtml(formatISODateDisplay(leg.date) || leg.date) + '</span>' +
     '</div>' +
     '<div class="import-leg-body">' + rows.join('') + '</div>' +
   '</div>';
