@@ -1408,10 +1408,61 @@ function fileToBase64(file){
   });
 }
 
+// Merge non-empty fields from `src` leg into `dst` leg, preferring the more
+// detailed value. Used to collapse duplicate legs the extraction sometimes
+// emits for the same dep/arr/date, so no detail is lost (one copy may carry
+// a NOTAM the other lacks, etc.). Only fills blanks or upgrades to a longer
+// value; never blanks out something already present.
+function mergeLegInto(dst, src){
+  const better = (a, b) => {
+    a = (a == null ? '' : String(a));
+    b = (b == null ? '' : String(b));
+    if(!b) return a;          // nothing to add
+    if(!a) return b;          // fill a blank
+    return b.length > a.length ? b : a; // prefer the more detailed text
+  };
+  const mergeFlat = (dObj, sObj, keys) => {
+    keys.forEach(k => { dObj[k] = better(dObj[k], sObj[k]); });
+  };
+  mergeFlat(dst, src, ['tripNumber','cityPair','ete','enrouteNotes','windDirection','windComponent','departureNotes']);
+  // Leg number: keep a real number over a '?' placeholder.
+  if((dst.legNumber === '?' || !dst.legNumber) && src.legNumber && src.legNumber !== '?') dst.legNumber = src.legNumber;
+  dst.compliance = dst.compliance || {};
+  mergeFlat(dst.compliance, src.compliance || {}, ['eapisReqd','eapisNotes','customsReqd','customsNotes','overflightReqd']);
+  ['dep','arr'].forEach(end => {
+    dst[end] = dst[end] || {};
+    mergeFlat(dst[end], src[end] || {}, ['airportId','etdLocal','etdZ','etaLocal','etaZ','agent','agentPhone','frequency','slotReqd','slotTimeNumber','slotAllowance','fuelVendor','groundTransportReqd','groundTransportDetails','permitReqd','permitNumber','notes']);
+  });
+  return dst;
+}
+
+// A stable identity key for a leg based on the things that make it the SAME
+// flight: departure airport, arrival airport, and date. Used to collapse
+// duplicates. Leg number is deliberately excluded because the extraction
+// often leaves it blank/'?'.
+function legIdentityKey(leg){
+  // Identity = same flight = same departure + arrival + date. Normalize hard
+  // so two copies of the same leg that differ only in formatting still collapse:
+  //  - airport IDs uppercased/trimmed; if one copy left an airport blank, fall
+  //    back to the city-pair text so the key still lines up.
+  //  - date routed through toISODate so 'MM-DD-YYYY' and 'YYYY-MM-DD' match.
+  let dep = ((leg.dep && leg.dep.airportId) || '').trim().toUpperCase();
+  let arr = ((leg.arr && leg.arr.airportId) || '').trim().toUpperCase();
+  if(!dep || !arr){
+    const cp = (leg.cityPair || '').trim().toUpperCase();
+    const parts = cp.split(/\s*(?:->|\u2192|\/|-|TO)\s*/).filter(Boolean);
+    if(!dep && parts[0]) dep = parts[0];
+    if(!arr && parts[1]) arr = parts[1];
+  }
+  let date = (leg.date || '').trim();
+  try { date = toISODate(date) || date; } catch(e){}
+  return dep + '|' + arr + '|' + date;
+}
+
 function buildLegFromExtraction(extracted){
   const leg = blankLeg();
   leg.tripNumber = extracted.tripNumber || '';
-  leg.legNumber = extracted.legNumber || '';
+  leg.legNumber = (extracted.legNumber || '').trim() || '?';
   leg.date = toISODate(extracted.date || '');
   leg.cityPair = extracted.cityPair || '';
   leg.ete = extracted.ete || '';
@@ -1626,6 +1677,7 @@ function resetImportState(){
   state.importNewLegs = [];
   state.importEnrichments = [];
   state.importUnmatched = [];
+  state.importDuplicateOfBoard = [];
   state.importTripReconcile = null;
 }
 
@@ -1649,6 +1701,7 @@ async function processImportFile(file){
     state.importNewLegs = [];
     state.importEnrichments = [];
     state.importUnmatched = [];
+    state.importDuplicateOfBoard = [];
     state.importTripReconcile = null;
     const extractedLegs = Array.isArray(data.legs) ? data.legs : [];
     if(state.importDocType === 'trip_sheet'){
@@ -1674,17 +1727,32 @@ async function processImportFile(file){
         // left out of the summary entirely so unchanged legs don't get
         // listed (or re-saved) for no reason.
         const existingByLegNum = new Map(existingLegs.map(l => [String(l.legNumber || '').trim(), l]));
+        const existingByIdentity = new Map(existingLegs.map(l => [legIdentityKey(l), l]));
         const incomingLegNums = new Set(dedupedLegs.map(ex => String(ex.legNumber || '').trim()));
         const fieldsDiffer = (leg, built) => describeLegChanges(leg, built).length > 0;
+        // Collapse incoming copies of the same flight FIRST (the extraction can
+        // emit the same leg twice with a blank/'?' leg number, which otherwise
+        // lands as two separate adds). Merge their fields so no detail is lost.
+        const incomingByIdentity = new Map();
+        dedupedLegs.forEach(ex => {
+          const built = buildLegFromExtraction(ex);
+          const ik = legIdentityKey(built);
+          if(incomingByIdentity.has(ik)) mergeLegInto(incomingByIdentity.get(ik), built);
+          else incomingByIdentity.set(ik, built);
+        });
         const toAdd = [];
         const toUpdate = [];
-        dedupedLegs.forEach(ex => {
-          const key = String(ex.legNumber || '').trim();
-          const existing = key ? existingByLegNum.get(key) : null;
-          const built = buildLegFromExtraction(ex);
+        incomingByIdentity.forEach((built) => {
+          const numKey = String(built.legNumber || '').trim();
+          // Match to an existing leg by leg number when we have a real one,
+          // otherwise fall back to dep/arr/date identity so a numberless
+          // ITPS brief still lands on the right existing leg instead of
+          // being appended as a duplicate.
+          let existing = (numKey && numKey !== '?') ? existingByLegNum.get(numKey) : null;
+          if(!existing) existing = existingByIdentity.get(legIdentityKey(built));
           if(existing){
             if(fieldsDiffer(existing, built)){
-              toUpdate.push({ existingLeg: existing, extracted: ex, built: built });
+              toUpdate.push({ existingLeg: existing, extracted: null, built: built });
             }
           } else {
             toAdd.push(built);
@@ -1693,7 +1761,26 @@ async function processImportFile(file){
         const toRemove = existingLegs.filter(l => !incomingLegNums.has(String(l.legNumber || '').trim()));
         state.importTripReconcile = { tripNumber: tripNumber, existingCount: existingLegs.length, toAdd: toAdd, toUpdate: toUpdate, toRemove: toRemove };
       } else {
-        state.importNewLegs = dedupedLegs.map(buildLegFromExtraction);
+        // No existing trip to reconcile against. Build the legs, then collapse
+        // any duplicates the extraction emitted for the SAME dep/arr/date
+        // (merging their fields so no detail is lost), and flag any that
+        // already exist on the board so a re-import doesn't plant a copy.
+        const builtMap = new Map();
+        dedupedLegs.forEach(ex => {
+          const built = buildLegFromExtraction(ex);
+          const key = legIdentityKey(built);
+          if(builtMap.has(key)) mergeLegInto(builtMap.get(key), built);
+          else builtMap.set(key, built);
+        });
+        const boardKeys = new Set(state.legs.map(legIdentityKey));
+        const newLegs = [];
+        const alreadyOnBoard = [];
+        builtMap.forEach((leg, key) => {
+          if(boardKeys.has(key)) alreadyOnBoard.push(leg);
+          else newLegs.push(leg);
+        });
+        state.importNewLegs = newLegs;
+        state.importDuplicateOfBoard = alreadyOnBoard;
       }
     } else if(state.importDocType === 'handling_notes'){
       extractedLegs.forEach(ex => {
@@ -1869,7 +1956,13 @@ function renderImportPreviewView(){
     sections.push('<div class="view-subtitle" style="margin:16px 0 8px;">Needs review (' + state.importUnmatched.length + ')</div>');
     sections.push('<div class="import-leg-list">' + state.importUnmatched.map((it, i) => importUnmatchedCardHTML(it, i)).join('') + '</div>');
   }
-  if(!state.importNewLegs.length && !state.importEnrichments.length && !state.importUnmatched.length){
+  const dupOfBoard = state.importDuplicateOfBoard || [];
+  if(dupOfBoard.length){
+    sections.push('<div class="view-subtitle" style="margin:16px 0 8px;">Already on your board (' + dupOfBoard.length + ')</div>');
+    sections.push('<div style="color:var(--fog-300); padding:0 0 8px;">This document matches ' + (dupOfBoard.length === 1 ? 'a leg' : 'legs') + ' already on your board (same departure, arrival and date), so nothing new was created. Re-import onto the existing leg if you want to refresh its details.</div>');
+    sections.push('<div class="import-leg-list">' + dupOfBoard.map((l, i) => importLegCardHTML(l, i)).join('') + '</div>');
+  }
+  if(!state.importNewLegs.length && !state.importEnrichments.length && !state.importUnmatched.length && !dupOfBoard.length){
     sections.push('<div style="color:var(--fog-300); padding:16px 0;">No legs could be extracted from that document.</div>');
   }
 
