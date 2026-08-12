@@ -1619,7 +1619,7 @@ function importEnrichmentCardHTML(item, index){
   if(p.arr.frequency) parts.push('Arr frequency &rarr; ' + escapeHtml(p.arr.frequency));
   return '<div class="import-leg-card" data-enrich-index="' + index + '">' +
     '<div class="import-leg-card-head">' +
-      '<span class="import-leg-title">Updates existing leg: ' + escapeHtml(leg.cityPair || (leg.dep.airportId + ' \u2192 ' + leg.arr.airportId)) + '</span>' +
+      '<span class="import-leg-title">Updates Leg ' + escapeHtml(String(leg.legNumber || '?')) + ': ' + escapeHtml(leg.cityPair || (leg.dep.airportId + ' \u2192 ' + leg.arr.airportId)) + '</span>' +
       '<span class="import-leg-date">' + escapeHtml(leg.date) + '</span>' +
     '</div>' +
     '<div class="import-leg-body">' + parts.map(p => '<div>' + p + '</div>').join('') + '</div>' +
