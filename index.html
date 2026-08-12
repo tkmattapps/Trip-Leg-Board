@@ -300,8 +300,8 @@
 
   .yn{ display:flex; gap:6px; }
   .yn button{
-    flex:1; background:var(--panel-800); border:1px solid var(--hairline); color:var(--fog-300);
-    font-family:'JetBrains Mono',monospace; font-size:12px; padding:8px; border-radius:3px; cursor:pointer;
+    flex:1; height:36px; box-sizing:border-box; background:var(--panel-800); border:1px solid var(--hairline); color:var(--fog-300);
+    font-family:'JetBrains Mono',monospace; font-size:12px; padding:0 8px; border-radius:3px; cursor:pointer;
   }
   .yn button.on-y{ background:rgba(226,87,76,0.18); border-color:var(--alert-600); color:var(--alert-600); }
   .yn button.on-n{ background:rgba(79,174,124,0.18); border-color:var(--ok-500); color:var(--ok-500); }
@@ -1992,8 +1992,8 @@ function renderMain(){
             field('Fuel vendor', 'depFuelVendor', leg.dep.fuelVendor) +
             field('Price per gallon', 'depFuelPricePerGallon', leg.dep.fuelPricePerGallon, {placeholder:'$6.25'}) +
             field('Ramp fee', 'depRampFee', leg.dep.rampFee, {placeholder:'$150'}) +
-            ynField('Waived w/ fuel purchase', 'depRampFeeWaived', leg.dep.rampFeeWaived) +
-            field('Min gallons to waive', 'depRampFeeMinGallons', leg.dep.rampFeeMinGallons, {placeholder:'200'}) +
+            ynField('Waived w/ fuel', 'depRampFeeWaived', leg.dep.rampFeeWaived) +
+            field('Min GAL to waive', 'depRampFeeMinGallons', leg.dep.rampFeeMinGallons, {placeholder:'200'}) +
             field('Min lbs to waive', 'depRampFeeMinLbs', '', {readonly:true, placeholder:'auto'}) +
           '</div>' +
           '<div style="margin-top:14px">' + field(airfieldNotesLabel('dep', leg.dep.airportId), 'depNotes', leg.dep.notes, {type:'textarea', labelId:'depNotesLabel'}) + '</div>' +
@@ -2016,8 +2016,8 @@ function renderMain(){
             field('Fuel vendor', 'arrFuelVendor', leg.arr.fuelVendor) +
             field('Price per gallon', 'arrFuelPricePerGallon', leg.arr.fuelPricePerGallon, {placeholder:'$6.25'}) +
             field('Ramp fee', 'arrRampFee', leg.arr.rampFee, {placeholder:'$150'}) +
-            ynField('Waived w/ fuel purchase', 'arrRampFeeWaived', leg.arr.rampFeeWaived) +
-            field('Min gallons to waive', 'arrRampFeeMinGallons', leg.arr.rampFeeMinGallons, {placeholder:'200'}) +
+            ynField('Waived w/ fuel', 'arrRampFeeWaived', leg.arr.rampFeeWaived) +
+            field('Min GAL to waive', 'arrRampFeeMinGallons', leg.arr.rampFeeMinGallons, {placeholder:'200'}) +
             field('Min lbs to waive', 'arrRampFeeMinLbs', '', {readonly:true, placeholder:'auto'}) +
           '</div>' +
           '<div style="margin-top:14px">' + field(airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotes', leg.arr.notes, {type:'textarea', labelId:'arrNotesLabel'}) + '</div>' +
