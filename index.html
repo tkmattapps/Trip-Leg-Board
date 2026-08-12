@@ -956,6 +956,33 @@ function formatISODateDisplay(iso){
   return m ? (m[2] + '/' + m[3] + '/' + m[1]) : iso;
 }
 
+// Coerce a date string from an imported document into ISO YYYY-MM-DD,
+// which is what the whole app (the type=date input, formatISODateDisplay,
+// and anything deriving UTC offset) expects. Handles the common shapes an
+// extraction can return; if it can't recognise the shape it returns the
+// input unchanged rather than guessing.
+function toISODate(s){
+  if(!s) return '';
+  s = String(s).trim();
+  // Already ISO YYYY-MM-DD
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(m) return s;
+  // YYYY/MM/DD or YYYY-M-D
+  m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if(m) return m[1] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[3]).padStart(2,'0');
+  // US MM/DD/YYYY or MM-DD-YYYY
+  m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(m) return m[3] + '-' + String(m[1]).padStart(2,'0') + '-' + String(m[2]).padStart(2,'0');
+  const mon = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  // "11 Jun 2026" / "11 June 2026"
+  m = s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\.?\s+(\d{4})$/);
+  if(m){ const mo = mon[m[2].slice(0,3).toLowerCase()]; if(mo) return m[3] + '-' + String(mo).padStart(2,'0') + '-' + String(m[1]).padStart(2,'0'); }
+  // "Jun 11, 2026" / "June 11 2026"
+  m = s.match(/^([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})$/);
+  if(m){ const mo = mon[m[1].slice(0,3).toLowerCase()]; if(mo) return m[3] + '-' + String(mo).padStart(2,'0') + '-' + String(m[2]).padStart(2,'0'); }
+  return s;
+}
+
 function sectionTitleHTML(label, key, leg){
   const complete = !!(leg.sectionComplete && leg.sectionComplete[key]);
   return '<div class="section-title">' + escapeHtml(label) +
@@ -1385,7 +1412,7 @@ function buildLegFromExtraction(extracted){
   const leg = blankLeg();
   leg.tripNumber = extracted.tripNumber || '';
   leg.legNumber = extracted.legNumber || '';
-  leg.date = extracted.date || '';
+  leg.date = toISODate(extracted.date || '');
   leg.cityPair = extracted.cityPair || '';
   leg.ete = extracted.ete || '';
   leg.enrouteNotes = extracted.enrouteNotes || '';
