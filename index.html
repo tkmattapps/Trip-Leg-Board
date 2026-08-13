@@ -2626,7 +2626,12 @@ function openStatusPopover(anchorEl){
         sel.dispatchEvent(new Event('change'));
       }
       pop.remove();
-      if(typeof renderMain === 'function') renderMain();
+      const lgId = (typeof state !== 'undefined') ? state.activeId : null;
+      if(lgId && typeof collectAndSave === 'function'){
+        collectAndSave(lgId, {silent:true});
+      } else if(typeof renderMain === 'function'){
+        renderMain();
+      }
     });
     pop.appendChild(item);
   });
