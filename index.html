@@ -326,6 +326,9 @@
   .leg-note-others-head{
     font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.4px; text-transform:uppercase; color:var(--fog-500);
   }
+  .leg-notes[data-trip-note] .leg-note-labelrow label{
+    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.4px; text-transform:uppercase; color:var(--fog-500);
+  }
   .note-other{
     background:var(--panel-800); border:1px solid var(--hairline); border-left:2px solid var(--amber-700);
     border-radius:3px; padding:8px 10px;
@@ -1291,7 +1294,7 @@ async function saveTripNote(tripId, content, isPublic){
 }
 
 function tripNotesBlockHTML(trip){
-  return '<div class="section" id="tripNotesSection">' +
+  return '<div class="section" id="tripNotesSection" style="margin-top:18px;">' +
       '<div class="leg-notes" data-trip-note="1">' +
         '<div class="field leg-note-own">' +
           '<div class="leg-note-labelrow">' +
