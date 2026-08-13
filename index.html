@@ -76,6 +76,9 @@
   }
   .home-btn-row{ display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
   @media (max-width: 700px){
+    /* Mobile: right-justify the leg bubble group under the header, Status stays top-left */
+    .leg-nav-strip .leg-nav-group{ margin-left:auto; justify-content:flex-end; }
+
     /* Top padding clears the notch/status bar AND leaves room for the watermark,
        which extends above the wordmark. JS sizes/centres the watermark itself. */
     .home-view{ flex-direction:column; gap:128px; align-items:center; justify-content:flex-start; min-height:auto; margin-top:0; padding-top:calc(env(safe-area-inset-top, 0px) + 132px); overflow-x:hidden; }
@@ -2701,14 +2704,14 @@ function renderMain(){
     '<span class="leg-status-dot leg-status-' + escapeHtml(l.status) + ' leg-status-dot-clickable' + (l.id === leg.id ? ' leg-status-dot-current' : '') + '" data-leg-id="' + escapeHtml(l.id) + '">' + escapeHtml(l.legNumber || '?') + '</span>'
   ).join('') : '';
   const legNavGroupHTML = (siblingTrip && siblingTrip.legs.length > 0) ?
-    '<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
+    '<div class="leg-nav-group" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
       '<span class="leg-status-strip-label">Legs:</span>' + legNavDots +
       '<button type="button" class="leg-nav-add-btn" id="legNavAddBtn">+ Add leg</button>' +
     '</div>' : '<div></div>';
 
   const statusGroupHTML =
     '<div style="display:flex; align-items:center; gap:8px;">' +
-      '<span class="view-eyebrow" style="font-size:10px; letter-spacing:0.08em; text-transform:uppercase; opacity:0.65;">Status</span>' +
+      '<span class="leg-status-strip-label">Status:</span>' +
       '<select class="status-select" id="statusSelect">' +
         '<option value="planning">Planning</option>' +
         '<option value="ready">Ready</option>' +
