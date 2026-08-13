@@ -3382,7 +3382,12 @@ function renderMain(){
   document.getElementById('saveBtnBottom').addEventListener('click', () => collectAndSave(leg.id));
   document.getElementById('deleteBtn').addEventListener('click', () => handleDelete(leg.id));
   document.querySelectorAll('#mainPanel .leg-nav-strip .leg-status-dot-clickable').forEach(dot => {
-    dot.addEventListener('click', () => {
+    dot.addEventListener('click', (ev) => {
+      if(dot.classList.contains('leg-status-dot-current')){
+        ev.stopPropagation();
+        openStatusPopover(dot);
+        return;
+      }
       const targetId = dot.getAttribute('data-leg-id');
       if(targetId && targetId !== leg.id) openLegEditor(targetId);
     });
