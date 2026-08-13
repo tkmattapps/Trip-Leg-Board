@@ -1533,13 +1533,33 @@ function mirrorFuelAcrossLegs(targetLegs, sourceLegs){
   // Harvest from targets AND any read-only sources, but only ever FILL targets.
   (sourceLegs || []).forEach(l => { harvest(l.dep); harvest(l.arr); });
   targetLegs.forEach(l => { harvest(l.dep); harvest(l.arr); });
+  // Keep the waived marker and min-gallons consistent: min-gallons is only
+  // meaningful when the fee is waived with fuel. This runs on every end we
+  // touch so a copied-in value can't leave a contradictory N + gallons pair.
+  const normalizeWaive = (end) => {
+    if(!end) return;
+    if((end.rampFeeWaived || '').toUpperCase() === 'Y'){
+      // stays as-is; a waived fee legitimately carries a min-gallons figure
+    } else {
+      // Anything not an explicit Y is treated as N with no min-gallons.
+      if(end.rampFee || end.fuelVendor || end.fuelPricePerGallon){ end.rampFeeWaived = 'N'; }
+      // Match the click-time naAutofill behavior: an explicit N shows 'N/A'
+      // in min-gallons so an imported (unclicked) leg reads the same as a
+      // manually toggled one. Only when there's a real N, not a blank end.
+      end.rampFeeMinGallons = (end.rampFeeWaived === 'N') ? 'N/A' : '';
+    }
+  };
   const fill = (end) => {
     const code = ((end && end.airportId) || '').trim().toUpperCase();
     if(!code || !byCode.has(code) || endHasFuel(end)) return;
     const snap = byCode.get(code);
-    FUEL_MIRROR_FIELDS.forEach(k => { if(!end[k]) end[k] = snap[k]; });
+    // Copy the WHOLE fuel snapshot atomically -- cherry-picking only empty
+    // fields could leave a stale waived='N' next to a copied-in min-gallons.
+    FUEL_MIRROR_FIELDS.forEach(k => { end[k] = snap[k]; });
   };
   targetLegs.forEach(l => { fill(l.dep); fill(l.arr); });
+  // Normalize every end (filled or original) so the waive rule always holds.
+  targetLegs.forEach(l => { normalizeWaive(l.dep); normalizeWaive(l.arr); });
   return targetLegs;
 }
 
