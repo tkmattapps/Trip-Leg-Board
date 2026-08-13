@@ -419,6 +419,27 @@
   .leg-status-dot.leg-status-ready{ background:#3DBE6B; }
   .leg-status-dot.leg-status-flown{ background:#4A9DE0; }
   .leg-status-dot-current{ box-shadow:0 0 0 2px var(--paper-050), 0 0 0 4px var(--amber-500); cursor:pointer; }
+  /* ---- Document attachments ---- */
+  .doc-section-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+  .doc-section-head .section-title{ margin:0; }
+  .doc-add-btn{ display:inline-flex; align-items:center; gap:6px; background:var(--amber-500); border:none; color:var(--ink-900); font-weight:700; font-size:13px; padding:8px 14px; border-radius:18px; cursor:pointer; white-space:nowrap; }
+  .doc-add-btn:disabled{ opacity:0.55; cursor:default; }
+  .doc-subhead{ font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--fog-500); margin:16px 0 8px; }
+  .doc-list{ display:flex; flex-direction:column; gap:8px; }
+  .doc-empty{ color:var(--fog-500); font-size:13px; padding:6px 0; }
+  .doc-row{ display:flex; align-items:center; gap:10px; background:var(--panel-700, #1D3350); border:1px solid var(--hairline, rgba(184,196,217,0.16)); border-radius:8px; padding:10px 12px; }
+  .doc-icon{ flex:0 0 auto; width:22px; height:22px; color:var(--amber-500); }
+  .doc-meta{ flex:1 1 auto; min-width:0; }
+  .doc-name{ font-size:13px; color:var(--paper-050); font-weight:600; word-break:break-word; }
+  .doc-sub{ font-size:11px; color:var(--fog-500); margin-top:2px; }
+  .doc-actions{ flex:0 0 auto; display:flex; align-items:center; gap:6px; }
+  .doc-act{ background:transparent; border:1px solid var(--fog-500); color:var(--fog-300, #B8C4D9); font-size:12px; padding:5px 10px; border-radius:14px; cursor:pointer; }
+  .doc-act:hover{ border-color:var(--amber-500); color:var(--amber-500); }
+  .doc-act.doc-del:hover{ border-color:var(--alert-600, #C6493B); color:var(--alert-600, #C6493B); }
+  .doc-busy{ font-size:12px; color:var(--fog-500); }
+  /* paperclip badge on leg tiles */
+  .leg-attach-badge{ display:inline-flex; align-items:center; gap:2px; font-size:11px; color:var(--fog-300, #B8C4D9); margin-left:6px; vertical-align:middle; }
+  .leg-attach-badge svg{ width:12px; height:12px; }
   .leg-status-hint{ opacity:0.55; font-size:9px; }
   .status-popover{ position:absolute; z-index:1000; background:var(--panel-800, #16233A); border:1px solid var(--hairline); border-radius:10px; padding:6px; min-width:150px; box-shadow:0 8px 24px rgba(0,0,0,0.4); display:flex; flex-direction:column; gap:2px; }
   .status-popover-item{ display:flex; align-items:center; gap:10px; background:transparent; border:none; color:var(--fog-300); font-family:'Inter',sans-serif; font-size:13px; padding:9px 12px; border-radius:7px; cursor:pointer; text-align:left; width:100%; }
@@ -795,6 +816,289 @@ async function loadCurrentUserProfile(){
     role: role || ''
   };
   return currentUserProfile;
+}
+
+
+/* ============================================================
+   Trip / leg document attachments  (PDFs & images)
+   All attachments are shared department-wide. Files live in the
+   private 'trip-docs' storage bucket; metadata lives in the
+   trip_attachments table. Path convention:
+     <flight_department_id>/<trip_id>/<uuid>_<filename>
+   ============================================================ */
+const ATTACH_BUCKET = 'trip-docs';
+
+function attachSafeName(name){
+  return (name || 'document').replace(/[^A-Za-z0-9._-]+/g, '_').slice(-120);
+}
+
+// List attachments for a leg (scope='leg') OR a whole trip (scope='trip').
+async function fetchAttachments(scope, opts){
+  opts = opts || {};
+  try {
+    let q = sb.from('trip_attachments').select('*').eq('scope', scope);
+    if(scope === 'leg'){ q = q.eq('leg_id', opts.legId); }
+    else { q = q.eq('trip_id', opts.tripId); }
+    const { data, error } = await q.order('created_at', { ascending: true });
+    if(error) throw error;
+    return data || [];
+  } catch(e){ console.warn('fetchAttachments failed', e); return []; }
+}
+
+// Upload a File object, then insert the metadata row. Returns the new row or throws.
+async function uploadAttachment(file, scope, opts){
+  opts = opts || {};
+  const deptId = await getFlightDepartmentId();
+  const { data: { user } } = await sb.auth.getUser();
+  if(!user) throw new Error('not signed in');
+  const tripId = opts.tripId || (opts.legId ? ('leg-' + opts.legId) : 'misc');
+  const uid = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ('a' + Date.now() + Math.random().toString(36).slice(2));
+  const path = deptId + '/' + tripId + '/' + uid + '_' + attachSafeName(file.name);
+  const up = await sb.storage.from(ATTACH_BUCKET).upload(path, file, {
+    contentType: file.type || 'application/pdf', upsert: false
+  });
+  if(up.error) throw up.error;
+  const row = {
+    scope: scope,
+    trip_id: tripId,
+    leg_id: scope === 'leg' ? opts.legId : null,
+    flight_department_id: deptId,
+    storage_path: path,
+    file_name: file.name || 'document',
+    label: opts.label || '',
+    content_type: file.type || 'application/pdf',
+    byte_size: file.size || 0,
+    uploaded_by: user.id,
+    uploader_name: (currentUserProfile && currentUserProfile.displayName) || ''
+  };
+  const ins = await sb.from('trip_attachments').insert(row).select().single();
+  if(ins.error){
+    // roll back the orphaned file so we don't leak storage
+    try { await sb.storage.from(ATTACH_BUCKET).remove([path]); } catch(_e){}
+    throw ins.error;
+  }
+  return ins.data;
+}
+
+// Short-lived signed URL for view/download (private bucket).
+async function signedAttachmentUrl(storagePath, downloadName){
+  const optsUrl = downloadName ? { download: downloadName } : {};
+  const { data, error } = await sb.storage.from(ATTACH_BUCKET)
+    .createSignedUrl(storagePath, 60 * 10, optsUrl); // 10 minutes
+  if(error) throw error;
+  return data.signedUrl;
+}
+
+// Delete both the metadata row and the stored file.
+async function deleteAttachment(row){
+  try { await sb.storage.from(ATTACH_BUCKET).remove([row.storage_path]); } catch(e){ console.warn('file remove failed', e); }
+  const { error } = await sb.from('trip_attachments').delete().eq('id', row.id);
+  if(error) throw error;
+  return true;
+}
+
+// Count of a single leg's OWN attachments (for the paperclip badge on tiles).
+async function fetchLegAttachmentCounts(legIds){
+  const out = {};
+  try {
+    const deptId = await getFlightDepartmentId();
+    const { data, error } = await sb.from('trip_attachments')
+      .select('leg_id').eq('scope', 'leg').eq('flight_department_id', deptId);
+    if(error) throw error;
+    (data || []).forEach(function(r){ if(r.leg_id){ out[r.leg_id] = (out[r.leg_id] || 0) + 1; } });
+  } catch(e){ console.warn('fetchLegAttachmentCounts failed', e); }
+  return out;
+}
+
+
+/* ---- Attachments UI (leg checklist Documents section) ---- */
+const DOC_PAPERCLIP_SVG = '<svg class="doc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+
+function attachFmtBytes(n){
+  n = n || 0;
+  if(n < 1024) return n + ' B';
+  if(n < 1024*1024) return (n/1024).toFixed(0) + ' KB';
+  return (n/(1024*1024)).toFixed(1) + ' MB';
+}
+function attachFmtWhen(iso){
+  if(!iso) return '';
+  try { return new Date(iso).toLocaleDateString([], {month:'short', day:'numeric'}); } catch(e){ return ''; }
+}
+function escHtml(str){
+  return String(str==null?'':str).replace(/[&<>"']/g, function(c){
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+  });
+}
+
+// Static shell — the two lists are filled in by hydrateLegAttachments().
+function legAttachmentsBlockHTML(leg){
+  return '' +
+    '<div class="section" id="docSection">' +
+      '<div class="doc-section-head">' +
+        '<h3 class="section-title">Documents</h3>' +
+        '<button type="button" class="doc-add-btn" id="docAddBtn">+ Add document</button>' +
+        '<input type="file" id="docFileInput" accept="application/pdf,image/*" style="display:none" />' +
+      '</div>' +
+      '<div class="doc-list" id="docLegList"><div class="doc-empty">Loading\u2026</div></div>' +
+      '<div id="docTripWrap"></div>' +
+    '</div>';
+}
+
+function docRowHTML(row, opts){
+  opts = opts || {};
+  const sub = [attachFmtWhen(row.created_at), row.uploader_name, attachFmtBytes(row.byte_size)]
+    .filter(Boolean).join(' \u00b7 ');
+  const delBtn = opts.canDelete === false ? '' :
+    '<button type="button" class="doc-act doc-del" data-doc-del="' + row.id + '">Delete</button>';
+  return '' +
+    '<div class="doc-row" data-doc-row="' + row.id + '">' +
+      DOC_PAPERCLIP_SVG +
+      '<div class="doc-meta">' +
+        '<div class="doc-name">' + escHtml(row.file_name || 'Document') + '</div>' +
+        '<div class="doc-sub">' + escHtml(sub) + '</div>' +
+      '</div>' +
+      '<div class="doc-actions">' +
+        '<button type="button" class="doc-act" data-doc-view="' + row.id + '">View</button>' +
+        '<button type="button" class="doc-act" data-doc-dl="' + row.id + '">Download</button>' +
+        delBtn +
+      '</div>' +
+    '</div>';
+}
+
+// in-memory cache of the rows currently shown, keyed by row id, so the
+// action buttons can find their storage_path without another fetch.
+let _docRowCache = {};
+
+async function hydrateLegAttachments(leg){
+  const legList = document.getElementById('docLegList');
+  const tripWrap = document.getElementById('docTripWrap');
+  if(!legList) return;
+  _docRowCache = {};
+  // leg's own attachments
+  const legRows = await fetchAttachments('leg', { legId: leg.id });
+  if(!document.getElementById('docLegList')) return; // navigated away
+  legRows.forEach(function(r){ _docRowCache[r.id] = r; });
+  legList.innerHTML = legRows.length
+    ? legRows.map(function(r){ return docRowHTML(r); }).join('')
+    : '<div class="doc-empty">No documents on this leg yet.</div>';
+  // trip-level documents surfaced below (view/download only here; managed at trip level)
+  if(tripWrap){
+    const tripId = leg.tripId || leg.trip_id || null;
+    if(tripId){
+      const tripRows = await fetchAttachments('trip', { tripId: tripId });
+      if(!document.getElementById('docTripWrap')) return;
+      tripRows.forEach(function(r){ _docRowCache[r.id] = r; });
+      tripWrap.innerHTML = tripRows.length
+        ? '<div class="doc-subhead">Trip documents</div><div class="doc-list">' +
+            tripRows.map(function(r){ return docRowHTML(r, {canDelete:false}); }).join('') + '</div>'
+        : '';
+    } else {
+      tripWrap.innerHTML = '';
+    }
+  }
+}
+
+function wireLegAttachments(leg){
+  const addBtn = document.getElementById('docAddBtn');
+  const fileInput = document.getElementById('docFileInput');
+  const section = document.getElementById('docSection');
+  if(!addBtn || !fileInput || !section) return;
+
+  addBtn.addEventListener('click', function(){ fileInput.click(); });
+
+  fileInput.addEventListener('change', async function(){
+    const file = fileInput.files && fileInput.files[0];
+    if(!file) return;
+    addBtn.disabled = true;
+    const original = addBtn.textContent;
+    addBtn.textContent = 'Uploading\u2026';
+    try {
+      await uploadAttachment(file, 'leg', { legId: leg.id, tripId: leg.tripId || leg.trip_id || null });
+      await hydrateLegAttachments(leg);
+      refreshLegAttachBadge(leg.id); // update the tile badge count
+      if(typeof showToast === 'function') showToast('Document added');
+    } catch(e){
+      console.error('upload failed', e);
+      if(typeof showConfirm === 'function'){
+        showConfirm('That upload didn\u2019t go through. ' + (e && e.message ? e.message : 'Please try again.'), {alertOnly:true});
+      }
+    } finally {
+      addBtn.disabled = false;
+      addBtn.textContent = original;
+      fileInput.value = '';
+    }
+  });
+
+  // delegated view / download / delete
+  section.addEventListener('click', async function(ev){
+    const viewEl = ev.target.closest('[data-doc-view]');
+    const dlEl   = ev.target.closest('[data-doc-dl]');
+    const delEl  = ev.target.closest('[data-doc-del]');
+    if(viewEl){
+      const row = _docRowCache[viewEl.getAttribute('data-doc-view')];
+      if(!row) return;
+      try { const url = await signedAttachmentUrl(row.storage_path); window.open(url, '_blank'); }
+      catch(e){ console.error(e); }
+      return;
+    }
+    if(dlEl){
+      const row = _docRowCache[dlEl.getAttribute('data-doc-dl')];
+      if(!row) return;
+      try {
+        const url = await signedAttachmentUrl(row.storage_path, row.file_name || 'document');
+        const a = document.createElement('a'); a.href = url; a.download = row.file_name || 'document';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      } catch(e){ console.error(e); }
+      return;
+    }
+    if(delEl){
+      const id = delEl.getAttribute('data-doc-del');
+      const row = _docRowCache[id];
+      if(!row) return;
+      const doDelete = async function(){
+        try {
+          await deleteAttachment(row);
+          await hydrateLegAttachments(leg);
+          refreshLegAttachBadge(leg.id);
+        } catch(e){ console.error('delete failed', e); }
+      };
+      if(typeof showConfirm === 'function'){
+        const ok = await showConfirm('Remove \u201c' + (row.file_name || 'this document') + '\u201d for the whole department? This can\u2019t be undone.',
+          { okLabel:'Remove' });
+        if(ok) await doDelete();
+      } else { await doDelete(); }
+      return;
+    }
+  });
+}
+
+// Update just one leg tile's paperclip badge after an upload/delete.
+async function refreshLegAttachBadge(legId){
+  try {
+    const rows = await fetchAttachments('leg', { legId: legId });
+    const n = rows.length;
+    document.querySelectorAll('[data-attach-badge="' + legId + '"]').forEach(function(el){
+      if(n > 0){ el.innerHTML = LEG_PAPERCLIP_BADGE_SVG + n; el.style.display = ''; }
+      else { el.innerHTML = ''; el.style.display = 'none'; }
+    });
+  } catch(e){ /* non-fatal */ }
+}
+
+const LEG_PAPERCLIP_BADGE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+
+// Batch-fill paperclip badges for all leg tiles on the Trip Legs page.
+async function hydrateTripLegAttachBadges(trip){
+  if(!trip || !trip.legs || !trip.legs.length) return;
+  let counts = {};
+  try { counts = await fetchLegAttachmentCounts(trip.legs.map(function(l){ return l.id; })); }
+  catch(e){ return; }
+  trip.legs.forEach(function(l){
+    const n = counts[l.id] || 0;
+    document.querySelectorAll('[data-attach-badge="' + l.id + '"]').forEach(function(el){
+      if(n > 0){ el.innerHTML = LEG_PAPERCLIP_BADGE_SVG + n; el.style.display = ''; }
+      else { el.innerHTML = ''; el.style.display = 'none'; }
+    });
+  });
 }
 
 function noteTextareaId(field){ return field === 'enroute' ? 'enrouteNotes' : (field + 'Notes'); }
@@ -1444,6 +1748,7 @@ function tripBriefLegCardHTML(leg){
     (isUnassignedBrief ? '<div class="dash-card-orphan-banner">Unassigned leg. Please add trip number.</div>' : '') +
     '<div class="dash-card-top">' +
       '<span class="dash-card-code">Trip ' + escapeHtml(tripNumLabel) + '</span>' +
+      '<span class="leg-attach-badge" data-attach-badge="' + escapeHtml(leg.id) + '" style="display:none"></span>' +
     '</div>' +
     '<div class="ready-room-leg-row">' +
       '<span class="ready-room-leg-label">Leg</span>' +
@@ -2589,6 +2894,8 @@ function renderTripDetailView(){
       if(targetId) openLegEditor(targetId);
     });
   });
+
+  hydrateTripLegAttachBadges(trip);
 }
 
 function currentLegAllSectionsComplete(){
@@ -2986,6 +3293,8 @@ function renderMain(){
         field('ETA', 'nextLegEta', displayLocal12h(leg.nextLegEta), {placeholder:'02:30 PM'}) +
       '</div>' +
     '</div>' +
+
+    legAttachmentsBlockHTML(leg) +
 
     '<div class="save-bar">' +
       '<span class="save-hint">Last saved ' + (leg.updatedAt ? new Date(leg.updatedAt).toLocaleString() : 'never') + '</span>' +
@@ -3549,6 +3858,8 @@ function renderMain(){
 
   wireLegNotes(leg.id);
   hydrateLegNotes(leg.id);
+  wireLegAttachments(leg);
+  hydrateLegAttachments(leg);
 }
 
 const AIRPORT_TZ = {
