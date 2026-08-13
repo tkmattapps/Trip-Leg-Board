@@ -294,6 +294,33 @@
   .field textarea.is-overflowing{ overflow:hidden; }
   .field input::placeholder, .field textarea::placeholder{ color:var(--fog-500); }
   .field input[readonly]{ color:var(--fog-300); cursor:default; }
+
+  /* --- Per-user leg notes (dep / arr / enroute) --- */
+  .leg-notes{ display:flex; flex-direction:column; gap:10px; }
+  .leg-note-labelrow{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .note-vis-toggle{
+    display:inline-flex; align-items:center; gap:6px; cursor:pointer; flex:none;
+    background:var(--panel-800); border:1px solid var(--hairline); color:var(--fog-300);
+    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.4px; text-transform:uppercase;
+    padding:5px 10px; border-radius:999px; line-height:1; transition:color .15s, border-color .15s;
+  }
+  .note-vis-toggle .note-vis-dot{ width:7px; height:7px; border-radius:50%; background:var(--fog-500); transition:background .15s; }
+  .note-vis-toggle:hover{ border-color:var(--amber-700); }
+  .note-vis-toggle.is-public{ color:var(--amber-500); border-color:var(--amber-700); }
+  .note-vis-toggle.is-public .note-vis-dot{ background:var(--amber-500); }
+  .leg-note-others{ display:flex; flex-direction:column; gap:8px; }
+  .leg-note-others[hidden]{ display:none; }
+  .leg-note-others-head{
+    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.4px; text-transform:uppercase; color:var(--fog-500);
+  }
+  .note-other{
+    background:var(--panel-800); border:1px solid var(--hairline); border-left:2px solid var(--amber-700);
+    border-radius:3px; padding:8px 10px;
+  }
+  .note-other-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:3px; }
+  .note-other-author{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--paper-050); font-weight:600; }
+  .note-other-role{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--fog-500); }
+  .note-other-body{ font-family:'Inter',sans-serif; font-size:13px; color:var(--fog-300); white-space:pre-wrap; overflow-wrap:anywhere; }
   .subpanel.compact{ padding:12px; }
   .subpanel.compact .subpanel-title{ margin-bottom:8px; }
   .subpanel.compact .grid{ grid-template-columns:repeat(auto-fit, minmax(120px,1fr)); gap:8px; }
@@ -715,6 +742,187 @@ function legToRow(leg, flightDepartmentId, userId){
     data: leg,
     updated_at: new Date().toISOString()
   };
+}
+
+/* ============================================================
+   Per-user leg notes  (dep / arr / enroute)
+   These three fields live in their own table (leg_notes), one row
+   per user + leg + field, so a pilot's notes and a dispatcher's
+   notes don't clobber each other. Each is private by default with
+   a per-field share toggle; shared notes from others stack read-only
+   with author attribution. paxTotalNotes stays on the shared blob.
+   ============================================================ */
+const NOTE_FIELDS = ['dep', 'arr', 'enroute'];
+let currentUserProfile = null;
+
+async function loadCurrentUserProfile(){
+  const { data: { user } } = await sb.auth.getUser();
+  if(!user){ currentUserProfile = null; return null; }
+  let displayName = '', role = '';
+  try {
+    const { data } = await sb.from('users').select('*').eq('id', user.id).single();
+    if(data){
+      displayName = data.display_name || '';
+      role = data.role || data.author_role || '';
+      if(data.flight_department_id) currentFlightDepartmentId = data.flight_department_id;
+    }
+  } catch(e){ /* own-row read failed; fall back to email below */ }
+  currentUserProfile = {
+    id: user.id,
+    email: user.email || '',
+    displayName: displayName || (user.email ? user.email.split('@')[0] : 'Crew'),
+    role: role || ''
+  };
+  return currentUserProfile;
+}
+
+function noteTextareaId(field){ return field === 'enroute' ? 'enrouteNotes' : (field + 'Notes'); }
+
+// Read the current user's own + others' public notes for a leg. RLS returns
+// exactly: my own rows (any visibility) plus others' rows that are public and
+// in my flight department. Returns [] (and logs) if the table isn't there yet.
+async function fetchLegNotes(legId){
+  const { data, error } = await sb.from('leg_notes').select('*').eq('leg_id', legId);
+  if(error) throw error;
+  return data || [];
+}
+
+// Persist one field's note for the current user. Empty content deletes the row
+// so the table doesn't accumulate blanks. Attribution is stamped on the row.
+async function saveLegNote(legId, field, content, isPublic){
+  const prof = currentUserProfile || await loadCurrentUserProfile();
+  if(!prof) return;
+  const text = content == null ? '' : content;
+  if(text.trim() === ''){
+    await sb.from('leg_notes').delete()
+      .eq('leg_id', legId).eq('user_id', prof.id).eq('field', field);
+    return;
+  }
+  const deptId = await getFlightDepartmentId();
+  const row = {
+    leg_id: legId,
+    flight_department_id: deptId,
+    user_id: prof.id,
+    field: field,
+    content: text,
+    is_public: !!isPublic,
+    author_name: prof.displayName || '',
+    author_role: prof.role || '',
+    updated_at: new Date().toISOString()
+  };
+  const { error } = await sb.from('leg_notes').upsert(row, { onConflict: 'leg_id,user_id,field' });
+  if(error) throw error;
+}
+
+function setNoteToggleState(toggle, isPublic){
+  if(!toggle) return;
+  toggle.dataset.public = isPublic ? 'true' : 'false';
+  toggle.setAttribute('aria-pressed', isPublic ? 'true' : 'false');
+  toggle.classList.toggle('is-public', !!isPublic);
+  const txt = toggle.querySelector('.note-vis-text');
+  if(txt) txt.textContent = isPublic ? 'Shared' : 'Private';
+}
+
+// Read one field's textarea + toggle out of the DOM and persist it.
+async function saveOneLegNote(legId, field){
+  const ta = document.getElementById(noteTextareaId(field));
+  if(!ta) return;
+  const block = ta.closest('.leg-notes');
+  const toggle = block ? block.querySelector('.note-vis-toggle') : null;
+  const isPublic = toggle ? toggle.dataset.public === 'true' : false;
+  await saveLegNote(legId, field, ta.value, isPublic);
+}
+
+// Flush all three note fields for the active leg. Called from collectAndSave so
+// the Save button and navigation-autosave both persist notes. Never throws.
+async function flushLegNotes(legId){
+  if(state.activeId !== legId) return;
+  for(const field of NOTE_FIELDS){
+    const ta = document.getElementById(noteTextareaId(field));
+    if(ta){ try { await saveOneLegNote(legId, field); } catch(e){ console.error('flush note ' + field, e); } }
+  }
+}
+
+// Attach blur-save + toggle handlers to the three note blocks (synchronous;
+// does not depend on any fetch, so it runs even if the notes table is offline).
+function wireLegNotes(legId){
+  NOTE_FIELDS.forEach(function(field){
+    const ta = document.getElementById(noteTextareaId(field));
+    const block = ta ? ta.closest('.leg-notes') : null;
+    if(!ta || !block) return;
+    const toggle = block.querySelector('.note-vis-toggle');
+    ta.addEventListener('input', function(){ ta.dataset.userEdited = '1'; });
+    ta.addEventListener('blur', function(){
+      saveOneLegNote(legId, field).catch(function(e){ console.error('note save ' + field, e); });
+    });
+    if(toggle){
+      toggle.addEventListener('click', function(){
+        const nowPublic = toggle.dataset.public !== 'true';
+        setNoteToggleState(toggle, nowPublic);
+        saveOneLegNote(legId, field).catch(function(e){ console.error('note toggle ' + field, e); });
+      });
+    }
+  });
+}
+
+// Load the leg's notes and populate the DOM: own note into the textarea, own
+// visibility into the toggle, others' public notes stacked read-only below.
+// Guards against overwriting in-progress typing and against stale navigation.
+async function hydrateLegNotes(legId){
+  let rows;
+  try { rows = await fetchLegNotes(legId); }
+  catch(e){ console.error('leg_notes load', e); return; } // table missing/offline -> leave as plain empty notes
+  if(state.activeId !== legId) return; // navigated away while loading
+  const myId = currentUserProfile ? currentUserProfile.id : null;
+  NOTE_FIELDS.forEach(function(field){
+    const fieldRows = rows.filter(function(r){ return r.field === field; });
+    const mine = myId ? fieldRows.find(function(r){ return r.user_id === myId; }) : null;
+    const others = fieldRows.filter(function(r){ return r.is_public && (!myId || r.user_id !== myId); });
+    const ta = document.getElementById(noteTextareaId(field));
+    if(ta){
+      const block = ta.closest('.leg-notes');
+      const toggle = block ? block.querySelector('.note-vis-toggle') : null;
+      if(ta.dataset.userEdited !== '1' && document.activeElement !== ta){
+        ta.value = mine ? (mine.content || '') : '';
+      }
+      setNoteToggleState(toggle, mine ? !!mine.is_public : false);
+    }
+    const cont = document.getElementById(field + 'NotesOthers');
+    if(cont){
+      if(others.length === 0){
+        cont.innerHTML = '';
+        cont.hidden = true;
+      } else {
+        cont.hidden = false;
+        cont.innerHTML = '<div class="leg-note-others-head">Shared by others</div>' +
+          others.map(function(r){
+            const who = escapeHtml(r.author_name || 'Crew');
+            const role = r.author_role ? '<span class="note-other-role">' + escapeHtml(r.author_role) + '</span>' : '';
+            return '<div class="note-other">' +
+              '<div class="note-other-head"><span class="note-other-author">' + who + '</span>' + role + '</div>' +
+              '<div class="note-other-body">' + escapeHtml(r.content || '') + '</div>' +
+            '</div>';
+          }).join('');
+      }
+    }
+  });
+}
+
+function legNotesBlockHTML(field, labelHtml, labelId, placeholder){
+  const labelIdAttr = labelId ? ' id="' + labelId + '"' : '';
+  return '<div class="leg-notes" data-note-field="' + field + '">' +
+      '<div class="field leg-note-own">' +
+        '<div class="leg-note-labelrow">' +
+          '<label' + labelIdAttr + '>' + labelHtml + '</label>' +
+          '<button type="button" class="note-vis-toggle" data-note-field="' + field + '" data-public="false" aria-pressed="false" title="Private to you. Tap to share with your flight department.">' +
+            '<span class="note-vis-dot" aria-hidden="true"></span>' +
+            '<span class="note-vis-text">Private</span>' +
+          '</button>' +
+        '</div>' +
+        '<textarea id="' + noteTextareaId(field) + '" class="leg-note-textarea" placeholder="' + escapeHtml(placeholder || '') + '"></textarea>' +
+      '</div>' +
+      '<div class="leg-note-others" id="' + field + 'NotesOthers" hidden></div>' +
+    '</div>';
 }
 
 const state = { legs: [], activeId: null, filter: '', view: 'home', historyFilter: '', dashboardFilter: '', activeTripKey: null, tripDetailOrigin: 'dashboard', previousView: null, previousTripKey: null, previousTripOrigin: null };
@@ -2489,7 +2697,7 @@ function renderMain(){
             ynField('Waived w/ fuel', 'depRampFeeWaived', leg.dep.rampFeeWaived) +
             field('Min GAL to waive', 'depRampFeeMinGallons', leg.dep.rampFeeMinGallons, {placeholder:'200'}) +
           '</div>' +
-          '<div style="margin-top:14px">' + field(airfieldNotesLabel('dep', leg.dep.airportId), 'depNotes', leg.dep.notes, {type:'textarea', labelId:'depNotesLabel'}) + '</div>' +
+          '<div style="margin-top:14px">' + legNotesBlockHTML('dep', airfieldNotesLabel('dep', leg.dep.airportId), 'depNotesLabel', 'Add a note for this stop\u2026') + '</div>' +
         '</div>' +
         '<div class="subpanel compact">' +
           '<div class="subpanel-title">Arrival</div>' +
@@ -2513,7 +2721,7 @@ function renderMain(){
             ynField('Waived w/ fuel', 'arrRampFeeWaived', leg.arr.rampFeeWaived) +
             field('Min GAL to waive', 'arrRampFeeMinGallons', leg.arr.rampFeeMinGallons, {placeholder:'200'}) +
           '</div>' +
-          '<div style="margin-top:14px">' + field(airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotes', leg.arr.notes, {type:'textarea', labelId:'arrNotesLabel'}) + '</div>' +
+          '<div style="margin-top:14px">' + legNotesBlockHTML('arr', airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotesLabel', 'Add a note for this stop\u2026') + '</div>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -2535,7 +2743,7 @@ function renderMain(){
         windToggleField(leg) +
         field('Relative time to destination', 'relativeTimeToDestination', '', {readonly:true, placeholder:'auto'}) +
       '</div>' +
-      '<div style="margin-top:14px">' + field('Enroute notes', 'enrouteNotes', leg.enrouteNotes, {type:'textarea'}) + '</div>' +
+      '<div style="margin-top:14px">' + legNotesBlockHTML('enroute', 'Enroute notes', 'enrouteNotesLabel', 'Add an enroute note\u2026') + '</div>' +
     '</div>' +
 
     '<div class="section">' +
@@ -3149,6 +3357,9 @@ function renderMain(){
     nextLegDateEl.addEventListener('change', updateNextLegDay);
     updateNextLegDay();
   }
+
+  wireLegNotes(leg.id);
+  hydrateLegNotes(leg.id);
 }
 
 const AIRPORT_TZ = {
@@ -3722,6 +3933,8 @@ async function collectAndSave(id, opts){
   opts = opts || {};
   const leg = state.legs.find(l => l.id === id);
   if(!leg) return;
+  // dep/arr/enroute notes are per-user now: persist them to leg_notes, not the blob.
+  await flushLegNotes(id);
   leg.status = val('statusSelect');
   leg.tripNumber = val('tripNumber');
   leg.legNumber = val('legNumber');
@@ -3737,20 +3950,20 @@ async function collectAndSave(id, opts){
     hours: val('depHours'), slotReqd: val('depSlotReqd'), slotTimeNumber: val('depSlotTimeNumber'),
     slotAllowance: val('depSlotAllowance'), agent: val('depAgent'), agentPhone: val('depAgentPhone'), frequency: val('depFrequency'), fuelVendor: val('depFuelVendor'),
     fuelPaymentMethod: val('depFuelPaymentMethod'), fuelPricePerGallon: val('depFuelPricePerGallon'), rampFee: val('depRampFee'), rampFeeWaived: val('depRampFeeWaived'), rampFeeMinGallons: val('depRampFeeMinGallons'), groundTransportReqd: val('depGroundTransportReqd'), groundTransportDetails: val('depGroundTransportDetails'), utcOffsetManual: val('depUtcOffset'),
-    notes: val('depNotes')
+    notes: (leg.dep.notes || '')
   };
   leg.arr = {
     airportId: val('arrAirportId'), tz: leg.arr.tz || '', etaLocal: val('arrEtaLocal'), etaZ: val('arrEtaZ'),
     hours: val('arrHours'), slotReqd: val('arrSlotReqd'), slotTimeNumber: val('arrSlotTimeNumber'),
     slotAllowance: val('arrSlotAllowance'), agent: val('arrAgent'), agentPhone: val('arrAgentPhone'), frequency: val('arrFrequency'),
-    fuelVendor: val('arrFuelVendor'), fuelPaymentMethod: val('arrFuelPaymentMethod'), fuelPricePerGallon: val('arrFuelPricePerGallon'), rampFee: val('arrRampFee'), rampFeeWaived: val('arrRampFeeWaived'), rampFeeMinGallons: val('arrRampFeeMinGallons'), groundTransportReqd: val('arrGroundTransportReqd'), groundTransportDetails: val('arrGroundTransportDetails'), utcOffsetManual: val('arrUtcOffset'), notes: val('arrNotes'),
+    fuelVendor: val('arrFuelVendor'), fuelPaymentMethod: val('arrFuelPaymentMethod'), fuelPricePerGallon: val('arrFuelPricePerGallon'), rampFee: val('arrRampFee'), rampFeeWaived: val('arrRampFeeWaived'), rampFeeMinGallons: val('arrRampFeeMinGallons'), groundTransportReqd: val('arrGroundTransportReqd'), groundTransportDetails: val('arrGroundTransportDetails'), utcOffsetManual: val('arrUtcOffset'), notes: (leg.arr.notes || ''),
     permitReqd: val('arrPermitReqd'), permitNumber: val('arrPermitNumber')
   };
   leg.trim = val('trim');
   leg.levelOff = val('levelOff');
   leg.minBRF = val('minBRF');
   leg.fratRelease = val('fratRelease');
-  leg.enrouteNotes = val('enrouteNotes');
+  leg.enrouteNotes = (leg.enrouteNotes || '');
   leg.maxShear = val('maxShear');
   leg.ete = val('ete');
   leg.windDirection = val('windDirection');
@@ -3992,12 +4205,15 @@ function hideLoginOverlay(){
 }
 
 async function bootApp(){
+  await loadCurrentUserProfile();
   await loadLegs();
   loadRemoteAirportTZ();
 }
 
 async function handleLogout(){
   await sb.auth.signOut();
+  currentUserProfile = null;
+  currentFlightDepartmentId = null;
   showLoginOverlay();
 }
 
