@@ -992,6 +992,37 @@ async function loadLegs(){
   renderMain();
 }
 
+let refreshInFlight = false;
+function installRefreshHandler(){
+  if(installRefreshHandler._done) return;
+  installRefreshHandler._done = true;
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest ? e.target.closest('[data-refresh]') : null;
+    if(!btn) return;
+    if(refreshInFlight) return;
+    refreshInFlight = true;
+    // spin whichever refresh button was actually clicked
+    btn.disabled = true;
+    btn.classList.add('is-refreshing');
+    try{
+      // Persist any leg currently being edited before pulling fresh data.
+      autoSaveIfEditing();
+      await new Promise(r => setTimeout(r, 120));
+      // loadLegs re-renders via renderMain, which dispatches on state.view.
+      // We never touch state.view or state.activeId, so we stay on the current page.
+      await loadLegs();
+      showToast('Refreshed');
+    }catch(err){
+      console.error('refresh failed', err);
+      showToast('Refresh failed');
+    }finally{
+      refreshInFlight = false;
+      // the clicked button may have been re-rendered away; guard before touching it
+      if(btn && btn.classList){ btn.disabled = false; btn.classList.remove('is-refreshing'); }
+    }
+  });
+}
+
 async function saveLeg(leg){
   leg.updatedAt = Date.now();
   for(let attempt = 1; attempt <= 2; attempt++){
@@ -1611,7 +1642,7 @@ function renderDashboardView(){
     '<div class="view-header">' +
       '<div><div class="view-title">Active Trips</div><div class="view-subtitle" id="dashboardSubtitle">' + allActiveTrips.length + ' active trip' + (allActiveTrips.length === 1 ? '' : 's') + '</div></div>' +
       '<div class="view-header-actions">' +
-        '<button type="button" class="btn btn-ghost" id="refreshBoardBtn" title="Refresh from server" aria-label="Refresh trips"><span class="refresh-icon" aria-hidden="true">\u21BB</span> Refresh</button>' +
+        '<button type="button" class="btn btn-ghost refresh-btn" data-refresh="1" id="refreshBoardBtn" title="Refresh from server" aria-label="Refresh trips"><span class="refresh-icon" aria-hidden="true">\u21BB</span> Refresh</button>' +
         '<button type="button" class="btn btn-primary" id="newTripBtn">+ Create new trip</button>' +
       '</div>' +
     '</div>' +
@@ -1634,29 +1665,8 @@ function renderDashboardView(){
       openLegEditor(leg.id);
     });
   }
-  const refreshBoardBtn = document.getElementById('refreshBoardBtn');
-  if(refreshBoardBtn){
-    refreshBoardBtn.addEventListener('click', async () => {
-      if(refreshBoardBtn.disabled) return;
-      refreshBoardBtn.disabled = true;
-      refreshBoardBtn.classList.add('is-refreshing');
-      try{
-        // Quietly persist any leg currently being edited before we pull fresh data,
-        // so an in-progress edit is never lost to the reload.
-        autoSaveIfEditing();
-        // let the in-flight autosave settle before re-fetching
-        await new Promise(r => setTimeout(r, 120));
-        await loadLegs();
-        showToast('Trips refreshed');
-      }catch(e){
-        console.error('refresh failed', e);
-        showToast('Refresh failed');
-      }finally{
-        refreshBoardBtn.disabled = false;
-        refreshBoardBtn.classList.remove('is-refreshing');
-      }
-    });
-  }
+  // Refresh buttons are wired via a single delegated handler (see installRefreshHandler),
+  // so they work on every view and survive re-renders.
   wireCardClicks('dashboard');
 }
 
@@ -1694,6 +1704,9 @@ function renderHistoryView(){
   main.innerHTML =
     '<div class="view-header">' +
       '<div><div class="view-title">Flown Trips</div><div class="view-subtitle" id="historySubtitle">' + allFlownTrips.length + ' flown trip' + (allFlownTrips.length === 1 ? '' : 's') + '</div></div>' +
+      '<div class="view-header-actions">' +
+        '<button type="button" class="btn btn-ghost refresh-btn" data-refresh="1" title="Refresh from server" aria-label="Refresh"><span class="refresh-icon" aria-hidden="true">\u21BB</span> Refresh</button>' +
+      '</div>' +
     '</div>' +
     '<input class="search" id="historySearchInput" placeholder="Search past trips by route, airport, trip #..." style="width:100%; max-width:420px; margin-bottom:18px;" value="' + escapeHtml(state.historyFilter) + '" />' +
     legStatusLegendHTML() +
@@ -2496,6 +2509,7 @@ function renderTripDetailView(){
     '<div class="view-header">' +
       '<div><div class="view-title">Trip Legs</div><div class="view-subtitle">Trip ' + escapeHtml(trip.tripNumber) + ' &middot; ' + trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') + '</div></div>' +
       '<div class="main-actions">' +
+        '<button type="button" class="btn btn-ghost refresh-btn" data-refresh="1" title="Refresh from server" aria-label="Refresh"><span class="refresh-icon" aria-hidden="true">\u21BB</span> Refresh</button>' +
         '<button type="button" class="btn btn-danger" id="deleteTripBtn">Delete trip</button>' +
         '<button type="button" class="btn btn-primary" id="addLegToTripBtn">+ Add leg to this trip</button>' +
       '</div>' +
@@ -2689,6 +2703,7 @@ function renderMain(){
         '<div class="main-title">Leg Checklist</div>' +
       '</div>' +
       '<div class="main-actions">' +
+        '<button type="button" class="btn btn-ghost refresh-btn" data-refresh="1" title="Refresh from server" aria-label="Refresh"><span class="refresh-icon" aria-hidden="true">\u21BB</span> Refresh</button>' +
         '<button class="btn btn-danger" id="deleteBtn">Delete leg</button>' +
         '<button class="btn btn-primary" id="saveBtn">Save changes</button>' +
       '</div>' +
@@ -4260,6 +4275,7 @@ function hideLoginOverlay(){
 }
 
 async function bootApp(){
+  installRefreshHandler();
   await loadCurrentUserProfile();
   await loadLegs();
   loadRemoteAirportTZ();
