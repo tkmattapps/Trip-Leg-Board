@@ -2248,28 +2248,42 @@ const IMPORT_LOADING_MESSAGES = [
   'Reading the fine print so you don\u2019t have to.',
   'Cross-checking the cross-checks.',
   'Still working \u2014 big documents take a minute.',
-  'Don\u2019t taxi off now \u2014 we\u2019re nearly cleared for departure.'
+  'Don\u2019t taxi off now \u2014 we\u2019re nearly cleared for departure.',
+  'I\u2019d sing for you, but my voice is pretty shit.',
+  'You\u2019re getting verrryyy sleepyyy\u2026 WAKE UP.'
 ];
 let importLoadingTimer = null;
 let importLoadingIndex = 0;
+let importLoadingOrder = [];
+// Shuffle a working copy so the messages appear in a fresh order each upload
+// but never repeat until the whole set has been shown (avoids back-to-back dupes).
+function shuffledLoadingMessages(){
+  const a = IMPORT_LOADING_MESSAGES.slice();
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+  }
+  return a;
+}
 function stopImportLoadingMessages(){
   if(importLoadingTimer){ clearInterval(importLoadingTimer); importLoadingTimer = null; }
 }
 function startImportLoadingMessages(){
   stopImportLoadingMessages();
+  importLoadingOrder = shuffledLoadingMessages();
   importLoadingIndex = 0;
   const el = document.getElementById('importLoadingMsg');
   if(!el) return;
-  el.textContent = IMPORT_LOADING_MESSAGES[0];
+  el.textContent = importLoadingOrder[0];
   importLoadingTimer = setInterval(() => {
     const msgEl = document.getElementById('importLoadingMsg');
     if(!msgEl){ stopImportLoadingMessages(); return; }
-    importLoadingIndex = (importLoadingIndex + 1) % IMPORT_LOADING_MESSAGES.length;
+    importLoadingIndex = (importLoadingIndex + 1) % importLoadingOrder.length;
     msgEl.style.opacity = '0';
     setTimeout(() => {
       const inner = document.getElementById('importLoadingMsg');
       if(!inner) return;
-      inner.textContent = IMPORT_LOADING_MESSAGES[importLoadingIndex];
+      inner.textContent = importLoadingOrder[importLoadingIndex];
       inner.style.opacity = '1';
     }, 350);
   }, 10000);
