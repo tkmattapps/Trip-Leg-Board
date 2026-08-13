@@ -177,6 +177,13 @@
   .btn-danger:hover{ border-color:var(--alert-600); }
   .btn-steel{ background:#2E6FD6; border-color:#2E6FD6; color:#EFEBDF; font-weight:600; }
   .btn-steel:hover{ background:#4A85E8; border-color:#4A85E8; }
+  .view-header-actions{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .btn-ghost{ background:transparent; border-color:var(--hairline); color:var(--fog-300); font-weight:600; }
+  .btn-ghost:hover{ background:var(--panel-700); color:var(--paper-050); }
+  .btn-ghost:disabled{ opacity:0.55; cursor:default; }
+  .refresh-icon{ display:inline-block; }
+  .btn-ghost.is-refreshing .refresh-icon{ animation:refreshSpin 0.7s linear infinite; }
+  @keyframes refreshSpin{ to{ transform:rotate(360deg); } }
 
   .status-select{
     background:var(--panel-800); border:1px solid var(--hairline); color:var(--paper-050);
@@ -1603,7 +1610,10 @@ function renderDashboardView(){
   main.innerHTML =
     '<div class="view-header">' +
       '<div><div class="view-title">Active Trips</div><div class="view-subtitle" id="dashboardSubtitle">' + allActiveTrips.length + ' active trip' + (allActiveTrips.length === 1 ? '' : 's') + '</div></div>' +
-      '<button type="button" class="btn btn-primary" id="newTripBtn">+ Create new trip</button>' +
+      '<div class="view-header-actions">' +
+        '<button type="button" class="btn btn-ghost" id="refreshBoardBtn" title="Refresh from server" aria-label="Refresh trips"><span class="refresh-icon" aria-hidden="true">\u21BB</span> Refresh</button>' +
+        '<button type="button" class="btn btn-primary" id="newTripBtn">+ Create new trip</button>' +
+      '</div>' +
     '</div>' +
     '<input class="search" id="dashboardSearchInput" placeholder="Search missions by route, airport, trip #..." style="width:100%; max-width:420px; margin-bottom:18px;" value="' + escapeHtml(state.dashboardFilter) + '" />' +
     legStatusLegendHTML() +
@@ -1622,6 +1632,29 @@ function renderDashboardView(){
       leg.legNumber = '1';
       state.legs.unshift(leg);
       openLegEditor(leg.id);
+    });
+  }
+  const refreshBoardBtn = document.getElementById('refreshBoardBtn');
+  if(refreshBoardBtn){
+    refreshBoardBtn.addEventListener('click', async () => {
+      if(refreshBoardBtn.disabled) return;
+      refreshBoardBtn.disabled = true;
+      refreshBoardBtn.classList.add('is-refreshing');
+      try{
+        // Quietly persist any leg currently being edited before we pull fresh data,
+        // so an in-progress edit is never lost to the reload.
+        autoSaveIfEditing();
+        // let the in-flight autosave settle before re-fetching
+        await new Promise(r => setTimeout(r, 120));
+        await loadLegs();
+        showToast('Trips refreshed');
+      }catch(e){
+        console.error('refresh failed', e);
+        showToast('Refresh failed');
+      }finally{
+        refreshBoardBtn.disabled = false;
+        refreshBoardBtn.classList.remove('is-refreshing');
+      }
     });
   }
   wireCardClicks('dashboard');
