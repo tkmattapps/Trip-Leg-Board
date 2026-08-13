@@ -76,8 +76,10 @@
   }
   .home-btn-row{ display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
   @media (max-width: 700px){
-    /* Mobile: right-justify the leg bubble group under the header, Status stays top-left */
-    .leg-nav-strip .leg-nav-group{ margin-left:auto; justify-content:flex-end; }
+    /* Mobile: stack the checklist strip - Legs row on top (right-justified), Status row below (left) */
+    .leg-nav-strip:not(.leg-nav-strip-end){ flex-direction:column; align-items:stretch; }
+    .leg-nav-strip:not(.leg-nav-strip-end) .leg-nav-group{ order:1; align-self:flex-end; justify-content:flex-end; }
+    .leg-nav-strip:not(.leg-nav-strip-end) > div:not(.leg-nav-group){ order:2; align-self:flex-start; }
 
     /* Top padding clears the notch/status bar AND leaves room for the watermark,
        which extends above the wordmark. JS sizes/centres the watermark itself. */
