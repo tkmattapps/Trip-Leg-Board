@@ -2299,11 +2299,6 @@ var CRITICAL_TEXT_FIELDS = [
   'depAirportId','depEtdLocal','depEtdZ','depHours','depAgent',
   'arrAirportId','arrEtdLocal','arrEtdZ','arrHours','arrAgent'
 ];
-// Slot is a Y/N toggle: "attention" = set to Y but slot time/number still blank.
-var CRITICAL_SLOT_FIELDS = [
-  { toggle: 'depSlotReqd', time: 'depSlotTimeNumber' },
-  { toggle: 'arrSlotReqd', time: 'arrSlotTimeNumber' }
-];
 
 function setCritLabel(inputId, needsAttn){
   var el = document.getElementById(inputId);
@@ -2317,20 +2312,17 @@ function setCritLabel(inputId, needsAttn){
   else label.classList.remove('crit-attn');
 }
 
+// A render-scoped hook that colors toggle-linked fields; set inside renderMain
+// so it can reuse the SAME gate logic that drives the red Y/N warnings.
+var criticalToggleHook = null;
+
 function evaluateCriticalFields(){
   CRITICAL_TEXT_FIELDS.forEach(function(id){
     var el = document.getElementById(id);
     var empty = !el || !String(el.value || '').trim();
     setCritLabel(id, empty);
   });
-  CRITICAL_SLOT_FIELDS.forEach(function(pair){
-    var toggle = document.getElementById(pair.toggle);
-    var v = toggle ? toggle.value : '';
-    var timeEl = document.getElementById(pair.time);
-    var timeEmpty = !timeEl || !String(timeEl.value || '').trim();
-    // amber only when slot is required (Y) AND the time/number is still blank
-    setCritLabel(pair.time, v === 'Y' && timeEmpty);
-  });
+  if(typeof criticalToggleHook === 'function') criticalToggleHook();
 }
 
 function renderMain(){
@@ -2684,6 +2676,35 @@ function renderMain(){
   Object.keys(gatedFieldsMap).forEach(reqdId => {
     gatedFieldsMap[reqdId].forEach(fid => { reverseGateMap[fid] = reqdId; });
   });
+
+  // Toggle-driven amber: mirror the red Y/N warning exactly. When a toggle is in
+  // its warning state (set to Y but a required linked field is still empty), color
+  // that linked field's header amber. Non-warning / inverted toggles clear amber.
+  criticalToggleHook = function(){
+    allYNIds.forEach(function(reqdId){
+      const hidden = document.getElementById(reqdId);
+      const linked = gatedFieldsMap[reqdId] || [];
+      const invert = invertColorIds.includes(reqdId);
+      const v = hidden ? hidden.value : '';
+      let warn = false;
+      if(v === 'Y' && !invert){
+        if(customGateChecks[reqdId]){
+          warn = !customGateChecks[reqdId]();
+        } else if(linked.length){
+          warn = !linked.every(function(fid){
+            const el = document.getElementById(fid);
+            return el && el.value.trim() !== '';
+          });
+        }
+      }
+      // color each linked field amber only if it's the empty one causing the warning
+      linked.forEach(function(fid){
+        const el = document.getElementById(fid);
+        const emptyField = !el || el.value.trim() === '';
+        setCritLabel(fid, warn && emptyField);
+      });
+    });
+  };
 
   function updateYNColor(targetId){
     const hiddenInput = document.getElementById(targetId);
