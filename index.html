@@ -3307,25 +3307,30 @@ function renderMain(){
     syncReadyOptionAvailability();
   }
 
-  function evaluateFieldSection(key, fieldIds){
+  function evaluateFieldSection(key, fieldIds, allowRevoke){
     if(manualOverrideKeys.has(key)) return;
     const allFilled = fieldIds.every(fid => {
       const el = document.getElementById(fid);
       return el && el.value.trim() !== '';
     });
+    // On a passive render (allowRevoke false) we may auto-complete a section but
+    // must never silently un-complete one - that only happens on a real edit.
+    if(!allFilled && allowRevoke === false) return;
     setSectionCompleteState(key, allFilled);
   }
 
-  function evaluateToggleSection(key, toggleId){
+  function evaluateToggleSection(key, toggleId, allowRevoke){
     if(manualOverrideKeys.has(key)) return;
     const hiddenInput = document.getElementById(toggleId);
     const isYes = !!hiddenInput && hiddenInput.value === 'Y';
+    if(!isYes && allowRevoke === false) return;
     setSectionCompleteState(key, isYes);
   }
 
   function runAllAutoCompleteChecks(){
-    Object.keys(autoCompleteFieldSections).forEach(key => evaluateFieldSection(key, autoCompleteFieldSections[key]));
-    Object.keys(autoCompleteToggleSections).forEach(key => evaluateToggleSection(key, autoCompleteToggleSections[key]));
+    // Passive on-render pass: may auto-complete, must NOT revoke existing completions.
+    Object.keys(autoCompleteFieldSections).forEach(key => evaluateFieldSection(key, autoCompleteFieldSections[key], false));
+    Object.keys(autoCompleteToggleSections).forEach(key => evaluateToggleSection(key, autoCompleteToggleSections[key], false));
   }
 
   Object.keys(autoCompleteFieldSections).forEach(key => {
