@@ -3035,7 +3035,8 @@ function renderMain(){
         }
       }
       syncReadyOptionAvailability();
-      collectAndSave(leg.id, {silent:true});
+      refreshCurrentLegBubble();
+      collectAndSave(leg.id, {silent:true, skipRender:true});
     });
   });
 
@@ -3140,6 +3141,14 @@ function renderMain(){
     revalidateSectionComplete(yBtn.closest('.section'));
   }
 
+  function refreshCurrentLegBubble(){
+    const sel = document.getElementById('statusSelect');
+    const dot = document.querySelector('#mainPanel .leg-nav-strip .leg-status-dot-current');
+    if(!sel || !dot) return;
+    dot.classList.remove('leg-status-planning','leg-status-ready','leg-status-flown');
+    dot.classList.add('leg-status-' + sel.value);
+  }
+
   function revalidateSectionComplete(sectionEl){
     if(!sectionEl) return;
     const cb = sectionEl.querySelector('.section-complete-checkbox');
@@ -3150,6 +3159,7 @@ function renderMain(){
       if(leg.sectionComplete) leg.sectionComplete[key] = false;
       const label = cb.closest('.section-complete-toggle');
       if(label) label.classList.remove('is-complete');
+      refreshCurrentLegBubble();
       collectAndSave(leg.id, {silent:true, skipRender:true});
     }
   }
