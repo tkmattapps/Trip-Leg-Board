@@ -3020,8 +3020,8 @@ function renderTripDetailView(){
       '</div>' +
     '</div>' +
     tdLegNavStripHTML +
-    tripDocsBlockHTML(trip) +
-    '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') + '</div>';
+    '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') + '</div>' +
+    tripDocsBlockHTML(trip);
 
   document.getElementById('tripDetailBackBtn').addEventListener('click', () => {
     goToListView(state.tripDetailOrigin === 'history' ? 'history' : 'dashboard');
