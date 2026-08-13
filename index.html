@@ -440,6 +440,11 @@
   /* paperclip badge on leg tiles */
   .leg-attach-badge{ display:inline-flex; align-items:center; gap:2px; font-size:11px; color:var(--fog-300, #B8C4D9); margin-left:6px; vertical-align:middle; }
   .leg-attach-badge svg{ width:12px; height:12px; }
+  /* header paperclip jump-to-documents */
+  .doc-jump-btn{ margin-right:auto; display:inline-flex; align-items:center; gap:4px; background:transparent; border:1px solid var(--fog-500); color:var(--fog-300, #B8C4D9); border-radius:16px; padding:5px 10px; cursor:pointer; }
+  .doc-jump-btn:hover{ border-color:var(--amber-500); color:var(--amber-500); }
+  .doc-jump-btn .doc-icon{ width:16px; height:16px; }
+  .doc-jump-count{ font-size:12px; font-weight:700; }
   .leg-status-hint{ opacity:0.55; font-size:9px; }
   .status-popover{ position:absolute; z-index:1000; background:var(--panel-800, #16233A); border:1px solid var(--hairline); border-radius:10px; padding:6px; min-width:150px; box-shadow:0 8px 24px rgba(0,0,0,0.4); display:flex; flex-direction:column; gap:2px; }
   .status-popover-item{ display:flex; align-items:center; gap:10px; background:transparent; border:none; color:var(--fog-300); font-family:'Inter',sans-serif; font-size:13px; padding:9px 12px; border-radius:7px; cursor:pointer; text-align:left; width:100%; }
@@ -969,6 +974,15 @@ function docRowHTML(row, opts){
 // action buttons can find their storage_path without another fetch.
 let _docRowCache = {};
 
+
+// Update the header paperclip count for a leg (plain clip when zero).
+function setDocJumpCount(legId, n){
+  document.querySelectorAll('[data-doc-jump-count="' + legId + '"]').forEach(function(el){
+    el.textContent = (n || 0);
+    el.style.display = '';
+  });
+}
+
 async function hydrateLegAttachments(leg){
   const legList = document.getElementById('docLegList');
   const tripWrap = document.getElementById('docTripWrap');
@@ -981,6 +995,7 @@ async function hydrateLegAttachments(leg){
   legList.innerHTML = legRows.length
     ? legRows.map(function(r){ return docRowHTML(r); }).join('')
     : '<div class="doc-empty">No documents on this leg yet.</div>';
+  setDocJumpCount(leg.id, legRows.length);
   // trip-level documents surfaced below (view/download only here; managed at trip level)
   if(tripWrap){
     const tripId = leg.tripId || leg.trip_id || null;
@@ -1005,6 +1020,13 @@ function wireLegAttachments(leg){
   if(!addBtn || !fileInput || !section) return;
 
   addBtn.addEventListener('click', function(){ fileInput.click(); });
+
+  const jumpBtn = document.getElementById('docJumpBtn');
+  if(jumpBtn){
+    jumpBtn.addEventListener('click', function(){
+      if(section && section.scrollIntoView) section.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  }
 
   fileInput.addEventListener('change', async function(){
     const file = fileInput.files && fileInput.files[0];
@@ -1081,6 +1103,7 @@ async function refreshLegAttachBadge(legId){
       if(n > 0){ el.innerHTML = LEG_PAPERCLIP_BADGE_SVG + n; el.style.display = ''; }
       else { el.innerHTML = ''; el.style.display = 'none'; }
     });
+    setDocJumpCount(legId, n);
   } catch(e){ /* non-fatal */ }
 }
 
@@ -3118,7 +3141,7 @@ function renderMain(){
       '<option value="flown">Flown</option>' +
     '</select>';
   const legNavStripWithStatusHTML =
-    '<div class="leg-nav-strip leg-nav-strip-checklist">' + statusGroupHTML + legNavGroupHTML + '</div>';
+    '<div class="leg-nav-strip leg-nav-strip-checklist">' + statusGroupHTML + '<button type="button" class="doc-jump-btn" id="docJumpBtn" title="Jump to documents" aria-label="Jump to documents">' + DOC_PAPERCLIP_SVG + '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(leg.id) + '" style="display:none"></span></button>' + legNavGroupHTML + '</div>';
 
   main.innerHTML =
     '<button type="button" class="back-link" id="backToDashboardBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
