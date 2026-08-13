@@ -1266,20 +1266,35 @@ function renderHomeView(){
   document.getElementById('homeHistoryBtn').addEventListener('click', () => goToListView('history'));
   document.getElementById('homeLogoutBtn').addEventListener('click', handleLogout);
   document.getElementById('homeImportBtn').addEventListener('click', () => goToListView('importPreview'));
-  const runStretch = () => requestAnimationFrame(() => requestAnimationFrame(stretchHomeSubtitle));
+  const homeScope = main.querySelector('.home-view') || main;
+  const runStretch = () => requestAnimationFrame(() => requestAnimationFrame(() => stretchHomeSubtitle(homeScope)));
   if(document.fonts && document.fonts.ready){
     document.fonts.ready.then(runStretch).catch(runStretch);
   }
   runStretch();
 }
 
-function stretchHomeSubtitle(){
-  const brand = document.querySelector('.home-brand-mark');
-  const subtitle = document.querySelector('.home-subtitle');
+// Find the home view that is actually on screen (the login overlay and the
+// authenticated home can both exist in the DOM; one is display:none). Falls
+// back to the first .home-view so an explicit scope always wins.
+function visibleHomeScope(){
+  const views = Array.from(document.querySelectorAll('.home-view'));
+  for(const v of views){
+    if(v.offsetParent !== null || (v.getClientRects && v.getClientRects().length > 0)){
+      return v;
+    }
+  }
+  return views[0] || document;
+}
+function stretchHomeSubtitle(scope){
+  const root = scope || visibleHomeScope();
+  const brand = root.querySelector('.home-brand-mark');
+  const subtitle = root.querySelector('.home-subtitle');
   if(!brand || !subtitle) return;
   subtitle.style.letterSpacing = 'normal';
   subtitle.style.wordSpacing = 'normal';
   const targetWidth = brand.getBoundingClientRect().width;
+  if(!targetWidth) return; // element not laid out yet; skip rather than emit garbage
   const text = subtitle.textContent || '';
   const gaps = text.length > 1 ? text.length - 1 : 1;
   const naturalWidth = subtitle.getBoundingClientRect().width;
@@ -3915,6 +3930,14 @@ function showLoginOverlay(){
   const overlay = document.getElementById('loginOverlay');
   if(overlay) overlay.style.display = 'flex';
   document.body.classList.remove('authed');
+  // Stretch "Preflight Readiness" to span the Beacon wordmark, same as the
+  // authenticated home. Runs after layout + font load so the width is accurate.
+  // Scoped to the overlay so it targets this screen's subtitle, not the other home's.
+  const runStretch = () => requestAnimationFrame(() => requestAnimationFrame(() => stretchHomeSubtitle(overlay || undefined)));
+  if(document.fonts && document.fonts.ready){
+    document.fonts.ready.then(runStretch).catch(runStretch);
+  }
+  runStretch();
 }
 
 function hideLoginOverlay(){
