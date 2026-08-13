@@ -3159,6 +3159,12 @@ function renderMain(){
       if(leg.sectionComplete) leg.sectionComplete[key] = false;
       const label = cb.closest('.section-complete-toggle');
       if(label) label.classList.remove('is-complete');
+      const statusSelect = document.getElementById('statusSelect');
+      if(statusSelect && statusSelect.value === 'ready'){
+        statusSelect.value = 'planning';
+        statusSelect.classList.remove('status-planning', 'status-ready', 'status-flown');
+        statusSelect.classList.add('status-planning');
+      }
       refreshCurrentLegBubble();
       collectAndSave(leg.id, {silent:true, skipRender:true});
     }
