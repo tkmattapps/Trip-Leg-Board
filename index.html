@@ -3929,12 +3929,23 @@ function collectOverflightRows(){
   return rows;
 }
 
+function legHasContent(leg){
+  if(!leg) return false;
+  const s = v => (v == null ? '' : String(v)).trim() !== '';
+  if(s(leg.tripNumber) || s(leg.cityPair) || s(leg.date)) return true;
+  if(leg.dep && (s(leg.dep.airportId) || s(leg.dep.agent) || s(leg.dep.etdLocal) || s(leg.dep.etdZ) || s(leg.dep.fuelVendor))) return true;
+  if(leg.arr && (s(leg.arr.airportId) || s(leg.arr.agent) || s(leg.arr.etaLocal) || s(leg.arr.etaZ) || s(leg.arr.fuelVendor))) return true;
+  if(s(leg.trim) || s(leg.levelOff) || s(leg.minBRF) || s(leg.ete) || s(leg.maxShear) || s(leg.enrouteNotes) || s(leg.paxTotalNotes)) return true;
+  return false;
+}
+
 async function collectAndSave(id, opts){
   opts = opts || {};
   const leg = state.legs.find(l => l.id === id);
   if(!leg) return;
-  // dep/arr/enroute notes are per-user now: persist them to leg_notes, not the blob.
-  await flushLegNotes(id);
+  // Read all editor fields into the leg first, THEN decide whether it's worth persisting.
+  // This prevents a blank leg that was only viewed (never filled in) from being written
+  // to the database on navigation and showing up as a phantom empty trip.
   leg.status = val('statusSelect');
   leg.tripNumber = val('tripNumber');
   leg.legNumber = val('legNumber');
@@ -3975,6 +3986,17 @@ async function collectAndSave(id, opts){
   leg.nextLegDay = val('nextLegDay');
   leg.nextLegEtd = val('nextLegEtd');
   leg.nextLegEta = val('nextLegEta');
+
+  // Skip persisting a leg with no meaningful content (e.g. one that was only
+  // viewed on navigation). Also skip flushing its notes so we don't fire empty
+  // deletes against leg_notes. Real legs (any of the fields above) save normally.
+  if(!legHasContent(leg)){
+    if(!opts.silent) showToast('Nothing to save yet');
+    return;
+  }
+
+  // dep/arr/enroute notes are per-user: persist them to leg_notes, not the blob.
+  await flushLegNotes(id);
 
   const ok = await saveLeg(leg);
   if(ok){
