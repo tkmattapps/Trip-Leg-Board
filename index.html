@@ -70,20 +70,26 @@
   .home-subtitle{ font-size:16px; color:var(--fog-300); margin-top:12px; position:relative; z-index:1; }
   .home-watermark-img{ position:absolute; top:50%; left:50%; width:510px; height:510px; transform:translate(-50%, calc(-50% + 69.5px)); opacity:0.08; pointer-events:none; z-index:0; }
   @media (min-width: 701px){
-    .home-watermark-img{ transform:translate(calc(-50% + 40px), calc(-50% + 109.5px)); }
     .home-brand-mark{ transform:translate(40px, 40px); }
     .home-subtitle{ transform:translate(40px, 40px); }
     #loginEmail, #loginPassword{ letter-spacing:0.5px; }
   }
   .home-btn-row{ display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
   @media (max-width: 700px){
-    .home-view{ flex-direction:column; gap:145px; align-items:center; justify-content:flex-start; min-height:auto; margin-top:110px; }
-    #loginOverlay.home-view{ gap:0px; margin-top:56px; }
+    /* Top padding clears the notch/status bar AND leaves room for the watermark,
+       which extends above the wordmark. JS sizes/centres the watermark itself. */
+    .home-view{ flex-direction:column; gap:56px; align-items:center; justify-content:flex-start; min-height:auto; margin-top:0; padding-top:calc(env(safe-area-inset-top, 0px) + 132px); overflow-x:hidden; }
+    #loginOverlay.home-view{ gap:28px; margin-top:0; padding-top:calc(env(safe-area-inset-top, 0px) + 132px); overflow-x:hidden !important; }
     .home-left-col{ align-items:center; text-align:center; padding-left:0; margin-top:0; }
     .home-right-col{ flex-direction:column; margin-top:0; align-items:center; padding-right:0; }
-    .home-brand-mark{ font-size:64px; transform:translate(0, 43px); }
-    .home-subtitle{ transform:translate(0, 43px); }
-    .home-watermark-img{ width:300px; height:300px; transform:translate(-50%, calc(-50% + 100px)); }
+    .home-brand-mark{ font-size:64px; }
+    .home-watermark-img{ width:371px; height:371px; }
+    .home-btn{ padding:16px 24px; min-width:0; width:min(300px, 82vw); }
+    .home-btn-title{ font-size:18px; }
+    /* Compact the login credentials box so it fits with the taller top clearance */
+    #loginOverlay .home-btn{ padding:14px 20px; }
+    #loginOverlay #loginEmail, #loginOverlay #loginPassword{ padding:10px 14px !important; }
+    #loginOverlay #loginSubmitBtn{ font-size:18px !important; margin-top:12px !important; }
   }
   .home-btn{
     background:var(--panel-800); border:1px solid var(--hairline); color:var(--paper-050);
@@ -1267,11 +1273,7 @@ function renderHomeView(){
   document.getElementById('homeLogoutBtn').addEventListener('click', handleLogout);
   document.getElementById('homeImportBtn').addEventListener('click', () => goToListView('importPreview'));
   const homeScope = main.querySelector('.home-view') || main;
-  const runStretch = () => requestAnimationFrame(() => requestAnimationFrame(() => stretchHomeSubtitle(homeScope)));
-  if(document.fonts && document.fonts.ready){
-    document.fonts.ready.then(runStretch).catch(runStretch);
-  }
-  runStretch();
+  watchHomeLogo(homeScope);
 }
 
 // Find the home view that is actually on screen (the login overlay and the
@@ -1286,26 +1288,74 @@ function visibleHomeScope(){
   }
   return views[0] || document;
 }
-function stretchHomeSubtitle(scope){
+// The home logo is composited live from three layers: a faint watermark, the
+// "Beacon" wordmark, and the letter-spaced subtitle. Rather than hand-tuning
+// offsets per breakpoint (which is what used to drift), every proportion is
+// DERIVED from measurement, so the logo matches the exported PNG at any font
+// size or screen width and self-corrects on font load / resize / breakpoint.
+const HOME_WM_RATIO = 510 / 88;   // watermark px : wordmark font-size px (from the design)
+
+function layoutHomeLogo(scope){
   const root = scope || visibleHomeScope();
-  const brand = root.querySelector('.home-brand-mark');
+  if(!root || !root.querySelector) return;
+  const wrap     = root.querySelector('.home-brand-wrap');
+  const brand    = root.querySelector('.home-brand-mark');
   const subtitle = root.querySelector('.home-subtitle');
+  const wm       = root.querySelector('.home-watermark-img');
   if(!brand || !subtitle) return;
+
+  // 1) Stretch "Preflight Readiness" to span the "Beacon" wordmark.
   subtitle.style.letterSpacing = 'normal';
-  subtitle.style.wordSpacing = 'normal';
+  subtitle.style.wordSpacing   = 'normal';
   const targetWidth = brand.getBoundingClientRect().width;
-  if(!targetWidth) return; // element not laid out yet; skip rather than emit garbage
+  if(!targetWidth) return;                       // not laid out yet; a later pass handles it
   const text = subtitle.textContent || '';
   const gaps = text.length > 1 ? text.length - 1 : 1;
   const naturalWidth = subtitle.getBoundingClientRect().width;
-  const extra = targetWidth - naturalWidth;
-  const letterSpacingPx = extra / gaps;
-  subtitle.style.letterSpacing = letterSpacingPx + 'px';
+  subtitle.style.letterSpacing = ((targetWidth - naturalWidth) / gaps) + 'px';
+
+  // 2) Size the watermark proportionally, then center it on the subtitle.
+  //    getBoundingClientRect() already includes any breakpoint transforms, so
+  //    the measured offset is correct without knowing which breakpoint we're in.
+  if(wm && wrap){
+    const fs = parseFloat(getComputedStyle(brand).fontSize) || 88;
+    // match the PNG ratio, but never let it force horizontal scroll on a phone
+    const size = Math.round(Math.min(fs * HOME_WM_RATIO, window.innerWidth * 0.92));
+    wm.style.width  = size + 'px';
+    wm.style.height = size + 'px';
+    const wrapRect  = wrap.getBoundingClientRect();
+    const brandRect = brand.getBoundingClientRect();
+    const subRect   = subtitle.getBoundingClientRect();
+    const dx = (brandRect.left + brandRect.width / 2) - (wrapRect.left + wrapRect.width / 2);
+    const dy = (subRect.top    + subRect.height / 2)  - (wrapRect.top  + wrapRect.height / 2);
+    wm.style.transform = 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px))';
+  }
 }
+
+// Back-compat: older callers referenced stretchHomeSubtitle.
+function stretchHomeSubtitle(scope){ layoutHomeLogo(scope); }
+
+// Keep the logo correct through the async font swap, resizes and breakpoint
+// changes. Observing the wordmark means any size change re-triggers layout.
+function watchHomeLogo(scope){
+  const root = scope || visibleHomeScope();
+  if(!root || !root.querySelector) return;
+  const brand = root.querySelector('.home-brand-mark');
+  const run = () => layoutHomeLogo(root);
+  run();
+  requestAnimationFrame(() => requestAnimationFrame(run));
+  if(document.fonts && document.fonts.ready){ document.fonts.ready.then(run).catch(run); }
+  if(brand && window.ResizeObserver && !brand.__homeLogoRO){
+    const ro = new ResizeObserver(run);
+    ro.observe(brand);
+    brand.__homeLogoRO = ro;   // guard against re-observing the same element
+  }
+}
+
 if(!window.__homeSubtitleResizeHooked){
   window.__homeSubtitleResizeHooked = true;
   window.addEventListener('resize', () => {
-    if(document.querySelector('.home-view')) stretchHomeSubtitle();
+    if(document.querySelector('.home-view')) layoutHomeLogo();
   });
 }
 
@@ -3930,14 +3980,9 @@ function showLoginOverlay(){
   const overlay = document.getElementById('loginOverlay');
   if(overlay) overlay.style.display = 'flex';
   document.body.classList.remove('authed');
-  // Stretch "Preflight Readiness" to span the Beacon wordmark, same as the
-  // authenticated home. Runs after layout + font load so the width is accurate.
-  // Scoped to the overlay so it targets this screen's subtitle, not the other home's.
-  const runStretch = () => requestAnimationFrame(() => requestAnimationFrame(() => stretchHomeSubtitle(overlay || undefined)));
-  if(document.fonts && document.fonts.ready){
-    document.fonts.ready.then(runStretch).catch(runStretch);
-  }
-  runStretch();
+  // Lay out + keep the login logo correct, scoped to this overlay so it targets
+  // this screen's subtitle rather than the authenticated home's.
+  watchHomeLogo(overlay || undefined);
 }
 
 function hideLoginOverlay(){
