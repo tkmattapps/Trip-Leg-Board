@@ -3150,7 +3150,7 @@ function renderMain(){
       if(leg.sectionComplete) leg.sectionComplete[key] = false;
       const label = cb.closest('.section-complete-toggle');
       if(label) label.classList.remove('is-complete');
-      collectAndSave(leg.id, {silent:true});
+      collectAndSave(leg.id, {silent:true, skipRender:true});
     }
   }
 
