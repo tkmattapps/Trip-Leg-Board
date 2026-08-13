@@ -2504,6 +2504,18 @@ function renderTripDetailView(){
     return;
   }
   const backLabel = state.tripDetailOrigin === 'history' ? 'Flown Trips' : 'Active Trips';
+  // Leg-nav strip mirroring the Leg Checklist: clickable status bubbles + Add leg.
+  // No 'current' highlight here (we're not inside a single leg) and no Status dropdown.
+  const tdLegNavDots = trip.legs.map(l =>
+    '<span class="leg-status-dot leg-status-' + escapeHtml(l.status) + ' leg-status-dot-clickable" data-leg-id="' + escapeHtml(l.id) + '">' + escapeHtml(l.legNumber || '?') + '</span>'
+  ).join('');
+  const tdLegNavStripHTML =
+    '<div class="leg-nav-strip">' +
+      '<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
+        '<span class="leg-status-strip-label">Legs:</span>' + tdLegNavDots +
+        '<button type="button" class="leg-nav-add-btn" id="addLegToTripBtn">+ Add leg</button>' +
+      '</div>' +
+    '</div>';
   main.innerHTML =
     '<button type="button" class="back-link" id="tripDetailBackBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
     '<div class="view-header">' +
@@ -2514,6 +2526,7 @@ function renderTripDetailView(){
         '<button type="button" class="btn btn-primary" id="addLegToTripBtn">+ Add leg to this trip</button>' +
       '</div>' +
     '</div>' +
+    tdLegNavStripHTML +
     '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') + '</div>';
 
   document.getElementById('tripDetailBackBtn').addEventListener('click', () => {
@@ -2531,6 +2544,12 @@ function renderTripDetailView(){
   document.getElementById('deleteTripBtn').addEventListener('click', () => handleDeleteTrip(trip.tripNumber));
   document.querySelectorAll('.dash-card').forEach(card => {
     card.addEventListener('click', () => openLegEditor(card.dataset.id));
+  });
+  document.querySelectorAll('#mainPanel .leg-nav-strip .leg-status-dot-clickable').forEach(dot => {
+    dot.addEventListener('click', () => {
+      const targetId = dot.getAttribute('data-leg-id');
+      if(targetId) openLegEditor(targetId);
+    });
   });
 }
 
@@ -2705,7 +2724,6 @@ function renderMain(){
       '<div class="main-actions">' +
         '<button type="button" class="btn btn-ghost refresh-btn" data-refresh="1" title="Refresh from server" aria-label="Refresh"><span class="refresh-icon" aria-hidden="true">\u21BB</span> Refresh</button>' +
         '<button class="btn btn-danger" id="deleteBtn">Delete leg</button>' +
-        '<button class="btn btn-primary" id="saveBtn">Save changes</button>' +
       '</div>' +
     '</div>' +
     legNavStripWithStatusHTML +
@@ -3276,7 +3294,6 @@ function renderMain(){
 
   runAllAutoCompleteChecks();
 
-  document.getElementById('saveBtn').addEventListener('click', () => collectAndSave(leg.id));
   document.getElementById('saveBtnBottom').addEventListener('click', () => collectAndSave(leg.id));
   document.getElementById('deleteBtn').addEventListener('click', () => handleDelete(leg.id));
   document.querySelectorAll('#mainPanel .leg-nav-strip .leg-status-dot-clickable').forEach(dot => {
