@@ -394,6 +394,7 @@
   .legend-item{ display:flex; align-items:center; gap:6px; font-size:11px; color:var(--fog-500); font-family:'JetBrains Mono',monospace; text-transform:uppercase; letter-spacing:0.5px; }
   .leg-status-strip{ display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap; align-items:center; }
   .leg-nav-strip{ display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+  .leg-nav-strip-end{ justify-content:flex-end; }
   .leg-nav-add-btn{
     background:var(--panel-800); border:1px solid var(--hairline); color:var(--fog-300);
     font-family:'Inter',sans-serif; font-size:12px; font-weight:500;
@@ -2510,7 +2511,7 @@ function renderTripDetailView(){
     '<span class="leg-status-dot leg-status-' + escapeHtml(l.status) + ' leg-status-dot-clickable" data-leg-id="' + escapeHtml(l.id) + '">' + escapeHtml(l.legNumber || '?') + '</span>'
   ).join('');
   const tdLegNavStripHTML =
-    '<div class="leg-nav-strip">' +
+    '<div class="leg-nav-strip leg-nav-strip-end">' +
       '<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
         '<span class="leg-status-strip-label">Legs:</span>' + tdLegNavDots +
         '<button type="button" class="leg-nav-add-btn" id="addLegToTripBtn">+ Add leg</button>' +
@@ -2523,7 +2524,6 @@ function renderTripDetailView(){
       '<div class="main-actions">' +
         '<button type="button" class="btn btn-ghost refresh-btn" data-refresh="1" title="Refresh from server" aria-label="Refresh"><span class="refresh-icon" aria-hidden="true">\u21BB</span> Refresh</button>' +
         '<button type="button" class="btn btn-danger" id="deleteTripBtn">Delete trip</button>' +
-        '<button type="button" class="btn btn-primary" id="addLegToTripBtn">+ Add leg to this trip</button>' +
       '</div>' +
     '</div>' +
     tdLegNavStripHTML +
@@ -2532,14 +2532,17 @@ function renderTripDetailView(){
   document.getElementById('tripDetailBackBtn').addEventListener('click', () => {
     goToListView(state.tripDetailOrigin === 'history' ? 'history' : 'dashboard');
   });
-  document.getElementById('addLegToTripBtn').addEventListener('click', () => {
+  document.getElementById('addLegToTripBtn').addEventListener('click', async () => {
     autoSaveIfEditing();
     const newLeg = blankLeg();
     newLeg.tripNumber = trip.tripNumber;
     const maxLegNum = Math.max(0, ...trip.legs.map(l => parseInt(l.legNumber, 10) || 0));
     newLeg.legNumber = String(maxLegNum + 1);
     state.legs.unshift(newLeg);
-    openLegEditor(newLeg.id);
+    // Stay on the Trip Legs page: persist the new leg so it survives refresh /
+    // reaches other devices, then re-render this view in place (new bubble appears).
+    await saveLeg(newLeg);
+    renderMain();
   });
   document.getElementById('deleteTripBtn').addEventListener('click', () => handleDeleteTrip(trip.tripNumber));
   document.querySelectorAll('.dash-card').forEach(card => {
