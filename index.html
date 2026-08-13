@@ -1082,12 +1082,29 @@ function showConfirm(message, opts){
     const okBtn = document.getElementById('confirmOkBtn');
     const cancelBtn = document.getElementById('confirmCancelBtn');
     msgEl.textContent = message;
+    const titleEl = overlay.querySelector('.feedback-modal-title');
     cancelBtn.style.display = opts.alertOnly ? 'none' : '';
+    if(opts.alertOnly){
+      if(titleEl) titleEl.textContent = opts.title || 'Heads up';
+      okBtn.textContent = opts.okLabel || 'OK';
+      okBtn.classList.remove('btn-danger');
+      okBtn.style.borderColor = '';
+    } else {
+      if(titleEl) titleEl.textContent = opts.title || 'Please confirm';
+      okBtn.textContent = opts.okLabel || 'Confirm';
+      okBtn.classList.add('btn-danger');
+      okBtn.style.borderColor = 'var(--alert-600)';
+    }
     overlay.classList.add('open');
 
     function cleanup(result){
       overlay.classList.remove('open');
       cancelBtn.style.display = '';
+      okBtn.textContent = 'Confirm';
+      okBtn.classList.add('btn-danger');
+      okBtn.style.borderColor = 'var(--alert-600)';
+      const t = overlay.querySelector('.feedback-modal-title');
+      if(t) t.textContent = 'Please confirm';
       okBtn.removeEventListener('click', onOk);
       cancelBtn.removeEventListener('click', onCancel);
       overlay.removeEventListener('click', onBackdrop);
@@ -2573,6 +2590,13 @@ function renderTripDetailView(){
   });
 }
 
+function currentLegAllSectionsComplete(){
+  const SECTION_KEYS = ['overview','airports','performance','enroute','permits','dispatch','pax','crew','nextLeg'];
+  const lg = (typeof state !== 'undefined' && state.legs) ? state.legs.find(l => l.id === state.activeId) : null;
+  if(!lg || !lg.sectionComplete) return false;
+  return SECTION_KEYS.every(k => !!lg.sectionComplete[k]);
+}
+
 function openStatusPopover(anchorEl){
   // Reuse the hidden #statusSelect as source of truth so all existing status
   // logic (ready-guard, applyStatusColor, collectAndSave) keeps working.
@@ -2592,6 +2616,11 @@ function openStatusPopover(anchorEl){
     item.className = 'status-popover-item' + (sel.value === st.v ? ' is-current' : '');
     item.innerHTML = '<span class="status-popover-dot" style="background:' + st.color + ';"></span>' + st.label;
     item.addEventListener('click', () => {
+      if(st.v === 'planning' && currentLegAllSectionsComplete()){
+        pop.remove();
+        showConfirm('This leg is fully complete, so it stays Ready. To move it back to Planning, uncheck the section you want to work on and the status will update automatically.', {alertOnly:true});
+        return;
+      }
       if(sel.value !== st.v){
         sel.value = st.v;
         sel.dispatchEvent(new Event('change'));
