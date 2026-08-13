@@ -417,6 +417,13 @@
   .leg-status-dot.leg-status-planning{ background:#F2A93B; }
   .leg-status-dot.leg-status-ready{ background:#3DBE6B; }
   .leg-status-dot.leg-status-flown{ background:#4A9DE0; }
+  .leg-status-dot-current{ box-shadow:0 0 0 2px var(--paper-050), 0 0 0 4px var(--amber-500); cursor:pointer; }
+  .leg-status-hint{ opacity:0.55; font-size:9px; }
+  .status-popover{ position:absolute; z-index:1000; background:var(--panel-800, #16233A); border:1px solid var(--hairline); border-radius:10px; padding:6px; min-width:150px; box-shadow:0 8px 24px rgba(0,0,0,0.4); display:flex; flex-direction:column; gap:2px; }
+  .status-popover-item{ display:flex; align-items:center; gap:10px; background:transparent; border:none; color:var(--fog-300); font-family:'Inter',sans-serif; font-size:13px; padding:9px 12px; border-radius:7px; cursor:pointer; text-align:left; width:100%; }
+  .status-popover-item:hover{ background:var(--panel-700, #1E2E48); color:var(--paper-050); }
+  .status-popover-item.is-current{ color:var(--paper-050); font-weight:600; }
+  .status-popover-dot{ width:12px; height:12px; border-radius:50%; flex-shrink:0; }
   .dash-card-route{ font-size:13px; color:var(--paper-050); margin-bottom:4px; }
   .dash-card-date{ font-size:11px; color:var(--fog-500); font-family:'JetBrains Mono',monospace; }
   .dash-card-pending{ font-size:11px; color:var(--alert-600); margin-top:8px; font-family:'JetBrains Mono',monospace; }
@@ -2554,11 +2561,62 @@ function renderTripDetailView(){
     card.addEventListener('click', () => openLegEditor(card.dataset.id));
   });
   document.querySelectorAll('#mainPanel .leg-nav-strip .leg-status-dot-clickable').forEach(dot => {
-    dot.addEventListener('click', () => {
+    dot.addEventListener('click', (ev) => {
+      if(dot.classList.contains('leg-status-dot-current')){
+        ev.stopPropagation();
+        openStatusPopover(dot);
+        return;
+      }
       const targetId = dot.getAttribute('data-leg-id');
       if(targetId) openLegEditor(targetId);
     });
   });
+}
+
+function openStatusPopover(anchorEl){
+  // Reuse the hidden #statusSelect as source of truth so all existing status
+  // logic (ready-guard, applyStatusColor, collectAndSave) keeps working.
+  const sel = document.getElementById('statusSelect');
+  if(!sel) return;
+  document.querySelectorAll('.status-popover').forEach(p => p.remove());
+  const STATUSES = [
+    { v:'planning', label:'Planning', color:'#F2A93B' },
+    { v:'ready',    label:'Ready',    color:'#3DBE6B' },
+    { v:'flown',    label:'Flown',    color:'#4A9DE0' }
+  ];
+  const pop = document.createElement('div');
+  pop.className = 'status-popover';
+  STATUSES.forEach(st => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'status-popover-item' + (sel.value === st.v ? ' is-current' : '');
+    item.innerHTML = '<span class="status-popover-dot" style="background:' + st.color + ';"></span>' + st.label;
+    item.addEventListener('click', () => {
+      if(sel.value !== st.v){
+        sel.value = st.v;
+        sel.dispatchEvent(new Event('change'));
+      }
+      pop.remove();
+      if(typeof renderMain === 'function') renderMain();
+    });
+    pop.appendChild(item);
+  });
+  document.body.appendChild(pop);
+  const r = anchorEl.getBoundingClientRect();
+  const top = r.bottom + window.scrollY + 6;
+  let left = r.left + window.scrollX;
+  const pw = pop.offsetWidth || 150;
+  if(left + pw > window.innerWidth - 8){ left = window.innerWidth - pw - 8; }
+  pop.style.top = top + 'px';
+  pop.style.left = Math.max(8, left) + 'px';
+  setTimeout(() => {
+    document.addEventListener('click', function closePop(e){
+      if(!pop.contains(e.target) && e.target !== anchorEl){
+        pop.remove();
+        document.removeEventListener('click', closePop);
+      }
+    });
+  }, 0);
 }
 
 async function handleDeleteTrip(tripNumber){
@@ -2712,14 +2770,12 @@ function renderMain(){
     '</div>' : '<div></div>';
 
   const statusGroupHTML =
-    '<div style="display:flex; align-items:center; gap:8px;">' +
-      '<span class="leg-status-strip-label">Status:</span>' +
-      '<select class="status-select" id="statusSelect">' +
-        '<option value="planning">Planning</option>' +
-        '<option value="ready">Ready</option>' +
-        '<option value="flown">Flown</option>' +
-      '</select>' +
-    '</div>';
+    '<select class="status-select" id="statusSelect" style="display:none;" aria-hidden="true">' +
+      '<option value="planning">Planning</option>' +
+      '<option value="ready">Ready</option>' +
+      '<option value="flown">Flown</option>' +
+    '</select>' +
+    '<span class="leg-status-strip-label leg-status-hint">Tap current leg to set status</span>';
   const legNavStripWithStatusHTML =
     '<div class="leg-nav-strip">' + statusGroupHTML + legNavGroupHTML + '</div>';
 
