@@ -1507,6 +1507,42 @@ function buildLegFromExtraction(extracted){
   return leg;
 }
 
+// Fuel/ramp is billed per FBO/airport, not per leg, so the same uplift belongs
+// on BOTH the arrival end where you land and take it AND the departure end of
+// the next leg where you leave with it. The trip sheet lists each fuel row once
+// (tied to an airport code); this pass mirrors that data onto every leg-end that
+// shares the same airport code, so e.g. a crew planning a Bradley departure can
+// see the Teterboro price too and make a tankering call. Side-agnostic: harvests
+// from whichever end the extraction populated, then backfills the empty ends.
+const FUEL_MIRROR_FIELDS = ['fuelVendor','fuelPricePerGallon','fuelPaymentMethod','rampFee','rampFeeWaived','rampFeeMinGallons'];
+function endHasFuel(end){
+  return !!(end && (end.fuelVendor || end.fuelPricePerGallon || end.fuelPaymentMethod || end.rampFee || (end.rampFeeWaived && end.rampFeeWaived !== 'N')));
+}
+function mirrorFuelAcrossLegs(targetLegs, sourceLegs){
+  const byCode = new Map();
+  const harvest = (end) => {
+    const code = ((end && end.airportId) || '').trim().toUpperCase();
+    if(!code || !endHasFuel(end)) return;
+    // First populated end for a code wins; don't overwrite with a later blank-ish one.
+    if(!byCode.has(code)){
+      const snap = {};
+      FUEL_MIRROR_FIELDS.forEach(k => { snap[k] = end[k] || ''; });
+      byCode.set(code, snap);
+    }
+  };
+  // Harvest from targets AND any read-only sources, but only ever FILL targets.
+  (sourceLegs || []).forEach(l => { harvest(l.dep); harvest(l.arr); });
+  targetLegs.forEach(l => { harvest(l.dep); harvest(l.arr); });
+  const fill = (end) => {
+    const code = ((end && end.airportId) || '').trim().toUpperCase();
+    if(!code || !byCode.has(code) || endHasFuel(end)) return;
+    const snap = byCode.get(code);
+    FUEL_MIRROR_FIELDS.forEach(k => { if(!end[k]) end[k] = snap[k]; });
+  };
+  targetLegs.forEach(l => { fill(l.dep); fill(l.arr); });
+  return targetLegs;
+}
+
 function findMatchingLegForEnrichment(extracted){
   const depCode = ((extracted.dep && extracted.dep.airportId) || '').trim().toUpperCase();
   const arrCode = ((extracted.arr && extracted.arr.airportId) || '').trim().toUpperCase();
@@ -1796,6 +1832,13 @@ async function processImportFile(file){
           if(incomingByIdentity.has(ik)) mergeLegInto(incomingByIdentity.get(ik), built);
           else incomingByIdentity.set(ik, built);
         });
+        // Mirror fuel/ramp across airport codes on the INCOMING legs. Seed the
+        // lookup with existing legs too (as read-only sources) so an airport
+        // whose fuel arrives on one incoming leg also fills its twin end even
+        // when that twin lives on a leg already on the board. We only ever
+        // write into the incoming built legs here, never the existing ones.
+        const incomingBuilt = Array.from(incomingByIdentity.values());
+        mirrorFuelAcrossLegs(incomingBuilt, existingLegs);
         const toAdd = [];
         const toUpdate = [];
         // Track every existing leg an incoming leg claims (by number OR by
@@ -1844,6 +1887,7 @@ async function processImportFile(file){
           if(boardKeys.has(key)) alreadyOnBoard.push(leg);
           else newLegs.push(leg);
         });
+        mirrorFuelAcrossLegs(newLegs);
         state.importNewLegs = newLegs;
         state.importDuplicateOfBoard = alreadyOnBoard;
       }
