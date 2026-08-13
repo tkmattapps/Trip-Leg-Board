@@ -265,6 +265,7 @@
 
   .field{ display:flex; flex-direction:column; gap:6px; }
   .field label{ font-size:11px; color:var(--fog-300); font-family:'JetBrains Mono',monospace; letter-spacing:0.3px; }
+  .field label.crit-attn, .field > label.crit-attn{ color:var(--amber-500); font-weight:600; }
   .field input[type=text], .field input[type=date], .field input[type=number], .field select, .field textarea{
     background:var(--panel-800); border:1px solid var(--hairline); color:var(--paper-050);
     font-family:'JetBrains Mono',monospace; font-size:13px; height:36px; line-height:normal; padding:0 10px; border-radius:3px;
@@ -2289,6 +2290,49 @@ function startImportLoadingMessages(){
   }, 10000);
 }
 
+
+// ---- Critical-field amber attention layer (level-one, informational only) ----
+// A curated set of critical fields shows an AMBER header while still empty.
+// Anything landing in them (AI or human) flips the header to neutral. No gate.
+var CRITICAL_TEXT_FIELDS = [
+  'tripNumber','legNumber','date','cityPair',
+  'depAirportId','depEtdLocal','depEtdZ','depHours','depAgent',
+  'arrAirportId','arrEtdLocal','arrEtdZ','arrHours','arrAgent'
+];
+// Slot is a Y/N toggle: "attention" = set to Y but slot time/number still blank.
+var CRITICAL_SLOT_FIELDS = [
+  { toggle: 'depSlotReqd', time: 'depSlotTimeNumber' },
+  { toggle: 'arrSlotReqd', time: 'arrSlotTimeNumber' }
+];
+
+function setCritLabel(inputId, needsAttn){
+  var el = document.getElementById(inputId);
+  if(!el) return;
+  // walk up to the .field wrapper, then find its label
+  var wrap = el.closest ? el.closest('.field') : null;
+  if(!wrap) return;
+  var label = wrap.querySelector('label');
+  if(!label) return;
+  if(needsAttn) label.classList.add('crit-attn');
+  else label.classList.remove('crit-attn');
+}
+
+function evaluateCriticalFields(){
+  CRITICAL_TEXT_FIELDS.forEach(function(id){
+    var el = document.getElementById(id);
+    var empty = !el || !String(el.value || '').trim();
+    setCritLabel(id, empty);
+  });
+  CRITICAL_SLOT_FIELDS.forEach(function(pair){
+    var toggle = document.getElementById(pair.toggle);
+    var v = toggle ? toggle.value : '';
+    var timeEl = document.getElementById(pair.time);
+    var timeEmpty = !timeEl || !String(timeEl.value || '').trim();
+    // amber only when slot is required (Y) AND the time/number is still blank
+    setCritLabel(pair.time, v === 'Y' && timeEmpty);
+  });
+}
+
 function renderMain(){
   stopImportLoadingMessages();
   const appRootEl = document.getElementById('appRoot');
@@ -2688,6 +2732,8 @@ function renderMain(){
     }
   }
 
+  main.addEventListener('input', () => { evaluateCriticalFields(); });
+
   main.querySelectorAll('.yn-btn:not(.wind-btn)').forEach(btn => {
     btn.addEventListener('click', () => {
       const targetId = btn.dataset.target;
@@ -2710,6 +2756,7 @@ function renderMain(){
         });
       }
       updateYNColor(targetId);
+      evaluateCriticalFields();
     });
   });
 
@@ -2756,6 +2803,8 @@ function renderMain(){
   });
 
   allYNIds.forEach(id => updateYNColor(id));
+
+  evaluateCriticalFields();
 
   const overflightListEl = document.getElementById('overflightList');
   if(overflightListEl){
