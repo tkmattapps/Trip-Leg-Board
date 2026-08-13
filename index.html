@@ -1259,6 +1259,123 @@ function wireTripDocs(trip){
   });
 }
 
+/* ---- Trip-level catch-all Notes (Trip Legs page) ---- */
+async function fetchTripNotes(tripId){
+  const { data, error } = await sb.from('trip_notes').select('*').eq('trip_id', tripId);
+  if(error) throw error;
+  return data || [];
+}
+
+async function saveTripNote(tripId, content, isPublic){
+  const prof = currentUserProfile || await loadCurrentUserProfile();
+  if(!prof) return;
+  const text = content == null ? '' : content;
+  if(text.trim() === ''){
+    await sb.from('trip_notes').delete()
+      .eq('trip_id', tripId).eq('user_id', prof.id);
+    return;
+  }
+  const deptId = await getFlightDepartmentId();
+  const row = {
+    trip_id: tripId,
+    flight_department_id: deptId,
+    user_id: prof.id,
+    content: text,
+    is_public: !!isPublic,
+    author_name: prof.displayName || '',
+    author_role: prof.role || '',
+    updated_at: new Date().toISOString()
+  };
+  const { error } = await sb.from('trip_notes').upsert(row, { onConflict: 'trip_id,user_id' });
+  if(error) throw error;
+}
+
+function tripNotesBlockHTML(trip){
+  return '<div class="section" id="tripNotesSection">' +
+      '<div class="leg-notes" data-trip-note="1">' +
+        '<div class="field leg-note-own">' +
+          '<div class="leg-note-labelrow">' +
+            '<label>Trip notes</label>' +
+            '<button type="button" class="note-vis-toggle" id="tripNoteToggle" data-public="false" aria-pressed="false" title="Private to you. Tap to share with your flight department.">' +
+              '<span class="note-vis-dot" aria-hidden="true"></span>' +
+              '<span class="note-vis-text">Private</span>' +
+            '</button>' +
+          '</div>' +
+          '<textarea id="tripNoteTextarea" class="leg-note-textarea" placeholder="Catch-all notes for this whole trip\u2026"></textarea>' +
+        '</div>' +
+        '<div class="leg-note-others" id="tripNotesOthers" hidden></div>' +
+      '</div>' +
+    '</div>';
+}
+
+async function saveTripNoteFromDOM(tripId){
+  const ta = document.getElementById('tripNoteTextarea');
+  const toggle = document.getElementById('tripNoteToggle');
+  if(!ta) return;
+  const isPublic = toggle ? toggle.dataset.public === 'true' : false;
+  await saveTripNote(tripId, ta.value, isPublic);
+}
+
+function wireTripNotes(trip){
+  const tripId = (trip.tripNumber || '').trim();
+  const ta = document.getElementById('tripNoteTextarea');
+  const toggle = document.getElementById('tripNoteToggle');
+  if(!ta) return;
+  if(!tripId){
+    ta.placeholder = 'Give this trip a trip number to add trip notes.';
+    ta.disabled = true;
+    if(toggle) toggle.disabled = true;
+    return;
+  }
+  ta.addEventListener('input', function(){ ta.dataset.userEdited = '1'; });
+  ta.addEventListener('blur', function(){
+    saveTripNoteFromDOM(tripId).catch(function(e){ console.error('trip note save', e); });
+  });
+  if(toggle){
+    toggle.addEventListener('click', function(){
+      const nowPublic = toggle.dataset.public !== 'true';
+      setNoteToggleState(toggle, nowPublic);
+      saveTripNoteFromDOM(tripId).catch(function(e){ console.error('trip note toggle', e); });
+    });
+  }
+}
+
+async function hydrateTripNotes(trip){
+  const tripId = (trip.tripNumber || '').trim();
+  const ta = document.getElementById('tripNoteTextarea');
+  if(!ta || !tripId) return;
+  let rows;
+  try { rows = await fetchTripNotes(tripId); }
+  catch(e){ console.error('trip_notes load', e); return; }
+  if(!document.getElementById('tripNoteTextarea')) return; // navigated away
+  const myId = currentUserProfile ? currentUserProfile.id : null;
+  const mine = myId ? rows.find(function(r){ return r.user_id === myId; }) : null;
+  const others = rows.filter(function(r){ return r.is_public && (!myId || r.user_id !== myId); });
+  const toggle = document.getElementById('tripNoteToggle');
+  if(ta.dataset.userEdited !== '1' && document.activeElement !== ta){
+    ta.value = mine ? (mine.content || '') : '';
+  }
+  setNoteToggleState(toggle, mine ? !!mine.is_public : false);
+  const cont = document.getElementById('tripNotesOthers');
+  if(cont){
+    if(others.length === 0){
+      cont.innerHTML = '';
+      cont.hidden = true;
+    } else {
+      cont.hidden = false;
+      cont.innerHTML = '<div class="leg-note-others-head">Shared by others</div>' +
+        others.map(function(r){
+          const who = escapeHtml(r.author_name || 'Crew');
+          const role = r.author_role ? '<span class="note-other-role">' + escapeHtml(r.author_role) + '</span>' : '';
+          return '<div class="note-other">' +
+            '<div class="note-other-head"><span class="note-other-author">' + who + '</span>' + role + '</div>' +
+            '<div class="note-other-body">' + escapeHtml(r.content || '') + '</div>' +
+          '</div>';
+        }).join('');
+    }
+  }
+}
+
 function noteTextareaId(field){ return field === 'enroute' ? 'enrouteNotes' : (field + 'Notes'); }
 
 // Read the current user's own + others' public notes for a leg. RLS returns
@@ -3021,6 +3138,7 @@ function renderTripDetailView(){
     '</div>' +
     tdLegNavStripHTML +
     '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') + '</div>' +
+    tripNotesBlockHTML(trip) +
     tripDocsBlockHTML(trip);
 
   document.getElementById('tripDetailBackBtn').addEventListener('click', () => {
@@ -3057,6 +3175,8 @@ function renderTripDetailView(){
   hydrateTripLegAttachBadges(trip);
   wireTripDocs(trip);
   hydrateTripDocs(trip);
+  wireTripNotes(trip);
+  hydrateTripNotes(trip);
 }
 
 function currentLegAllSectionsComplete(){
