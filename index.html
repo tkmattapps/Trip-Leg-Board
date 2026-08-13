@@ -432,6 +432,7 @@
   .doc-icon{ flex:0 0 auto; width:22px; height:22px; color:var(--amber-500); }
   .doc-meta{ flex:1 1 auto; min-width:0; }
   .doc-name{ font-size:13px; color:var(--paper-050); font-weight:600; word-break:break-word; }
+  .doc-home-tag{ display:inline-block; margin-left:8px; font-size:10px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--ink-900); background:var(--fog-300, #B8C4D9); border-radius:10px; padding:1px 7px; vertical-align:middle; }
   .doc-sub{ font-size:11px; color:var(--fog-500); margin-top:2px; }
   .doc-actions{ flex:0 0 auto; display:flex; align-items:center; gap:6px; }
   .doc-act{ background:transparent; border:1px solid var(--fog-500); color:var(--fog-300, #B8C4D9); font-size:12px; padding:5px 10px; border-radius:14px; cursor:pointer; }
@@ -839,6 +840,13 @@ function attachSafeName(name){
 }
 
 // List attachments for a leg (scope='leg') OR a whole trip (scope='trip').
+// A leg's trip identifier for attachments = its (trimmed) trip number, or null.
+function legTripId(leg){
+  if(!leg) return null;
+  const tn = (leg.tripNumber || leg.tripId || leg.trip_id || '').toString().trim();
+  return tn || null;
+}
+
 async function fetchAttachments(scope, opts){
   opts = opts || {};
   try {
@@ -956,11 +964,14 @@ function docRowHTML(row, opts){
     .filter(Boolean).join(' \u00b7 ');
   const delBtn = opts.canDelete === false ? '' :
     '<button type="button" class="doc-act doc-del" data-doc-del="' + row.id + '">Delete</button>';
+  const homeTag = opts.homeTag
+    ? '<span class="doc-home-tag">' + escHtml(opts.homeTag) + '</span>'
+    : '';
   return '' +
     '<div class="doc-row" data-doc-row="' + row.id + '">' +
       DOC_PAPERCLIP_SVG +
       '<div class="doc-meta">' +
-        '<div class="doc-name">' + escHtml(row.file_name || 'Document') + '</div>' +
+        '<div class="doc-name">' + escHtml(row.file_name || 'Document') + homeTag + '</div>' +
         '<div class="doc-sub">' + escHtml(sub) + '</div>' +
       '</div>' +
       '<div class="doc-actions">' +
@@ -999,14 +1010,14 @@ async function hydrateLegAttachments(leg){
   setDocJumpCount(leg.id, legRows.length);
   // trip-level documents surfaced below (view/download only here; managed at trip level)
   if(tripWrap){
-    const tripId = leg.tripId || leg.trip_id || null;
+    const tripId = legTripId(leg);
     if(tripId){
       const tripRows = await fetchAttachments('trip', { tripId: tripId });
       if(!document.getElementById('docTripWrap')) return;
       tripRows.forEach(function(r){ _docRowCache[r.id] = r; });
       tripWrap.innerHTML = tripRows.length
         ? '<div class="doc-subhead">Trip documents</div><div class="doc-list">' +
-            tripRows.map(function(r){ return docRowHTML(r, {canDelete:false}); }).join('') + '</div>'
+            tripRows.map(function(r){ return docRowHTML(r, {canDelete:false, homeTag:'Trip'}); }).join('') + '</div>'
         : '';
     } else {
       tripWrap.innerHTML = '';
@@ -1036,7 +1047,7 @@ function wireLegAttachments(leg){
     const original = addBtn.textContent;
     addBtn.textContent = 'Uploading\u2026';
     try {
-      await uploadAttachment(file, 'leg', { legId: leg.id, tripId: leg.tripId || leg.trip_id || null });
+      await uploadAttachment(file, 'leg', { legId: leg.id, tripId: legTripId(leg) });
       await hydrateLegAttachments(leg);
       refreshLegAttachBadge(leg.id); // update the tile badge count
       if(typeof showToast === 'function') showToast('Document added');
@@ -1122,6 +1133,129 @@ async function hydrateTripLegAttachBadges(trip){
       if(n > 0){ el.innerHTML = LEG_PAPERCLIP_BADGE_SVG + n; el.style.display = ''; }
       else { el.innerHTML = ''; el.style.display = 'none'; }
     });
+  });
+}
+
+/* ---- Trip-level Documents (Trip Legs page) ---- */
+function tripDocsBlockHTML(trip){
+  return '' +
+    '<div class="section" id="tripDocSection">' +
+      '<div class="doc-section-head">' +
+        '<h3 class="section-title">Trip documents</h3>' +
+        '<button type="button" class="doc-add-btn" id="tripDocAddBtn">+ Add document</button>' +
+        '<input type="file" id="tripDocFileInput" accept="application/pdf,image/*" style="display:none" />' +
+      '</div>' +
+      '<div class="doc-list" id="tripDocList"><div class="doc-empty">Loading\u2026</div></div>' +
+      '<div id="tripDocRollup"></div>' +
+    '</div>';
+}
+
+let _tripDocRowCache = {};
+
+async function hydrateTripDocs(trip){
+  const list = document.getElementById('tripDocList');
+  const rollup = document.getElementById('tripDocRollup');
+  if(!list) return;
+  _tripDocRowCache = {};
+  const tripId = (trip.tripNumber || '').trim();
+  // trip's own documents (managed here — delete allowed)
+  const tripRows = tripId ? await fetchAttachments('trip', { tripId: tripId }) : [];
+  if(!document.getElementById('tripDocList')) return;
+  tripRows.forEach(function(r){ _tripDocRowCache[r.id] = r; });
+  list.innerHTML = tripRows.length
+    ? tripRows.map(function(r){ return docRowHTML(r, {homeTag:'Trip'}); }).join('')
+    : '<div class="doc-empty">No trip-wide documents yet.</div>';
+
+  // "On the legs" roll-up — every leg's own docs, read-only, tagged by leg.
+  if(rollup){
+    let rows = [];
+    for(let i=0;i<trip.legs.length;i++){
+      const leg = trip.legs[i];
+      const legRows = await fetchAttachments('leg', { legId: leg.id });
+      legRows.forEach(function(r){
+        _tripDocRowCache[r.id] = r;
+        rows.push({ row:r, legLabel: 'Leg ' + (leg.legNumber || '?') });
+      });
+    }
+    if(!document.getElementById('tripDocRollup')) return;
+    rollup.innerHTML = rows.length
+      ? '<div class="doc-subhead">On the legs</div><div class="doc-list">' +
+          rows.map(function(x){ return docRowHTML(x.row, {canDelete:false, homeTag:x.legLabel}); }).join('') +
+        '</div>'
+      : '';
+  }
+}
+
+function wireTripDocs(trip){
+  const addBtn = document.getElementById('tripDocAddBtn');
+  const fileInput = document.getElementById('tripDocFileInput');
+  const section = document.getElementById('tripDocSection');
+  if(!addBtn || !fileInput || !section) return;
+  const tripId = (trip.tripNumber || '').trim();
+
+  addBtn.addEventListener('click', function(){
+    if(!tripId){
+      if(typeof showConfirm === 'function') showConfirm('Give this trip a trip number before adding trip-wide documents.', {alertOnly:true});
+      return;
+    }
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', async function(){
+    const file = fileInput.files && fileInput.files[0];
+    if(!file) return;
+    addBtn.disabled = true;
+    const original = addBtn.textContent;
+    addBtn.textContent = 'Uploading\u2026';
+    try {
+      await uploadAttachment(file, 'trip', { tripId: tripId });
+      await hydrateTripDocs(trip);
+      if(typeof showToast === 'function') showToast('Document added');
+    } catch(e){
+      console.error('trip upload failed', e);
+      if(typeof showConfirm === 'function'){
+        showConfirm('That upload didn\u2019t go through. ' + (e && e.message ? e.message : 'Please try again.'), {alertOnly:true});
+      }
+    } finally {
+      addBtn.disabled = false;
+      addBtn.textContent = original;
+      fileInput.value = '';
+    }
+  });
+
+  section.addEventListener('click', async function(ev){
+    const viewEl = ev.target.closest('[data-doc-view]');
+    const dlEl   = ev.target.closest('[data-doc-dl]');
+    const delEl  = ev.target.closest('[data-doc-del]');
+    if(viewEl){
+      const row = _tripDocRowCache[viewEl.getAttribute('data-doc-view')];
+      if(!row) return;
+      try { const url = await signedAttachmentUrl(row.storage_path); window.open(url, '_blank'); }
+      catch(e){ console.error(e); }
+      return;
+    }
+    if(dlEl){
+      const row = _tripDocRowCache[dlEl.getAttribute('data-doc-dl')];
+      if(!row) return;
+      try {
+        const url = await signedAttachmentUrl(row.storage_path, row.file_name || 'document');
+        const a = document.createElement('a'); a.href = url; a.download = row.file_name || 'document';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      } catch(e){ console.error(e); }
+      return;
+    }
+    if(delEl){
+      const row = _tripDocRowCache[delEl.getAttribute('data-doc-del')];
+      if(!row) return;
+      const ok = (typeof showConfirm === 'function')
+        ? await showConfirm('Remove \u201c' + (row.file_name || 'this document') + '\u201d for the whole department? This can\u2019t be undone.', { okLabel:'Remove' })
+        : true;
+      if(ok){
+        try { await deleteAttachment(row); await hydrateTripDocs(trip); }
+        catch(e){ console.error('trip delete failed', e); }
+      }
+      return;
+    }
   });
 }
 
@@ -2886,6 +3020,7 @@ function renderTripDetailView(){
       '</div>' +
     '</div>' +
     tdLegNavStripHTML +
+    tripDocsBlockHTML(trip) +
     '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') + '</div>';
 
   document.getElementById('tripDetailBackBtn').addEventListener('click', () => {
@@ -2920,6 +3055,8 @@ function renderTripDetailView(){
   });
 
   hydrateTripLegAttachBadges(trip);
+  wireTripDocs(trip);
+  hydrateTripDocs(trip);
 }
 
 function currentLegAllSectionsComplete(){
