@@ -1489,7 +1489,8 @@ function buildLegFromExtraction(extracted){
     airportId: ed.airportId || '', etdLocal: ed.etdLocal || '', etdZ: ed.etdZ || '',
     agent: ed.agent || '', agentPhone: ed.agentPhone || '', frequency: ed.frequency || '',
     slotReqd: ed.slotReqd || '', slotTimeNumber: ed.slotTimeNumber || '', slotAllowance: ed.slotAllowance || '',
-    fuelVendor: ed.fuelVendor || '',
+    fuelVendor: ed.fuelVendor || '', fuelPricePerGallon: ed.fuelPricePerGallon || '', fuelPaymentMethod: ed.fuelPaymentMethod || '',
+    rampFee: ed.rampFee || '', rampFeeWaived: ed.rampFeeWaived || '', rampFeeMinGallons: ed.rampFeeMinGallons || '',
     groundTransportReqd: ed.groundTransportReqd || '', groundTransportDetails: ed.groundTransportDetails || '',
     notes: ed.notes || ''
   });
@@ -1497,7 +1498,8 @@ function buildLegFromExtraction(extracted){
     airportId: ea.airportId || '', etaLocal: ea.etaLocal || '', etaZ: ea.etaZ || '',
     agent: ea.agent || '', agentPhone: ea.agentPhone || '', frequency: ea.frequency || '',
     slotReqd: ea.slotReqd || '', slotTimeNumber: ea.slotTimeNumber || '', slotAllowance: ea.slotAllowance || '',
-    fuelVendor: ea.fuelVendor || '',
+    fuelVendor: ea.fuelVendor || '', fuelPricePerGallon: ea.fuelPricePerGallon || '', fuelPaymentMethod: ea.fuelPaymentMethod || '',
+    rampFee: ea.rampFee || '', rampFeeWaived: ea.rampFeeWaived || '', rampFeeMinGallons: ea.rampFeeMinGallons || '',
     groundTransportReqd: ea.groundTransportReqd || '', groundTransportDetails: ea.groundTransportDetails || '',
     permitReqd: ea.permitReqd || '', permitNumber: ea.permitNumber || '',
     notes: ea.notes || ''
@@ -1582,9 +1584,22 @@ function importLegCardHTML(leg, index){
   if(comp.customsReqd === 'Y' || comp.customsNotes) rows.push('<div><strong>Customs:</strong> ' + escapeHtml(comp.customsNotes || 'landing rights required') + '</div>');
   if(comp.eapisReqd === 'Y' || comp.eapisNotes) rows.push('<div><strong>EAPIS:</strong> ' + escapeHtml(comp.eapisNotes || 'required') + '</div>');
   if(comp.overflightReqd === 'Y') rows.push('<div><strong>Overflight permits:</strong> required</div>');
+  const fuelEndBit = (end, fb) => {
+    if(!(end.fuelVendor || end.fuelPricePerGallon || end.fuelPaymentMethod || end.rampFee || end.rampFeeWaived === 'Y')) return '';
+    const seg = [];
+    if(end.fuelVendor) seg.push(end.fuelVendor);
+    if(end.fuelPricePerGallon) seg.push(end.fuelPricePerGallon);
+    if(end.fuelPaymentMethod) seg.push(end.fuelPaymentMethod);
+    let line = (end.airportId || fb) + ': ' + seg.join(', ');
+    const ramp = [];
+    if(end.rampFee) ramp.push('ramp ' + end.rampFee);
+    if(end.rampFeeWaived === 'Y') ramp.push('waived w/ fuel' + (end.rampFeeMinGallons ? ', min ' + end.rampFeeMinGallons + ' gal' : ''));
+    if(ramp.length) line += ' (' + ramp.join(', ') + ')';
+    return escapeHtml(line);
+  };
   const fuelBits = [];
-  if(dep.fuelVendor) fuelBits.push(escapeHtml((dep.airportId || 'Dep') + ': ' + dep.fuelVendor));
-  if(arr.fuelVendor) fuelBits.push(escapeHtml((arr.airportId || 'Arr') + ': ' + arr.fuelVendor));
+  const _dfb = fuelEndBit(dep, 'Dep'); if(_dfb) fuelBits.push(_dfb);
+  const _afb = fuelEndBit(arr, 'Arr'); if(_afb) fuelBits.push(_afb);
   if(fuelBits.length) rows.push('<div><strong>Fuel:</strong> ' + fuelBits.join(' &middot; ') + '</div>');
   const slotBits = [];
   if(dep.slotReqd === 'Y' || dep.slotTimeNumber) slotBits.push(escapeHtml((dep.airportId || 'Dep') + ' ' + (dep.slotTimeNumber || 'slot required')));
@@ -1634,7 +1649,19 @@ const RECONCILE_FIELD_LABELS = {
   'arr.etaZ': 'Arrival time (Z)',
   'arr.agent': 'Arrival handler',
   'arr.agentPhone': 'Arrival handler phone',
-  'arr.frequency': 'Arrival frequency'
+  'arr.frequency': 'Arrival frequency',
+  'dep.fuelVendor': 'Departure fuel vendor',
+  'dep.fuelPricePerGallon': 'Departure fuel price',
+  'dep.fuelPaymentMethod': 'Departure fuel payment',
+  'dep.rampFee': 'Departure ramp fee',
+  'dep.rampFeeWaived': 'Departure ramp fee waived',
+  'dep.rampFeeMinGallons': 'Departure ramp waiver min gal',
+  'arr.fuelVendor': 'Arrival fuel vendor',
+  'arr.fuelPricePerGallon': 'Arrival fuel price',
+  'arr.fuelPaymentMethod': 'Arrival fuel payment',
+  'arr.rampFee': 'Arrival ramp fee',
+  'arr.rampFeeWaived': 'Arrival ramp fee waived',
+  'arr.rampFeeMinGallons': 'Arrival ramp waiver min gal'
 };
 
 function describeLegChanges(leg, built){
@@ -1653,8 +1680,8 @@ function describeLegChanges(leg, built){
   }
   check('date', leg.date, built.date);
   check('cityPair', leg.cityPair, built.cityPair);
-  ['airportId', 'etdLocal', 'etdZ', 'agent', 'agentPhone', 'frequency'].forEach(k => check('dep.' + k, leg.dep[k], built.dep[k]));
-  ['airportId', 'etaLocal', 'etaZ', 'agent', 'agentPhone', 'frequency'].forEach(k => check('arr.' + k, leg.arr[k], built.arr[k]));
+  ['airportId', 'etdLocal', 'etdZ', 'agent', 'agentPhone', 'frequency', 'fuelVendor', 'fuelPricePerGallon', 'fuelPaymentMethod', 'rampFee', 'rampFeeWaived', 'rampFeeMinGallons'].forEach(k => check('dep.' + k, leg.dep[k], built.dep[k]));
+  ['airportId', 'etaLocal', 'etaZ', 'agent', 'agentPhone', 'frequency', 'fuelVendor', 'fuelPricePerGallon', 'fuelPaymentMethod', 'rampFee', 'rampFeeWaived', 'rampFeeMinGallons'].forEach(k => check('arr.' + k, leg.arr[k], built.arr[k]));
   return changes;
 }
 
