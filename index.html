@@ -505,14 +505,19 @@
   .install-fab:hover{ background:var(--panel-800); }
   /* On deep pages (not the home view), dock the pills up into the top header line
      so they never float over content. Home view keeps them floating bottom-right. */
-  body:not(.view-home) .feedback-fab,
-  body:not(.view-home) .install-fab{
+  /* Dock the pills into the top-right on ALL pages so they never leap around
+     between views. Deep pages have the header bar; home has its own top-right
+     zone with the Log Out button, so the pills sit just left of it there. */
+  .feedback-fab, .install-fab{
     position:fixed; bottom:auto; z-index:40;
     top:max(10px, env(safe-area-inset-top)); box-shadow:none;
     padding:7px 14px; font-size:12px;
   }
-  body:not(.view-home) .feedback-fab{ right:20px; }
-  body:not(.view-home) .install-fab{ right:118px; }
+  .feedback-fab{ right:20px; }
+  .install-fab{ right:118px; }
+  /* On the home page, clear the absolutely-positioned Log Out button on the right. */
+  body.view-home .feedback-fab{ right:110px; }
+  body.view-home .install-fab{ right:208px; }
   .install-platform{ margin-bottom:18px; }
   .install-platform-title{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--amber-500); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
   .install-steps{ margin:0; padding-left:20px; font-size:13px; color:var(--paper-050); line-height:1.9; }
