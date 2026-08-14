@@ -458,6 +458,7 @@
   .status-popover-dot{ width:12px; height:12px; border-radius:50%; flex-shrink:0; }
   .dash-card-route{ font-size:13px; color:var(--paper-050); margin-bottom:4px; }
   .dash-card-date{ font-size:11px; color:var(--fog-500); font-family:'JetBrains Mono',monospace; }
+  .dash-card-edited{ font-size:10px; color:var(--fog-500); font-family:'JetBrains Mono',monospace; letter-spacing:0.3px; margin-top:6px; opacity:0.85; }
   .dash-card-pending{ font-size:11px; color:var(--alert-600); margin-top:8px; font-family:'JetBrains Mono',monospace; }
   .dash-card-status-pill{ font-size:10px; font-family:'JetBrains Mono',monospace; padding:2px 6px; border-radius:2px; text-transform:uppercase; letter-spacing:0.5px; margin-top:8px; display:inline-block; }
   .ready-room-leg-row{ display:flex; align-items:center; gap:8px; margin:6px 0 8px; }
@@ -1622,8 +1623,25 @@ function installRefreshHandler(){
   });
 }
 
+function lastEditedText(leg){
+  if(!leg) return '';
+  const when = leg.lastEditedAt || leg.updatedAt;
+  if(!when) return 'Not saved yet';
+  const whenStr = new Date(when).toLocaleString();
+  const who = leg.lastEditedByName ? (' by ' + leg.lastEditedByName) : '';
+  return 'Last edited' + who + ' \u00b7 ' + whenStr;
+}
+
 async function saveLeg(leg){
   leg.updatedAt = Date.now();
+  // Last-edited stamp: who touched this leg, and when.
+  const _prof = currentUserProfile;
+  if(_prof){
+    leg.lastEditedBy = _prof.id || '';
+    leg.lastEditedByName = _prof.displayName || '';
+    leg.lastEditedByRole = _prof.role || '';
+  }
+  leg.lastEditedAt = leg.updatedAt;
   for(let attempt = 1; attempt <= 2; attempt++){
     try{
       const result = await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
@@ -2020,6 +2038,11 @@ function dashboardCardHTML(leg){
   '</div>';
 }
 
+function lastEditedCompact(leg){
+  if(!leg || !leg.lastEditedByName) return '';
+  return 'Edited by ' + leg.lastEditedByName;
+}
+
 function tripBriefLegCardHTML(leg){
   const completeness = computeLegCompleteness(leg);
   const route = leg.cityPair || [leg.dep.airportId, leg.arr.airportId].filter(Boolean).join(' \u2192 ') || 'No city pair defined';
@@ -2039,6 +2062,7 @@ function tripBriefLegCardHTML(leg){
     '<div class="dash-card-route">' + escapeHtml(route) + '</div>' +
     '<div class="dash-card-date">' + escapeHtml(formatISODateDisplay(leg.date) || 'No date') + '</div>' +
     (completeness.complete ? '' : '<div class="dash-card-pending">' + completeness.pending.length + ' item' + (completeness.pending.length === 1 ? '' : 's') + ' pending</div>') +
+    (lastEditedCompact(leg) ? '<div class="dash-card-edited">' + escapeHtml(lastEditedCompact(leg)) + '</div>' : '') +
   '</div>';
 }
 
@@ -3584,7 +3608,7 @@ function renderMain(){
     legAttachmentsBlockHTML(leg) +
 
     '<div class="save-bar">' +
-      '<span class="save-hint">Last saved ' + (leg.updatedAt ? new Date(leg.updatedAt).toLocaleString() : 'never') + '</span>' +
+      '<span class="save-hint">' + escapeHtml(lastEditedText(leg)) + '</span>' +
       '<button class="btn btn-primary" id="saveBtnBottom">Save changes</button>' +
     '</div>';
 
