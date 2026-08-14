@@ -763,7 +763,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-14T19:47:26Z';
+const BUILD_VERSION = '2026-08-14T19:58:35Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2596,7 +2596,7 @@ function dashboardCardsHtml(q){
     .filter(t => t.legs.some(matchesQuery))
     .map(t => t.isOrphan ? t : Object.assign({}, t));
   const cardsHtml = shownTrips.length === 0
-    ? '<div class="dash-empty">' + (allActiveTrips.length === 0 ? 'No missions yet. Tap "+ New leg" to start planning one.' : 'No matches for that search.') + '</div>'
+    ? '<div class="dash-empty">' + (!_legsLoaded ? 'Loading trips…' : (allActiveTrips.length === 0 ? 'No missions yet. Tap "+ New leg" to start planning one.' : 'No matches for that search.')) + '</div>'
     : '<div class="dash-grid">' + shownTrips.map(tripCardHTML).join('') + '</div>';
   return { cardsHtml, allActiveTrips };
 }
@@ -2659,7 +2659,7 @@ function historyCardsHtml(q){
   const allFlownTrips = allTrips.filter(t => t.legs.every(l => l.status === 'flown'));
   const shownTrips = allFlownTrips.filter(t => t.legs.some(matchesQuery));
   const cardsHtml = shownTrips.length === 0
-    ? '<div class="dash-empty">' + (allFlownTrips.length === 0 ? 'No flown legs yet.' : 'No matches for that search.') + '</div>'
+    ? '<div class="dash-empty">' + (!_legsLoaded ? 'Loading trips…' : (allFlownTrips.length === 0 ? 'No flown legs yet.' : 'No matches for that search.')) + '</div>'
     : '<div class="dash-grid">' + shownTrips.map(tripCardHTML).join('') + '</div>';
   return { cardsHtml, allFlownTrips };
 }
