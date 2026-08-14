@@ -763,7 +763,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-14T19:39:51Z';
+const BUILD_VERSION = '2026-08-14T19:47:26Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -1661,6 +1661,7 @@ async function loadLegs(){
     console.error('loadLegs failed', e);
     state.legs = [];
   }
+  _legsLoaded = true;
   renderList();
   renderMain();
 }
@@ -2481,11 +2482,11 @@ function renderHomeView(){
       '<div class="home-right-col">' +
         '<button type="button" class="home-btn" id="homeActiveBtn">' +
           '<span class="home-btn-title">Active Trips</span>' +
-          '<span class="home-btn-count">' + activeCount + ' active trip' + (activeCount === 1 ? '' : 's') + '</span>' +
+          '<span class="home-btn-count">' + (_legsLoaded ? (activeCount + ' active trip' + (activeCount === 1 ? '' : 's')) : 'Loading trips…') + '</span>' +
         '</button>' +
         '<button type="button" class="home-btn" id="homeHistoryBtn">' +
           '<span class="home-btn-title">Flown Trips</span>' +
-          '<span class="home-btn-count">' + historicCount + ' flown trip' + (historicCount === 1 ? '' : 's') + '</span>' +
+          '<span class="home-btn-count">' + (_legsLoaded ? (historicCount + ' flown trip' + (historicCount === 1 ? '' : 's')) : 'Loading trips…') + '</span>' +
         '</button>' +
         '<button type="button" class="home-btn" id="homeImportBtn">' +
           '<span class="home-btn-title">Import Trip Docs</span>' +
@@ -5565,6 +5566,7 @@ function startUpdateChecker(){
 }
 
 var _appBooted = false;
+var _legsLoaded = false;
 async function enterAppFromSession(){
   if(_appBooted) return;
   _appBooted = true;
