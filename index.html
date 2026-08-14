@@ -5019,6 +5019,18 @@ let autosaveInFlight = false;
 let _fieldBlurTimer = null;
 // Auto-save (and therefore log to history) shortly after a field loses focus,
 // so edits are captured without needing to navigate or press Save.
+function refreshHistoryPanelIfOpen(){
+  const panel = document.getElementById('legHistoryPanel');
+  if(!panel || panel.style.display === 'none') return;
+  const leg = state.legs.find(l => l.id === state.activeId);
+  if(!leg) return;
+  // Give the async autosave + change-log insert a moment to land, then re-fetch.
+  setTimeout(function(){
+    if(document.getElementById('legHistoryPanel') && panel.style.display !== 'none'){
+      hydrateLegHistory(leg);
+    }
+  }, 900);
+}
 function wireFieldBlurAutosave(){
   const main = document.getElementById('mainPanel');
   if(!main || main.dataset.blurAutosaveWired === 'true') return;
@@ -5029,6 +5041,7 @@ function wireFieldBlurAutosave(){
     if(_fieldBlurTimer) clearTimeout(_fieldBlurTimer);
     _fieldBlurTimer = setTimeout(function(){
       autoSaveIfEditing();
+      refreshHistoryPanelIfOpen();
     }, 500);
   });
 }
