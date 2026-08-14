@@ -976,6 +976,8 @@ async function deleteAttachment(row){
 }
 
 // Count of a single leg's OWN attachments (for the paperclip badge on tiles).
+var _legDocCountCache = {};
+
 async function fetchLegAttachmentCounts(legIds){
   const out = {};
   try {
@@ -1073,6 +1075,7 @@ async function hydrateLegAttachments(leg){
   legList.innerHTML = legRows.length
     ? legRows.map(function(r){ return docRowHTML(r); }).join('')
     : '<div class="doc-empty">No documents on this leg yet.</div>';
+  _legDocCountCache[leg.id] = legRows.length;
   setDocJumpCount(leg.id, legRows.length);
   // trip-level documents surfaced below (view/download only here; managed at trip level)
   if(tripWrap){
@@ -1193,6 +1196,7 @@ async function hydrateTripLegAttachBadges(trip){
   let counts = {};
   try { counts = await fetchLegAttachmentCounts(trip.legs.map(function(l){ return l.id; })); }
   catch(e){ return; }
+  trip.legs.forEach(function(l){ _legDocCountCache[l.id] = counts[l.id] || 0; });
   trip.legs.forEach(function(l){
     const n = counts[l.id] || 0;
     document.querySelectorAll('[data-attach-badge="' + l.id + '"]').forEach(function(el){
@@ -3649,8 +3653,11 @@ function renderMain(){
       '<option value="ready">Ready</option>' +
       '<option value="flown">Flown</option>' +
     '</select>';
+  const _cachedDocN = (leg && leg.id && Object.prototype.hasOwnProperty.call(_legDocCountCache, leg.id)) ? _legDocCountCache[leg.id] : null;
+  const _docCountInit = (_cachedDocN === null) ? 'visibility:hidden' : 'visibility:visible';
+  const _docCountText = (_cachedDocN === null) ? '' : String(_cachedDocN);
   const legNavStripWithStatusHTML =
-    '<div class="leg-nav-strip leg-nav-strip-checklist">' + statusGroupHTML + '<button type="button" class="doc-jump-btn" id="docJumpBtn" title="Jump to documents" aria-label="Jump to documents">' + DOC_PAPERCLIP_SVG + '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(leg.id) + '" style="visibility:hidden"></span></button>' + legNavGroupHTML + '</div>';
+    '<div class="leg-nav-strip leg-nav-strip-checklist">' + statusGroupHTML + '<button type="button" class="doc-jump-btn" id="docJumpBtn" title="Jump to documents" aria-label="Jump to documents">' + DOC_PAPERCLIP_SVG + '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(leg.id) + '" style="' + _docCountInit + '">' + _docCountText + '</span></button>' + legNavGroupHTML + '</div>';
 
   main.innerHTML =
     '<button type="button" class="back-link" id="backToDashboardBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
