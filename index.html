@@ -3372,13 +3372,15 @@ function renderTripDetailView(){
     const maxLegNum = Math.max(0, ...trip.legs.map(l => parseInt(l.legNumber, 10) || 0));
     newLeg.legNumber = String(maxLegNum + 1);
     state.legs.unshift(newLeg);
-    // Stay on the Trip Legs page: persist the new leg so it survives refresh /
-    // reaches other devices, then re-render this view in place (new bubble appears).
+    // Stay on the Trip Legs page: keep the view + trip key pinned, persist the
+    // new leg so it survives refresh / reaches other devices, then re-render in place.
+    state.view = 'tripDetail';
+    state.activeTripKey = (trip.tripNumber || '').trim();
     await saveLeg(newLeg);
     renderMain();
   });
   document.getElementById('deleteTripBtn').addEventListener('click', () => handleDeleteTrip(trip.tripNumber));
-  document.querySelectorAll('.dash-card').forEach(card => {
+  document.querySelectorAll('.dash-card[data-id]').forEach(card => {
     card.addEventListener('click', () => openLegEditor(card.dataset.id));
   });
   
