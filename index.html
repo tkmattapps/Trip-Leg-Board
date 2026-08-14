@@ -2328,7 +2328,7 @@ function legStatusLegendHTML(){
 }
 
 function tripCardHTML(trip){
-  if(trip.isOrphan){
+  if(trip.isOrphan && trip.legs.length <= 1){
     return dashboardCardHTML(trip.legs[0]);
   }
   const legs = trip.legs;
@@ -3399,7 +3399,7 @@ function renderTripDetailView(){
   main.innerHTML =
     '<button type="button" class="back-link" id="tripDetailBackBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
     '<div class="view-header">' +
-      '<div><div class="view-title">Trip ' + escapeHtml(trip.tripNumber) + '</div><div class="view-subtitle">' + trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') + '</div></div>' +
+      '<div><div class="view-title">' + (trip.tripNumber ? ('Trip ' + escapeHtml(trip.tripNumber)) : 'Untitled trip') + '</div><div class="view-subtitle">' + trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') + '</div></div>' +
       '<div class="main-actions">' +
         '<button type="button" class="btn btn-ghost refresh-btn" data-refresh="1" title="Refresh from server" aria-label="Refresh"><span class="refresh-icon" aria-hidden="true">\u21BB</span> Refresh</button>' +
         '<button type="button" class="btn btn-danger" id="deleteTripBtn">Delete trip</button>' +
