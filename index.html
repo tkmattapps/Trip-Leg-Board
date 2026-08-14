@@ -456,6 +456,9 @@
   .changelog-row{ padding:8px 0; border-bottom:1px solid var(--hairline); }
   .changelog-line{ font-size:13px; color:var(--paper-050); line-height:1.5; }
   .changelog-field{ font-weight:600; }
+  #updateBanner{ position:fixed; left:50%; transform:translateX(-50%); bottom:max(16px, env(safe-area-inset-bottom)); z-index:9999; display:flex; align-items:center; gap:14px; background:var(--panel-700); color:var(--paper-050); border:1px solid var(--amber-500); border-radius:12px; padding:12px 16px; box-shadow:0 8px 28px rgba(0,0,0,0.45); max-width:calc(100vw - 32px); }
+  .update-banner-text{ font-size:14px; }
+  .update-banner-btn{ background:var(--amber-500); color:var(--ink-900); border:none; border-radius:8px; padding:8px 16px; font-weight:700; font-size:14px; cursor:pointer; white-space:nowrap; }
   .changelog-leg-tag{ display:inline-block; font-size:10px; font-weight:700; color:var(--amber-500); border:1px solid var(--amber-500); border-radius:4px; padding:1px 5px; margin-right:6px; vertical-align:middle; }
   .changelog-arrow{ color:var(--fog-500); }
   .changelog-old{ color:var(--fog-500); text-decoration:line-through; }
@@ -759,6 +762,8 @@
 </div>
 
 <script>
+/* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
+const BUILD_VERSION = '2026-08-14T18:46:20Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -5457,6 +5462,48 @@ document.getElementById('loginPassword').addEventListener('keydown', function(e)
   if(e.key === 'Enter') handleLoginSubmit();
 });
 
+/* ---- Update checker: detects a newer deployed build and shows a non-intrusive banner ----
+   No service worker in this app; stale copies come from the ordinary HTTP cache. We fetch
+   this same index.html (cache-busted) and read its BUILD_VERSION. If it's newer than the
+   running one, we show a banner. We NEVER auto-reload; the user taps Update when ready. */
+var _updateBannerShown = false;
+async function fetchLatestBuildVersion(){
+  try {
+    const url = window.location.origin + window.location.pathname + '?_v=' + Date.now();
+    const res = await fetch(url, { cache: 'no-store' });
+    if(!res.ok) return null;
+    const text = await res.text();
+    const m = text.match(/const BUILD_VERSION = '([^']+)'/);
+    return m ? m[1] : null;
+  } catch(e){ return null; }
+}
+function showUpdateBanner(){
+  if(_updateBannerShown) return;
+  _updateBannerShown = true;
+  var bar = document.createElement('div');
+  bar.id = 'updateBanner';
+  bar.innerHTML = '<span class="update-banner-text">A new version of Beacon is available.</span>' +
+    '<button type="button" id="updateBannerBtn" class="update-banner-btn">Update</button>';
+  document.body.appendChild(bar);
+  document.getElementById('updateBannerBtn').addEventListener('click', function(){
+    var u = window.location.origin + window.location.pathname + '?_v=' + Date.now();
+    window.location.replace(u);
+  });
+}
+async function checkForUpdate(){
+  if(_updateBannerShown) return;
+  var latest = await fetchLatestBuildVersion();
+  if(latest && latest !== BUILD_VERSION){ showUpdateBanner(); }
+}
+function startUpdateChecker(){
+  checkForUpdate();
+  setInterval(checkForUpdate, 15 * 60 * 1000);
+  window.addEventListener('focus', checkForUpdate);
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible') checkForUpdate();
+  });
+}
+
 (async function initAuth(){
   const { data: { session } } = await sb.auth.getSession();
   if(session){
@@ -5466,6 +5513,7 @@ document.getElementById('loginPassword').addEventListener('keydown', function(e)
   } else {
     showLoginOverlay();
   }
+  startUpdateChecker();
 })();
 </script>
 <script>
