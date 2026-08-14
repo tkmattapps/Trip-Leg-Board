@@ -456,6 +456,7 @@
   .changelog-row{ padding:8px 0; border-bottom:1px solid var(--hairline); }
   .changelog-line{ font-size:13px; color:var(--paper-050); line-height:1.5; }
   .changelog-field{ font-weight:600; }
+  .changelog-leg-tag{ display:inline-block; font-size:10px; font-weight:700; color:var(--amber-500); border:1px solid var(--amber-500); border-radius:4px; padding:1px 5px; margin-right:6px; vertical-align:middle; }
   .changelog-arrow{ color:var(--fog-500); }
   .changelog-old{ color:var(--fog-500); text-decoration:line-through; }
   .changelog-new{ color:var(--paper-050); font-weight:600; }
@@ -1862,6 +1863,73 @@ function wireLegHistory(leg){
       const refresh = document.getElementById('legHistoryRefreshBtn');
       if(refresh){ refresh.addEventListener('click', function(){ hydrateLegHistory(leg); }); }
       hydrateLegHistory(leg);
+    }
+  });
+}
+
+async function fetchTripChanges(trip){
+  if(!trip || !trip.legs || !trip.legs.length) return [];
+  const results = await Promise.all(trip.legs.map(async function(l){
+    let rows = [];
+    try { rows = await fetchLegChanges(l.id); } catch(e){ rows = []; }
+    const legLbl = l.legNumber ? ('Leg ' + l.legNumber) : 'Leg';
+    return rows.map(function(r){ r._legLabel = legLbl; return r; });
+  }));
+  const merged = [].concat.apply([], results);
+  merged.sort(function(a, b){
+    const ta = new Date(a.created_at).getTime() || 0;
+    const tb = new Date(b.created_at).getTime() || 0;
+    if(tb !== ta) return tb - ta;
+    return (b.id || 0) - (a.id || 0);
+  });
+  return merged;
+}
+
+async function hydrateTripHistory(trip){
+  const list = document.getElementById('tripHistoryList');
+  if(!list) return;
+  let rows;
+  try { rows = await fetchTripChanges(trip); }
+  catch(e){ console.error('trip history load', e); list.innerHTML = '<div class="doc-empty">History unavailable.</div>'; return; }
+  if(!document.getElementById('tripHistoryList')) return;
+  if(!rows.length){ list.innerHTML = '<div class="doc-empty">No changes recorded yet.</div>'; return; }
+  list.innerHTML = rows.map(function(r){
+    const who = escapeHtml(r.changed_by_name || 'Someone');
+    const when = attachFmtWhen ? attachFmtWhen(r.created_at) : new Date(r.created_at).toLocaleString();
+    const label = escapeHtml(r.field_label || r.field_path || 'Field');
+    const legLbl = escapeHtml(r._legLabel || 'Leg');
+    const oldV = escapeHtml(changelogValFmt(r.old_value));
+    const newV = escapeHtml(changelogValFmt(r.new_value));
+    return '<div class="changelog-row">' +
+        '<div class="changelog-line"><span class="changelog-leg-tag">' + legLbl + '</span>' +
+          '<span class="changelog-field">' + label + '</span>' +
+          '<span class="changelog-arrow"> changed from </span>' +
+          '<span class="changelog-old">' + oldV + '</span>' +
+          '<span class="changelog-arrow"> to </span>' +
+          '<span class="changelog-new">' + newV + '</span></div>' +
+        '<div class="changelog-meta">' + who + ' \u00b7 ' + escapeHtml(when) + '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function wireTripHistory(trip){
+  const toggle = document.getElementById('tripReviewHistoryBtn');
+  const panel = document.getElementById('tripHistoryPanel');
+  if(!toggle || !panel) return;
+  toggle.addEventListener('click', function(){
+    const open = panel.style.display !== 'none';
+    if(open){
+      panel.style.display = 'none';
+      toggle.textContent = 'Review history';
+    } else {
+      panel.innerHTML = '<div class="doc-section-head"><h3 class="section-title">Trip history</h3>' +
+        '<button type="button" class="doc-add-btn" id="tripHistoryRefreshBtn">Refresh</button></div>' +
+        '<div id="tripHistoryList"><div class="doc-empty">Loading\u2026</div></div>';
+      panel.style.display = 'block';
+      toggle.textContent = 'Hide history';
+      const refresh = document.getElementById('tripHistoryRefreshBtn');
+      if(refresh){ refresh.addEventListener('click', function(){ hydrateTripHistory(trip); }); }
+      hydrateTripHistory(trip);
     }
   });
 }
@@ -3421,7 +3489,9 @@ function renderTripDetailView(){
     '</div>' +
     tripNotesBlockHTML(trip) +
     tripDocsBlockHTML(trip) +
-    (tripLastEditedText(trip) ? ('<div class="save-bar trip-edited-bar"><span class="save-hint">' + escapeHtml(tripLastEditedText(trip)) + '</span></div>') : '');
+    (tripLastEditedText(trip) ? ('<div class="save-bar trip-edited-bar"><span class="save-hint">' + escapeHtml(tripLastEditedText(trip)) +
+      ' <button type="button" class="review-history-btn" id="tripReviewHistoryBtn">Review history</button></span></div>' +
+      '<div id="tripHistoryPanel" class="leg-history-panel" style="display:none;"></div>') : '');
 
   document.getElementById('tripDetailBackBtn').addEventListener('click', () => {
     goToListView(state.tripDetailOrigin === 'history' ? 'history' : 'dashboard');
@@ -3443,6 +3513,7 @@ function renderTripDetailView(){
     renderMain();
   });
   document.getElementById('deleteTripBtn').addEventListener('click', () => handleDeleteTrip(trip.key));
+  wireTripHistory(trip);
   document.querySelectorAll('.dash-card[data-id]').forEach(card => {
     card.addEventListener('click', () => openLegEditor(card.dataset.id));
   });
