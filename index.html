@@ -3650,7 +3650,7 @@ function renderMain(){
       '<option value="flown">Flown</option>' +
     '</select>';
   const legNavStripWithStatusHTML =
-    '<div class="leg-nav-strip leg-nav-strip-checklist">' + statusGroupHTML + '<button type="button" class="doc-jump-btn" id="docJumpBtn" title="Jump to documents" aria-label="Jump to documents">' + DOC_PAPERCLIP_SVG + '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(leg.id) + '" style="visibility:visible">0</span></button>' + legNavGroupHTML + '</div>';
+    '<div class="leg-nav-strip leg-nav-strip-checklist">' + statusGroupHTML + '<button type="button" class="doc-jump-btn" id="docJumpBtn" title="Jump to documents" aria-label="Jump to documents">' + DOC_PAPERCLIP_SVG + '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(leg.id) + '" style="visibility:hidden"></span></button>' + legNavGroupHTML + '</div>';
 
   main.innerHTML =
     '<button type="button" class="back-link" id="backToDashboardBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
