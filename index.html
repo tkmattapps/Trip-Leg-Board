@@ -435,6 +435,13 @@
   .doc-icon{ flex:0 0 auto; width:22px; height:22px; color:var(--amber-500); }
   .doc-meta{ flex:1 1 auto; min-width:0; }
   .doc-name{ font-size:13px; color:var(--paper-050); font-weight:600; word-break:break-word; }
+  .changelog-row{ padding:8px 0; border-bottom:1px solid var(--hairline); }
+  .changelog-line{ font-size:13px; color:var(--paper-050); line-height:1.5; }
+  .changelog-field{ font-weight:600; }
+  .changelog-arrow{ color:var(--fog-500); }
+  .changelog-old{ color:var(--fog-500); text-decoration:line-through; }
+  .changelog-new{ color:var(--paper-050); font-weight:600; }
+  .changelog-meta{ font-size:10px; color:var(--fog-500); font-family:'JetBrains Mono',monospace; letter-spacing:0.3px; margin-top:3px; text-transform:uppercase; }
   .doc-home-tag{ display:inline-block; margin-left:8px; font-size:10px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--ink-900); background:var(--fog-300, #B8C4D9); border-radius:10px; padding:1px 7px; vertical-align:middle; }
   .doc-sub{ font-size:11px; color:var(--fog-500); margin-top:2px; }
   .doc-actions{ flex:0 0 auto; display:flex; align-items:center; gap:6px; }
@@ -1584,6 +1591,7 @@ async function loadLegs(){
     }
     legs.sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
     state.legs = legs;
+    snapshotAllLegs();
   }catch(e){
     console.error('loadLegs failed', e);
     state.legs = [];
@@ -1623,6 +1631,171 @@ function installRefreshHandler(){
   });
 }
 
+/* ============================================================
+   Change log (leg_changes) — field-level history on every save.
+   Flatten a leg to dotted paths, diff against the last saved
+   snapshot, and append one row per changed field. Append-only.
+   ============================================================ */
+
+// Fields that are housekeeping / not meaningful edits — never logged.
+const CHANGELOG_SKIP = {
+  'id':1, 'createdAt':1, 'updatedAt':1, 'lastEditedAt':1, 'lastEditedBy':1,
+  'lastEditedByName':1, 'lastEditedByRole':1, 'dep.tz':1, 'arr.tz':1
+};
+
+// Human-friendly labels for dotted field paths. Falls back to a
+// prettified version of the path when not listed.
+const CHANGELOG_LABELS = {
+  'status':'Status', 'tripNumber':'Trip number', 'legNumber':'Leg number',
+  'date':'Date', 'cityPair':'City pair',
+  'compliance.eapisReqd':'eAPIS required', 'compliance.eapisNotes':'eAPIS notes',
+  'compliance.overflightReqd':'Overflight required', 'compliance.customsReqd':'Customs required',
+  'compliance.customsNotes':'Customs notes', 'compliance.overflightPermits':'Overflight permits',
+  'dep.airportId':'Departure airport', 'dep.etdLocal':'Departure ETD (local)', 'dep.etdZ':'Departure ETD (Z)',
+  'dep.hours':'Departure FBO hours', 'dep.agent':'Departure handler', 'dep.agentPhone':'Departure handler phone',
+  'dep.frequency':'Departure frequency', 'dep.fuelVendor':'Departure fuel vendor',
+  'dep.fuelPricePerGallon':'Departure fuel price', 'dep.rampFee':'Departure ramp fee',
+  'arr.airportId':'Arrival airport', 'arr.etaLocal':'Arrival ETA (local)', 'arr.etaZ':'Arrival ETA (Z)',
+  'arr.hours':'Arrival FBO hours', 'arr.agent':'Arrival handler', 'arr.agentPhone':'Arrival handler phone',
+  'arr.frequency':'Arrival frequency', 'arr.fuelVendor':'Arrival fuel vendor',
+  'arr.fuelPricePerGallon':'Arrival fuel price', 'arr.rampFee':'Arrival ramp fee'
+};
+
+function changelogLabel(path){
+  if(CHANGELOG_LABELS[path]) return CHANGELOG_LABELS[path];
+  const leaf = path.split('.').pop();
+  return leaf.replace(/([A-Z])/g, ' $1').replace(/^./, function(c){ return c.toUpperCase(); }).trim();
+}
+
+// Flatten a leg to { dottedPath: stringValue }. Objects recurse;
+// arrays are JSON-stringified as a single value.
+function flattenLeg(obj, prefix, out){
+  out = out || {};
+  prefix = prefix || '';
+  if(obj == null) return out;
+  Object.keys(obj).forEach(function(k){
+    const path = prefix ? (prefix + '.' + k) : k;
+    const v = obj[k];
+    if(v != null && typeof v === 'object' && !Array.isArray(v)){
+      flattenLeg(v, path, out);
+    } else if(Array.isArray(v)){
+      out[path] = JSON.stringify(v);
+    } else {
+      out[path] = (v == null) ? '' : String(v);
+    }
+  });
+  return out;
+}
+
+// Compare two legs and return an array of {field_path, old, new}.
+function diffLegs(before, after){
+  const a = flattenLeg(before || {});
+  const b = flattenLeg(after || {});
+  const paths = {};
+  Object.keys(a).forEach(function(p){ paths[p]=1; });
+  Object.keys(b).forEach(function(p){ paths[p]=1; });
+  const changes = [];
+  Object.keys(paths).forEach(function(p){
+    if(CHANGELOG_SKIP[p]) return;
+    const ov = a[p] == null ? '' : a[p];
+    const nv = b[p] == null ? '' : b[p];
+    if(ov !== nv){ changes.push({ field_path:p, old:ov, new:nv }); }
+  });
+  return changes;
+}
+
+// Snapshot cache of each leg's last-persisted state, for diffing.
+let _legSnapshots = {};
+function snapshotLeg(leg){
+  if(leg && leg.id){ _legSnapshots[leg.id] = JSON.parse(JSON.stringify(leg)); }
+}
+function snapshotAllLegs(){
+  _legSnapshots = {};
+  (state.legs || []).forEach(snapshotLeg);
+}
+
+// Append change rows for one leg. Never throws (best-effort logging).
+async function logLegChanges(leg, changes){
+  if(!changes || !changes.length) return;
+  try {
+    const deptId = await getFlightDepartmentId();
+    const prof = currentUserProfile;
+    const now = new Date().toISOString();
+    const rows = changes.map(function(c){
+      return {
+        leg_id: leg.id,
+        flight_department_id: deptId,
+        field_path: c.field_path,
+        field_label: changelogLabel(c.field_path),
+        old_value: (c.old || '').slice(0, 4000),
+        new_value: (c.new || '').slice(0, 4000),
+        changed_by: prof ? prof.id : null,
+        changed_by_name: prof ? (prof.displayName || '') : '',
+        changed_by_role: prof ? (prof.role || '') : '',
+        created_at: now
+      };
+    });
+    const { error } = await sb.from('leg_changes').insert(rows);
+    if(error) console.warn('leg_changes insert failed', error);
+  } catch(e){ console.warn('logLegChanges failed', e); }
+}
+
+async function fetchLegChanges(legId){
+  const { data, error } = await sb.from('leg_changes')
+    .select('*').eq('leg_id', legId).order('created_at', { ascending: false });
+  if(error) throw error;
+  return data || [];
+}
+
+/* ---- Leg History view (reads leg_changes) ---- */
+function changelogValFmt(v){
+  if(v == null || v === '') return '(empty)';
+  if(v === 'true') return 'yes';
+  if(v === 'false') return 'no';
+  if(v.length > 120) return v.slice(0,117) + '\u2026';
+  return v;
+}
+
+function legHistoryBlockHTML(leg){
+  return '<div class="section" id="legHistorySection">' +
+      '<div class="doc-section-head">' +
+        '<h3 class="section-title">History</h3>' +
+        '<button type="button" class="doc-add-btn" id="legHistoryRefreshBtn">Refresh</button>' +
+      '</div>' +
+      '<div id="legHistoryList"><div class="doc-empty">Loading\u2026</div></div>' +
+    '</div>';
+}
+
+async function hydrateLegHistory(leg){
+  const list = document.getElementById('legHistoryList');
+  if(!list) return;
+  let rows;
+  try { rows = await fetchLegChanges(leg.id); }
+  catch(e){ console.error('leg_changes load', e); list.innerHTML = '<div class="doc-empty">History unavailable.</div>'; return; }
+  if(!document.getElementById('legHistoryList')) return;
+  if(!rows.length){ list.innerHTML = '<div class="doc-empty">No changes recorded yet.</div>'; return; }
+  list.innerHTML = rows.map(function(r){
+    const who = escapeHtml(r.changed_by_name || 'Someone');
+    const when = attachFmtWhen ? attachFmtWhen(r.created_at) : new Date(r.created_at).toLocaleString();
+    const label = escapeHtml(r.field_label || r.field_path || 'Field');
+    const oldV = escapeHtml(changelogValFmt(r.old_value));
+    const newV = escapeHtml(changelogValFmt(r.new_value));
+    return '<div class="changelog-row">' +
+        '<div class="changelog-line"><span class="changelog-field">' + label + '</span>' +
+          '<span class="changelog-arrow"> changed from </span>' +
+          '<span class="changelog-old">' + oldV + '</span>' +
+          '<span class="changelog-arrow"> to </span>' +
+          '<span class="changelog-new">' + newV + '</span></div>' +
+        '<div class="changelog-meta">' + who + ' \u00b7 ' + escapeHtml(when) + '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function wireLegHistory(leg){
+  const btn = document.getElementById('legHistoryRefreshBtn');
+  if(btn){ btn.addEventListener('click', function(){ hydrateLegHistory(leg); }); }
+}
+
 function lastEditedText(leg){
   if(!leg) return '';
   const when = leg.lastEditedAt || leg.updatedAt;
@@ -1642,10 +1815,14 @@ async function saveLeg(leg){
     leg.lastEditedByRole = _prof.role || '';
   }
   leg.lastEditedAt = leg.updatedAt;
+  // Change log: diff against the last-saved snapshot BEFORE persisting.
+  const _changes = diffLegs(_legSnapshots[leg.id], leg);
   for(let attempt = 1; attempt <= 2; attempt++){
     try{
       const result = await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
       if(!result) throw new Error('no result');
+      if(_changes.length){ logLegChanges(leg, _changes); }
+      snapshotLeg(leg);
       return true;
     }catch(e){
       console.error('save failed (attempt ' + attempt + ')', e);
@@ -3607,6 +3784,8 @@ function renderMain(){
 
     legAttachmentsBlockHTML(leg) +
 
+    legHistoryBlockHTML(leg) +
+
     '<div class="save-bar">' +
       '<span class="save-hint">' + escapeHtml(lastEditedText(leg)) + '</span>' +
       '<button class="btn btn-primary" id="saveBtnBottom">Save changes</button>' +
@@ -4171,6 +4350,8 @@ function renderMain(){
   hydrateLegNotes(leg.id);
   wireLegAttachments(leg);
   hydrateLegAttachments(leg);
+  wireLegHistory(leg);
+  hydrateLegHistory(leg);
 }
 
 const AIRPORT_TZ = {
