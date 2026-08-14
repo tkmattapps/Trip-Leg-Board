@@ -457,8 +457,8 @@
   .changelog-line{ font-size:13px; color:var(--paper-050); line-height:1.5; }
   .changelog-field{ font-weight:600; }
   #updateBanner{ position:fixed; left:50%; transform:translateX(-50%); bottom:max(16px, env(safe-area-inset-bottom)); z-index:9999; display:flex; align-items:center; gap:14px; background:var(--panel-700); color:var(--paper-050); border:1px solid var(--amber-500); border-radius:12px; padding:12px 16px; box-shadow:0 8px 28px rgba(0,0,0,0.45); max-width:calc(100vw - 32px); }
-  .update-banner-text{ font-size:14px; }
-  .update-banner-btn{ background:var(--amber-500); color:var(--ink-900); border:none; border-radius:8px; padding:8px 16px; font-weight:700; font-size:14px; cursor:pointer; white-space:nowrap; }
+  .update-banner-text{ font-family:'Inter',sans-serif; font-size:14px; }
+  .update-banner-btn{ background:var(--amber-500); color:var(--ink-900); border:none; border-radius:8px; font-family:'Inter',sans-serif; padding:8px 16px; font-weight:600; font-size:14px; cursor:pointer; white-space:nowrap; }
   .changelog-leg-tag{ display:inline-block; font-size:10px; font-weight:700; color:var(--amber-500); border:1px solid var(--amber-500); border-radius:4px; padding:1px 5px; margin-right:6px; vertical-align:middle; }
   .changelog-arrow{ color:var(--fog-500); }
   .changelog-old{ color:var(--fog-500); text-decoration:line-through; }
@@ -763,10 +763,12 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-14T18:53:17Z';
+const BUILD_VERSION = '2026-08-14T19:02:10Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, storage: window.localStorage }
+});
 
 let currentFlightDepartmentId = null;
 
@@ -5504,14 +5506,33 @@ function startUpdateChecker(){
   });
 }
 
+var _appBooted = false;
+async function enterAppFromSession(){
+  if(_appBooted) return;
+  _appBooted = true;
+  state.view = 'home';
+  await bootApp();
+  hideLoginOverlay();
+}
 (async function initAuth(){
+  // React to the session settling. On a hard reload the stored session can
+  // rehydrate a beat AFTER the first getSession() read, so we also listen here
+  // and enter the app if it shows up, rather than stranding the user on login.
+  sb.auth.onAuthStateChange(function(event, session){
+    if(session && !_appBooted){ enterAppFromSession(); }
+  });
   const { data: { session } } = await sb.auth.getSession();
   if(session){
-    state.view = 'home';
-    await bootApp();
-    hideLoginOverlay();
+    await enterAppFromSession();
   } else {
-    showLoginOverlay();
+    // Give a restoring session a brief moment before deciding to show login,
+    // so a hard-reload rehydration doesn't flash the sign-in screen.
+    setTimeout(async function(){
+      if(_appBooted) return;
+      const retry = await sb.auth.getSession();
+      if(retry && retry.data && retry.data.session){ await enterAppFromSession(); }
+      else if(!_appBooted){ showLoginOverlay(); }
+    }, 400);
   }
   startUpdateChecker();
 })();
