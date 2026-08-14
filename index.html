@@ -4367,6 +4367,7 @@ function renderMain(){
   wireLegAttachments(leg);
   hydrateLegAttachments(leg);
   wireLegHistory(leg);
+  wireFieldBlurAutosave();
 }
 
 const AIRPORT_TZ = {
@@ -5015,6 +5016,22 @@ async function collectAndSave(id, opts){
 }
 
 let autosaveInFlight = false;
+let _fieldBlurTimer = null;
+// Auto-save (and therefore log to history) shortly after a field loses focus,
+// so edits are captured without needing to navigate or press Save.
+function wireFieldBlurAutosave(){
+  const main = document.getElementById('mainPanel');
+  if(!main || main.dataset.blurAutosaveWired === 'true') return;
+  main.dataset.blurAutosaveWired = 'true';
+  main.addEventListener('focusout', function(e){
+    const t = e.target;
+    if(!t || !t.matches || !t.matches('input, select, textarea')) return;
+    if(_fieldBlurTimer) clearTimeout(_fieldBlurTimer);
+    _fieldBlurTimer = setTimeout(function(){
+      autoSaveIfEditing();
+    }, 500);
+  });
+}
 function autoSaveIfEditing(){
   if(state.view === 'editor' && state.activeId && !autosaveInFlight){
     autosaveInFlight = true;
