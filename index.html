@@ -544,6 +544,8 @@
     padding:14px 0; margin-top:10px; display:flex; justify-content:space-between; align-items:center;
   }
   .save-hint{ font-size:12px; color:var(--fog-500); font-family:'JetBrains Mono',monospace; }
+  .review-history-btn{ margin-left:8px; font-size:11px; font-family:'JetBrains Mono',monospace; color:var(--amber-500); background:none; border:none; text-decoration:underline; cursor:pointer; padding:0; }
+  .leg-history-panel{ margin-top:12px; padding-top:12px; border-top:1px solid var(--hairline); }
   .toast{
     position:fixed; bottom:24px; right:24px; background:var(--panel-700); border:1px solid var(--amber-500);
     color:var(--paper-050); padding:11px 18px; border-radius:4px; font-size:13px; font-family:'JetBrains Mono',monospace;
@@ -1756,14 +1758,12 @@ function changelogValFmt(v){
   return v;
 }
 
-function legHistoryBlockHTML(leg){
-  return '<div class="section" id="legHistorySection">' +
-      '<div class="doc-section-head">' +
+function legHistoryPanelInnerHTML(){
+  return '<div class="doc-section-head">' +
         '<h3 class="section-title">History</h3>' +
         '<button type="button" class="doc-add-btn" id="legHistoryRefreshBtn">Refresh</button>' +
       '</div>' +
-      '<div id="legHistoryList"><div class="doc-empty">Loading\u2026</div></div>' +
-    '</div>';
+      '<div id="legHistoryList"><div class="doc-empty">Loading\u2026</div></div>';
 }
 
 async function hydrateLegHistory(leg){
@@ -1792,8 +1792,23 @@ async function hydrateLegHistory(leg){
 }
 
 function wireLegHistory(leg){
-  const btn = document.getElementById('legHistoryRefreshBtn');
-  if(btn){ btn.addEventListener('click', function(){ hydrateLegHistory(leg); }); }
+  const toggle = document.getElementById('reviewHistoryBtn');
+  const panel = document.getElementById('legHistoryPanel');
+  if(!toggle || !panel) return;
+  toggle.addEventListener('click', function(){
+    const open = panel.style.display !== 'none';
+    if(open){
+      panel.style.display = 'none';
+      toggle.textContent = 'Review history';
+    } else {
+      panel.innerHTML = legHistoryPanelInnerHTML();
+      panel.style.display = 'block';
+      toggle.textContent = 'Hide history';
+      const refresh = document.getElementById('legHistoryRefreshBtn');
+      if(refresh){ refresh.addEventListener('click', function(){ hydrateLegHistory(leg); }); }
+      hydrateLegHistory(leg);
+    }
+  });
 }
 
 function lastEditedText(leg){
@@ -3785,12 +3800,12 @@ function renderMain(){
 
     legAttachmentsBlockHTML(leg) +
 
-    legHistoryBlockHTML(leg) +
-
     '<div class="save-bar">' +
-      '<span class="save-hint">' + escapeHtml(lastEditedText(leg)) + '</span>' +
+      '<span class="save-hint">' + escapeHtml(lastEditedText(leg)) +
+        ' <button type="button" class="review-history-btn" id="reviewHistoryBtn">Review history</button></span>' +
       '<button class="btn btn-primary" id="saveBtnBottom">Save changes</button>' +
-    '</div>';
+    '</div>' +
+    '<div id="legHistoryPanel" class="leg-history-panel" style="display:none;"></div>';
 
   const statusSelectEl = document.getElementById('statusSelect');
   statusSelectEl.value = leg.status;
@@ -4352,7 +4367,6 @@ function renderMain(){
   wireLegAttachments(leg);
   hydrateLegAttachments(leg);
   wireLegHistory(leg);
-  hydrateLegHistory(leg);
 }
 
 const AIRPORT_TZ = {
