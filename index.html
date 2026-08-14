@@ -3654,7 +3654,7 @@ function renderMain(){
           '<div class="subpanel-title">Departure</div>' +
           '<div class="grid">' +
             field('Airport ID', 'depAirportId', leg.dep.airportId, {placeholder:'KTEB'}) +
-            field('UTC offset', 'depUtcOffset', leg.dep.tz ? '' : (leg.dep.utcOffsetManual || ''), {placeholder:'auto or -4'}) +
+            field('UTC offset', 'depUtcOffset', leg.dep.utcOffsetManual || '', {placeholder:'auto or -4'}) +
             '<div class="field" style="grid-column:1/-1"><div class="tz-hint" id="depTzHint"></div></div>' +
             field('ETD local', 'depEtdLocal', displayLocal12h(leg.dep.etdLocal), {type:'text', placeholder:'02:30 PM'}) +
             field('ETD Z (UTC)', 'depEtdZ', leg.dep.etdZ, {type:'text', placeholder:'1430'}) +
@@ -3678,7 +3678,7 @@ function renderMain(){
           '<div class="subpanel-title">Arrival</div>' +
           '<div class="grid">' +
             field('Airport ID', 'arrAirportId', leg.arr.airportId, {placeholder:'EGGW'}) +
-            field('UTC offset', 'arrUtcOffset', leg.arr.tz ? '' : (leg.arr.utcOffsetManual || ''), {placeholder:'auto or -4'}) +
+            field('UTC offset', 'arrUtcOffset', leg.arr.utcOffsetManual || '', {placeholder:'auto or -4'}) +
             '<div class="field" style="grid-column:1/-1"><div class="tz-hint" id="arrTzHint"></div></div>' +
             field('ETA local', 'arrEtaLocal', displayLocal12h(leg.arr.etaLocal), {type:'text', placeholder:'02:30 PM'}) +
             field('ETA Z (UTC)', 'arrEtaZ', leg.arr.etaZ, {type:'text', placeholder:'1430'}) +
@@ -4803,13 +4803,12 @@ function setupTZAutofill(cfg){
     if(!dateVal){
       hintEl.textContent = tz + ' \u2014 enter the trip date to confirm UTC offset (DST-dependent)';
       hintEl.className = 'tz-hint unknown';
-      if(offsetInput) offsetInput.value = '';
       return;
     }
     const off = getOffsetMinutes(Date.parse(dateVal + 'T12:00:00Z'), tz);
     hintEl.textContent = tz + formatOffset(off);
     hintEl.className = 'tz-hint found';
-    if(offsetInput) offsetInput.value = formatOffsetShort(off);
+    if(offsetInput && !offsetInput.value.trim()) offsetInput.value = formatOffsetShort(off);
   }
 
   function refreshTz(){
