@@ -3520,7 +3520,7 @@ async function handleDeleteTrip(tripKey){
   state.legs = state.legs.filter(l => !idsToDelete.includes(l.id));
   state.activeId = null;
   state.view = state.tripDetailOrigin === 'history' ? 'history' : 'dashboard';
-  showToast('Trip ' + tripNumber + ' deleted');
+  showToast((trip.tripNumber ? ('Trip ' + trip.tripNumber) : 'Untitled trip') + ' deleted');
   updateNavTabs();
   renderList();
   renderMain();
