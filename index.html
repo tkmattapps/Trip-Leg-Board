@@ -3430,7 +3430,7 @@ function renderTripDetailView(){
     await saveLeg(newLeg);
     renderMain();
   });
-  document.getElementById('deleteTripBtn').addEventListener('click', () => handleDeleteTrip(trip.tripNumber));
+  document.getElementById('deleteTripBtn').addEventListener('click', () => handleDeleteTrip(trip.key));
   document.querySelectorAll('.dash-card[data-id]').forEach(card => {
     card.addEventListener('click', () => openLegEditor(card.dataset.id));
   });
@@ -3505,12 +3505,13 @@ function openStatusPopover(anchorEl){
   }, 0);
 }
 
-async function handleDeleteTrip(tripNumber){
+async function handleDeleteTrip(tripKey){
   const allTrips = groupIntoTrips(state.legs);
-  const trip = allTrips.find(t => t.key === tripNumber);
+  const trip = allTrips.find(t => t.key === tripKey);
   if(!trip) return;
   const legCount = trip.legs.length;
-  const confirmed = await showConfirm('Delete trip ' + tripNumber + '? This will permanently delete all ' + legCount + ' leg' + (legCount === 1 ? '' : 's') + '. This cannot be undone.');
+  const tripLabel = trip.tripNumber ? ('trip ' + trip.tripNumber) : 'this untitled trip';
+  const confirmed = await showConfirm('Delete ' + tripLabel + '? This will permanently delete all ' + legCount + ' leg' + (legCount === 1 ? '' : 's') + '. This cannot be undone.');
   if(!confirmed) return;
   const idsToDelete = trip.legs.map(l => l.id);
   for(const id of idsToDelete){
