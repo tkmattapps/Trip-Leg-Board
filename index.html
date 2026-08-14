@@ -763,7 +763,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-14T19:58:35Z';
+const BUILD_VERSION = '2026-08-14T20:05:36Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -848,6 +848,15 @@ const storage = {
       return { keys: data.map(r => 'feedback:' + r.id), prefix: prefix, shared: true };
     }
     return { keys: [], prefix: prefix, shared: true };
+  },
+  // Bulk-load every leg for the department in a SINGLE query (id + full data),
+  // instead of listing ids then fetching each row one-at-a-time. This is the
+  // quick-win fix for slow startup as flown-trip history grows.
+  async listLegsFull(){
+    const deptId = await getFlightDepartmentId();
+    const { data, error } = await sb.from('legs').select('*').eq('flight_department_id', deptId).is('deleted_at', null);
+    if(error) throw error;
+    return (data || []).map(legRowToLeg);
   }
 };
 
@@ -1645,15 +1654,9 @@ function blankLeg(){
 
 async function loadLegs(){
   try{
-    const listRes = await storage.list('leg:', true);
-    const keys = (listRes && listRes.keys) ? listRes.keys : [];
-    const legs = [];
-    for(const k of keys){
-      try{
-        const r = await storage.get(k, true);
-        if(r && r.value){ legs.push(normalizeLeg(JSON.parse(r.value))); }
-      }catch(e){ console.error('failed to load', k, e); }
-    }
+    // Single bulk query for all department legs, then normalize in-memory.
+    const rawLegs = await storage.listLegsFull();
+    const legs = rawLegs.map(normalizeLeg);
     legs.sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
     state.legs = legs;
     snapshotAllLegs();
