@@ -397,6 +397,7 @@
   .dash-card:hover{ border-color:var(--amber-500); }
   .dash-card-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; }
   .dash-card-code{ font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:600; }
+  .dash-card-leg-title{ font-family:'Big Shoulders Display','Inter',sans-serif; font-size:20px; font-weight:700; letter-spacing:0.5px; color:var(--amber-500); }
   .dash-card-orphan-banner{ background:var(--alert-600, #E2574C); color:#fff; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; letter-spacing:0.02em; padding:6px 10px; border-radius:4px; margin-bottom:10px; text-align:center; }
   .dash-status-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
   .dash-status-dot.ok{ background:var(--ok-500); }
@@ -2246,11 +2247,10 @@ function tripBriefLegCardHTML(leg){
   return '<div class="dash-card" data-id="' + leg.id + '">' +
     (isUnassignedBrief ? '<div class="dash-card-orphan-banner">Unassigned leg. Please add trip number.</div>' : '') +
     '<div class="dash-card-top">' +
-      '<span class="dash-card-code">Trip ' + escapeHtml(tripNumLabel) + '</span>' +
+      '<span class="dash-card-leg-title">Leg ' + escapeHtml(leg.legNumber || '?') + '</span>' +
       '<span class="leg-attach-badge" data-attach-badge="' + escapeHtml(leg.id) + '" style="display:none"></span>' +
     '</div>' +
     '<div class="ready-room-leg-row">' +
-      '<span class="ready-room-leg-label">Leg</span>' +
       '<span class="leg-status-dot leg-status-' + escapeHtml(leg.status) + '">' + escapeHtml(leg.legNumber || '?') + '</span>' +
       '<span class="ready-room-leg-status-word status-word-' + escapeHtml(leg.status) + '">' + statusLabel(leg.status) + '</span>' +
     '</div>' +
@@ -3355,7 +3355,7 @@ function renderTripDetailView(){
   main.innerHTML =
     '<button type="button" class="back-link" id="tripDetailBackBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
     '<div class="view-header">' +
-      '<div><div class="view-title">Trip Legs</div><div class="view-subtitle">Trip ' + escapeHtml(trip.tripNumber) + ' &middot; ' + trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') + '</div></div>' +
+      '<div><div class="view-title">Trip ' + escapeHtml(trip.tripNumber) + '</div><div class="view-subtitle">' + trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') + '</div></div>' +
       '<div class="main-actions">' +
         '<button type="button" class="btn btn-ghost refresh-btn" data-refresh="1" title="Refresh from server" aria-label="Refresh"><span class="refresh-icon" aria-hidden="true">\u21BB</span> Refresh</button>' +
         '<button type="button" class="btn btn-danger" id="deleteTripBtn">Delete trip</button>' +
