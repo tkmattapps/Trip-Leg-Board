@@ -1817,6 +1817,7 @@ async function saveLeg(leg){
   leg.lastEditedAt = leg.updatedAt;
   // Change log: diff against the last-saved snapshot BEFORE persisting.
   const _changes = diffLegs(_legSnapshots[leg.id], leg);
+  try{ console.log('[changelog]', leg.id, 'hadSnapshot=', !!_legSnapshots[leg.id], 'changes=', _changes.length, _changes.map(function(c){return c.field_path;})); }catch(_e){}
   for(let attempt = 1; attempt <= 2; attempt++){
     try{
       const result = await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
