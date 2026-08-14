@@ -763,7 +763,33 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-14T19:04:39Z';
+const BUILD_VERSION = '2026-08-14T19:12:21Z';
+/* ---- TEMPORARY auth-flow instrumentation (remove after diagnosis) ----
+   Persists steps across the hard reload via localStorage so we can read what
+   the session check actually returned on each device. */
+function _authDbg(msg){
+  try {
+    var t = new Date().toLocaleTimeString();
+    var line = t + '  ' + msg;
+    var arr = JSON.parse(localStorage.getItem('_authDbg') || '[]');
+    arr.push(line);
+    if(arr.length > 12) arr = arr.slice(-12);
+    localStorage.setItem('_authDbg', JSON.stringify(arr));
+    console.log('[authdbg] ' + line);
+    _renderAuthDbg();
+  } catch(e){}
+}
+function _renderAuthDbg(){
+  var box = document.getElementById('_authDbgBox');
+  if(!box){
+    box = document.createElement('div');
+    box.id = '_authDbgBox';
+    box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(14,26,43,0.95);color:#7CFF9B;font-family:monospace;font-size:10px;line-height:1.4;padding:6px 8px;max-height:40vh;overflow:auto;border-bottom:1px solid #F2A93B;white-space:pre-wrap;';
+    document.addEventListener('DOMContentLoaded', function(){ document.body.appendChild(box); });
+    if(document.body) document.body.appendChild(box);
+  }
+  try { box.textContent = (JSON.parse(localStorage.getItem('_authDbg')||'[]')).join('\n'); } catch(e){}
+}
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -5515,23 +5541,24 @@ async function enterAppFromSession(){
   hideLoginOverlay();
 }
 (async function initAuth(){
-  // React to the session settling. On a hard reload the stored session can
-  // rehydrate a beat AFTER the first getSession() read, so we also listen here
-  // and enter the app if it shows up, rather than stranding the user on login.
+  _authDbg('initAuth start | build ' + BUILD_VERSION);
   sb.auth.onAuthStateChange(function(event, session){
+    _authDbg('onAuthStateChange: ' + event + ' | session=' + (session ? 'YES' : 'no') + ' | booted=' + _appBooted);
     if(session && !_appBooted){ enterAppFromSession(); }
   });
   const { data: { session } } = await sb.auth.getSession();
+  _authDbg('getSession#1: session=' + (session ? 'YES' : 'no'));
   if(session){
     await enterAppFromSession();
+    _authDbg('entered app via getSession#1');
   } else {
-    // Give a restoring session a brief moment before deciding to show login,
-    // so a hard-reload rehydration doesn't flash the sign-in screen.
+    _authDbg('no session yet, waiting 400ms to retry...');
     setTimeout(async function(){
-      if(_appBooted) return;
+      if(_appBooted){ _authDbg('retry skipped: already booted'); return; }
       const retry = await sb.auth.getSession();
-      if(retry && retry.data && retry.data.session){ await enterAppFromSession(); }
-      else if(!_appBooted){ showLoginOverlay(); }
+      _authDbg('getSession#2 (retry): session=' + (retry && retry.data && retry.data.session ? 'YES' : 'no'));
+      if(retry && retry.data && retry.data.session){ await enterAppFromSession(); _authDbg('entered app via retry'); }
+      else if(!_appBooted){ showLoginOverlay(); _authDbg('SHOWING LOGIN (retry found nothing)'); }
     }, 400);
   }
   startUpdateChecker();
