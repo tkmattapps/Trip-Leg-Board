@@ -278,7 +278,7 @@
     .nav-tab-btn{ min-height:40px; }
     .save-bar{ padding-right:0; }
     .save-hint{ padding-right:130px; }
-    body .feedback-fab, body .install-fab, body .logout-fab{ top:max(26px, calc(env(safe-area-inset-top) + 16px)); }
+    body .icon-fab{ top:max(26px, calc(env(safe-area-inset-top) + 16px)); }
     .feedback-fab{ bottom:max(20px, env(safe-area-inset-bottom)); right:16px; }
     .install-fab{ bottom:max(76px, calc(env(safe-area-inset-bottom) + 56px)); right:16px; }
     .feedback-modal{ padding:16px; }
@@ -509,16 +509,30 @@
   /* Dock the pills into the top-right on ALL pages so they never leap around
      between views. Deep pages have the header bar; home has its own top-right
      zone with the Log Out button, so the pills sit just left of it there. */
-  .feedback-fab, .install-fab, .logout-fab{
-    position:fixed; bottom:auto; z-index:40;
-    top:max(31px, calc(env(safe-area-inset-top) + 21px)); box-shadow:none;
-    padding:7px 14px; font-size:12px;
+  .icon-fab{
+    position:fixed; bottom:auto; z-index:40; box-shadow:none;
+    top:max(31px, calc(env(safe-area-inset-top) + 21px));
+    width:38px; height:38px; padding:0; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:17px; line-height:1; overflow:visible;
+    background:var(--panel-700); cursor:pointer;
   }
-  .logout-fab{ background:transparent; border:1px solid var(--border-color, #444); color:var(--text-secondary, #aaa); border-radius:6px; cursor:pointer; }
-  .feedback-fab{ right:20px; }
-  .install-fab{ right:132px; }
-  .logout-fab{ right:244px; }
-  body.view-home .feedback-fab, body.view-home .install-fab, body.view-home .logout-fab{ display:none; }
+  .feedback-fab.icon-fab{ border:1px solid var(--amber-500); }
+  .install-fab.icon-fab{ border:1px solid var(--fog-500); }
+  .logout-fab.icon-fab{ border:1px solid var(--fog-500); }
+  .feedback-fab.icon-fab{ right:20px; }
+  .install-fab.icon-fab{ right:68px; }
+  .logout-fab.icon-fab{ right:116px; }
+  body.view-home .icon-fab{ display:none; }
+  .icon-fab::after{
+    content:attr(data-tip); position:absolute; top:calc(100% + 8px); right:0;
+    background:var(--ink-900,#0E1A2B); color:var(--paper-050,#F5F7FA);
+    border:1px solid var(--fog-500); border-radius:6px;
+    font-family:'Inter',sans-serif; font-size:11px; font-weight:600;
+    padding:4px 8px; white-space:nowrap; pointer-events:none;
+    opacity:0; transform:translateY(-2px); transition:opacity .12s ease, transform .12s ease;
+  }
+  @media (hover:hover){ .icon-fab:hover::after{ opacity:1; transform:translateY(0); } }
   .install-platform{ margin-bottom:18px; }
   .install-platform-title{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--amber-500); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
   .install-steps{ margin:0; padding-left:20px; font-size:13px; color:var(--paper-050); line-height:1.9; }
@@ -649,9 +663,9 @@
 
 <div class="toast" id="toast"></div>
 
-<button class="feedback-fab" id="feedbackFab" aria-label="Send feedback">&#128172; Feedback</button>
-<button class="install-fab" id="installFab" aria-label="How to install">&#128241; Install</button>
-<button class="logout-fab" id="logoutFab" aria-label="Log out">Log Out</button>
+<button class="feedback-fab icon-fab" id="feedbackFab" aria-label="Send feedback" data-tip="Feedback">&#128172;</button>
+<button class="install-fab icon-fab" id="installFab" aria-label="How to install" data-tip="Install">&#128241;</button>
+<button class="logout-fab icon-fab" id="logoutFab" aria-label="Log out" data-tip="Log out">&#128682;</button>
 
 <div class="feedback-overlay" id="installOverlay">
   <div class="feedback-modal">
