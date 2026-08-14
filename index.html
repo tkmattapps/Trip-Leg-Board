@@ -753,7 +753,10 @@ const storage = {
   async delete(key){
     const [type, id] = key.split(':');
     if(type === 'leg'){
-      const { error } = await sb.from('legs').delete().eq('id', id);
+      // SOFT delete: stamp deleted_at instead of physically removing the row,
+      // so an accidental delete is recoverable (clear the cell in Supabase, or
+      // via the in-app Recently Deleted screen once that ships).
+      const { error } = await sb.from('legs').update({ deleted_at: new Date().toISOString() }).eq('id', id);
       if(error) throw error;
       return { key: key, deleted: true, shared: true };
     }
@@ -768,7 +771,7 @@ const storage = {
     const type = (prefix || '').replace(':', '');
     if(type === 'leg'){
       const deptId = await getFlightDepartmentId();
-      const { data, error } = await sb.from('legs').select('id').eq('flight_department_id', deptId);
+      const { data, error } = await sb.from('legs').select('id').eq('flight_department_id', deptId).is('deleted_at', null);
       if(error) throw error;
       return { keys: data.map(r => 'leg:' + r.id), prefix: prefix, shared: true };
     }
