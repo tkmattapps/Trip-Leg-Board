@@ -397,7 +397,7 @@
   .dash-card:hover{ border-color:var(--amber-500); }
   .dash-card-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; }
   .dash-card-code{ font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:600; }
-  .dash-card-leg-title{ font-family:'Big Shoulders Display','Inter',sans-serif; font-size:20px; font-weight:700; letter-spacing:0.5px; color:var(--amber-500); }
+  .dash-card-leg-title{ font-family:'Big Shoulders Display','Inter',sans-serif; font-size:20px; font-weight:700; letter-spacing:0.5px; color:var(--paper-050, #F5F7FA); }
   .dash-card-orphan-banner{ background:var(--alert-600, #E2574C); color:#fff; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; letter-spacing:0.02em; padding:6px 10px; border-radius:4px; margin-bottom:10px; text-align:center; }
   .dash-status-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
   .dash-status-dot.ok{ background:var(--ok-500); }
@@ -420,6 +420,7 @@
     width:22px; height:22px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center;
     font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; color:var(--ink-900);
   }
+  .leg-status-dot-plain{ width:12px; height:12px; }
   .leg-status-dot-clickable{ cursor:pointer; transition:transform 0.1s ease, box-shadow 0.1s ease; }
   .leg-status-dot-clickable:hover{ transform:scale(1.15); box-shadow:0 0 0 3px rgba(255,255,255,0.15); }
   .leg-status-dot.leg-status-planning{ background:#F2A93B; }
@@ -2251,7 +2252,7 @@ function tripBriefLegCardHTML(leg){
       '<span class="leg-attach-badge" data-attach-badge="' + escapeHtml(leg.id) + '" style="display:none"></span>' +
     '</div>' +
     '<div class="ready-room-leg-row">' +
-      '<span class="leg-status-dot leg-status-' + escapeHtml(leg.status) + '">' + escapeHtml(leg.legNumber || '?') + '</span>' +
+      '<span class="leg-status-dot leg-status-dot-plain leg-status-' + escapeHtml(leg.status) + '"></span>' +
       '<span class="ready-room-leg-status-word status-word-' + escapeHtml(leg.status) + '">' + statusLabel(leg.status) + '</span>' +
     '</div>' +
     '<div class="dash-card-route">' + escapeHtml(route) + '</div>' +
