@@ -84,7 +84,7 @@
     .leg-nav-strip:not(.leg-nav-strip-end) > div:not(.leg-nav-group){ order:2; align-self:flex-start; }
     .leg-nav-strip:not(.leg-nav-strip-end) .doc-jump-btn{ order:3; align-self:flex-start; margin-right:0; margin-top:2px; }
     .leg-nav-strip-checklist{ flex-direction:row; align-items:center; flex-wrap:nowrap; }
-    .leg-nav-strip-checklist .leg-nav-group{ order:1; align-self:auto; justify-content:flex-start; }
+    .leg-nav-strip.leg-nav-strip-checklist .leg-nav-group{ order:1; align-self:flex-start; justify-content:flex-start; }
     .leg-nav-strip-checklist .doc-jump-btn{ order:2; align-self:center; margin-left:auto; margin-right:0; margin-top:0; }
 
     /* Top padding clears the notch/status bar AND leaves room for the watermark,
@@ -419,7 +419,7 @@
   .leg-status-strip{ display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap; align-items:center; }
   .leg-nav-strip{ display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
   .leg-nav-strip-end{ justify-content:flex-end; }
-.leg-nav-strip-checklist{ justify-content:space-between; }
+.leg-nav-strip-checklist{ justify-content:flex-start; }
   .leg-nav-strip-checklist .leg-nav-group{ order:1; }
   .leg-nav-strip-checklist .doc-jump-btn{ order:2; margin-left:auto; }
   .leg-nav-add-btn{
