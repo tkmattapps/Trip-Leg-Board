@@ -1742,7 +1742,7 @@ async function logLegChanges(leg, changes){
 
 async function fetchLegChanges(legId){
   const { data, error } = await sb.from('leg_changes')
-    .select('*').eq('leg_id', legId).order('created_at', { ascending: false });
+    .select('*').eq('leg_id', legId).order('created_at', { ascending: false }).order('id', { ascending: false });
   if(error) throw error;
   return data || [];
 }
