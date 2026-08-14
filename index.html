@@ -474,7 +474,7 @@
   .doc-jump-btn{ margin-right:auto; display:inline-flex; align-items:center; gap:4px; background:transparent; border:1px solid var(--fog-500); color:var(--fog-300, #B8C4D9); border-radius:16px; padding:5px 10px; cursor:pointer; }
   .doc-jump-btn:hover{ border-color:var(--amber-500); color:var(--amber-500); }
   .doc-jump-btn .doc-icon{ width:16px; height:16px; }
-  .doc-jump-count{ font-size:12px; font-weight:700; }
+  .doc-jump-count{ font-size:12px; font-weight:700; min-width:8px; display:inline-block; text-align:center; }
   .leg-status-hint{ opacity:0.55; font-size:9px; }
   .status-popover{ position:absolute; z-index:1000; background:var(--panel-800, #16233A); border:1px solid var(--hairline); border-radius:10px; padding:6px; min-width:150px; box-shadow:0 8px 24px rgba(0,0,0,0.4); display:flex; flex-direction:column; gap:2px; }
   .status-popover-item{ display:flex; align-items:center; gap:10px; background:transparent; border:none; color:var(--fog-300); font-family:'Inter',sans-serif; font-size:13px; padding:9px 12px; border-radius:7px; cursor:pointer; text-align:left; width:100%; }
@@ -1054,8 +1054,10 @@ let _docRowCache = {};
 // Update the header paperclip count for a leg (plain clip when zero).
 function setDocJumpCount(legId, n){
   document.querySelectorAll('[data-doc-jump-count="' + legId + '"]').forEach(function(el){
-    el.textContent = (n || 0);
+    var c = n || 0;
+    el.textContent = c;
     el.style.display = '';
+    el.style.visibility = c > 0 ? 'visible' : 'hidden';
   });
 }
 
@@ -3648,7 +3650,7 @@ function renderMain(){
       '<option value="flown">Flown</option>' +
     '</select>';
   const legNavStripWithStatusHTML =
-    '<div class="leg-nav-strip leg-nav-strip-checklist">' + statusGroupHTML + '<button type="button" class="doc-jump-btn" id="docJumpBtn" title="Jump to documents" aria-label="Jump to documents">' + DOC_PAPERCLIP_SVG + '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(leg.id) + '" style="display:none"></span></button>' + legNavGroupHTML + '</div>';
+    '<div class="leg-nav-strip leg-nav-strip-checklist">' + statusGroupHTML + '<button type="button" class="doc-jump-btn" id="docJumpBtn" title="Jump to documents" aria-label="Jump to documents">' + DOC_PAPERCLIP_SVG + '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(leg.id) + '" style="visibility:hidden"></span></button>' + legNavGroupHTML + '</div>';
 
   main.innerHTML =
     '<button type="button" class="back-link" id="backToDashboardBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
