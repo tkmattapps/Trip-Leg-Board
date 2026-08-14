@@ -3418,13 +3418,15 @@ function renderTripDetailView(){
     autoSaveIfEditing();
     const newLeg = blankLeg();
     newLeg.tripNumber = trip.tripNumber;
+    // For an untitled trip, inherit the group so the new leg joins this trip.
+    if(trip.isOrphan){ newLeg.groupId = trip.legs[0] ? (trip.legs[0].groupId || newLeg.groupId) : newLeg.groupId; }
     const maxLegNum = Math.max(0, ...trip.legs.map(l => parseInt(l.legNumber, 10) || 0));
     newLeg.legNumber = String(maxLegNum + 1);
     state.legs.unshift(newLeg);
     // Stay on the Trip Legs page: keep the view + trip key pinned, persist the
     // new leg so it survives refresh / reaches other devices, then re-render in place.
     state.view = 'tripDetail';
-    state.activeTripKey = (trip.tripNumber || '').trim();
+    state.activeTripKey = trip.isOrphan ? ('__grp_' + newLeg.groupId) : (trip.tripNumber || '').trim();
     await saveLeg(newLeg);
     renderMain();
   });
