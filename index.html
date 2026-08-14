@@ -1618,6 +1618,7 @@ function normalizeLeg(leg){
 function blankLeg(){
   return {
     id: uid(),
+    groupId: uid(),
     createdAt: Date.now(),
     updatedAt: Date.now(),
     status: 'planning',
@@ -1990,10 +1991,15 @@ function statusLabel(s){
 
 function groupIntoTrips(legs){
   const groups = new Map();
-  const orphans = [];
+  const untitledGroups = new Map();
   legs.forEach(leg => {
     const tn = (leg.tripNumber || '').trim();
-    if(!tn){ orphans.push(leg); return; }
+    if(!tn){
+      const gid = leg.groupId || ('__solo_' + leg.id);
+      if(!untitledGroups.has(gid)) untitledGroups.set(gid, []);
+      untitledGroups.get(gid).push(leg);
+      return;
+    }
     if(!groups.has(tn)) groups.set(tn, []);
     groups.get(tn).push(leg);
   });
@@ -2010,8 +2016,9 @@ function groupIntoTrips(legs){
     legsArr.sort(legSort);
     return { key: tripNumber, tripNumber: tripNumber, legs: legsArr, isOrphan: false };
   });
-  orphans.forEach(leg => {
-    tripList.push({ key: '__leg_' + leg.id, tripNumber: '', legs: [leg], isOrphan: true });
+  Array.from(untitledGroups.entries()).forEach(([gid, legsArr]) => {
+    legsArr.sort(legSort);
+    tripList.push({ key: '__grp_' + gid, tripNumber: '', legs: legsArr, isOrphan: true });
   });
   tripList.sort((t1, t2) => {
     const min1 = Math.min(...t1.legs.map(l => l.createdAt || 0));
@@ -3637,7 +3644,9 @@ function renderMain(){
   }
 
   const tripNumForLeg = (leg.tripNumber || '').trim();
-  const siblingTrip = tripNumForLeg ? groupIntoTrips(state.legs).find(t => t.key === tripNumForLeg) : null;
+  const siblingTrip = tripNumForLeg
+    ? groupIntoTrips(state.legs).find(t => t.key === tripNumForLeg)
+    : groupIntoTrips(state.legs).find(t => t.key === '__grp_' + (leg.groupId || ''));
   const stripLegs = (siblingTrip && siblingTrip.legs.length > 0) ? siblingTrip.legs : [leg];
   const legNavDots = stripLegs.map(l =>
     '<span class="leg-status-dot leg-status-' + escapeHtml(l.status) + ' leg-status-dot-clickable' + (l.id === leg.id ? ' leg-status-dot-current' : '') + '" data-leg-id="' + escapeHtml(l.id) + '">' + escapeHtml(l.legNumber || '?') + '</span>'
@@ -4281,7 +4290,12 @@ function renderMain(){
       autoSaveIfEditing();
       const newLeg = blankLeg();
       newLeg.tripNumber = leg.tripNumber;
-      const siblingTrip = groupIntoTrips(state.legs).find(t => t.key === (leg.tripNumber || '').trim());
+      // Inherit the sibling's group so untitled legs stay in the same trip.
+      newLeg.groupId = leg.groupId || newLeg.groupId;
+      const tnKey = (leg.tripNumber || '').trim();
+      const siblingTrip = tnKey
+        ? groupIntoTrips(state.legs).find(t => t.key === tnKey)
+        : groupIntoTrips(state.legs).find(t => t.key === '__grp_' + newLeg.groupId);
       const maxLegNum = siblingTrip ? Math.max(0, ...siblingTrip.legs.map(l => parseInt(l.legNumber, 10) || 0)) : 0;
       newLeg.legNumber = String(maxLegNum + 1);
       state.legs.unshift(newLeg);
