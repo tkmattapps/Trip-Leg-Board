@@ -5110,14 +5110,13 @@ async function handleDelete(id){
   // Determine the sibling leg to fall back to BEFORE removing from state,
   // so a delete keeps us on the leg checklist instead of jumping to the trip page.
   const tripKeyForLeg = (leg.tripNumber || '').trim();
+  const sibKey = tripKeyForLeg ? tripKeyForLeg : ('__grp_' + (leg.groupId || ''));
   let fallbackLegId = null;
-  if(tripKeyForLeg){
-    const sibTrip = groupIntoTrips(state.legs).find(t => t.key === tripKeyForLeg);
-    if(sibTrip){
-      const idx = sibTrip.legs.findIndex(l => l.id === id);
-      if(idx > 0){ fallbackLegId = sibTrip.legs[idx - 1].id; }
-      else if(sibTrip.legs.length > 1){ fallbackLegId = sibTrip.legs[idx + 1].id; }
-    }
+  const sibTrip = groupIntoTrips(state.legs).find(t => t.key === sibKey);
+  if(sibTrip){
+    const idx = sibTrip.legs.findIndex(l => l.id === id);
+    if(idx > 0){ fallbackLegId = sibTrip.legs[idx - 1].id; }
+    else if(sibTrip.legs.length > 1){ fallbackLegId = sibTrip.legs[idx + 1].id; }
   }
   const ok = await deleteLeg(id);
   if(ok){
