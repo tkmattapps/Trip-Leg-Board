@@ -395,6 +395,12 @@
   .import-unmatched-select{ background:var(--panel-900, #0f1115); color:var(--paper-050); border:1px solid var(--hairline); border-radius:4px; padding:8px; font-size:13px; }
   .dash-card{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; cursor:pointer; transition:border-color 0.15s ease; }
   .dash-card:hover{ border-color:var(--amber-500); }
+  .dash-card-add{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+    background:transparent; border:1px dashed var(--fog-500); color:var(--fog-300);
+    min-height:120px; font-family:'Inter',sans-serif; }
+  .dash-card-add:hover{ border-color:var(--amber-500); color:var(--amber-500); }
+  .dash-card-add-plus{ font-size:32px; font-weight:300; line-height:1; }
+  .dash-card-add-label{ font-size:14px; font-weight:600; letter-spacing:0.5px; }
   .dash-card-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; }
   .dash-card-code{ font-family:'JetBrains Mono',monospace; font-size:14px; font-weight:600; }
   .dash-card-leg-title{ font-family:'Big Shoulders Display','Inter',sans-serif; font-size:20px; font-weight:700; letter-spacing:0.5px; color:var(--paper-050, #F5F7FA); }
@@ -3341,18 +3347,6 @@ function renderTripDetailView(){
     return;
   }
   const backLabel = state.tripDetailOrigin === 'history' ? 'Flown Trips' : 'Active Trips';
-  // Leg-nav strip mirroring the Leg Checklist: clickable status bubbles + Add leg.
-  // No 'current' highlight here (we're not inside a single leg) and no Status dropdown.
-  const tdLegNavDots = trip.legs.map(l =>
-    '<span class="leg-status-dot leg-status-' + escapeHtml(l.status) + ' leg-status-dot-clickable" data-leg-id="' + escapeHtml(l.id) + '">' + escapeHtml(l.legNumber || '?') + '</span>'
-  ).join('');
-  const tdLegNavStripHTML =
-    '<div class="leg-nav-strip leg-nav-strip-end">' +
-      '<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
-        '<span class="leg-status-strip-label">Legs:</span>' + tdLegNavDots +
-        '<button type="button" class="leg-nav-add-btn" id="addLegToTripBtn">+ Add leg</button>' +
-      '</div>' +
-    '</div>';
   main.innerHTML =
     '<button type="button" class="back-link" id="tripDetailBackBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
     '<div class="view-header">' +
@@ -3362,15 +3356,16 @@ function renderTripDetailView(){
         '<button type="button" class="btn btn-danger" id="deleteTripBtn">Delete trip</button>' +
       '</div>' +
     '</div>' +
-    tdLegNavStripHTML +
-    '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') + '</div>' +
+    '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') +
+      '<button type="button" class="dash-card dash-card-add" id="addLegTile"><span class="dash-card-add-plus">+</span><span class="dash-card-add-label">Add leg</span></button>' +
+    '</div>' +
     tripNotesBlockHTML(trip) +
     tripDocsBlockHTML(trip);
 
   document.getElementById('tripDetailBackBtn').addEventListener('click', () => {
     goToListView(state.tripDetailOrigin === 'history' ? 'history' : 'dashboard');
   });
-  document.getElementById('addLegToTripBtn').addEventListener('click', async () => {
+  document.getElementById('addLegTile').addEventListener('click', async () => {
     autoSaveIfEditing();
     const newLeg = blankLeg();
     newLeg.tripNumber = trip.tripNumber;
@@ -3386,18 +3381,7 @@ function renderTripDetailView(){
   document.querySelectorAll('.dash-card').forEach(card => {
     card.addEventListener('click', () => openLegEditor(card.dataset.id));
   });
-  document.querySelectorAll('#mainPanel .leg-nav-strip .leg-status-dot-clickable').forEach(dot => {
-    dot.addEventListener('click', (ev) => {
-      if(dot.classList.contains('leg-status-dot-current')){
-        ev.stopPropagation();
-        openStatusPopover(dot);
-        return;
-      }
-      const targetId = dot.getAttribute('data-leg-id');
-      if(targetId) openLegEditor(targetId);
-    });
-  });
-
+  
   hydrateTripLegAttachBadges(trip);
   wireTripDocs(trip);
   hydrateTripDocs(trip);
