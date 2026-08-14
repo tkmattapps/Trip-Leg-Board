@@ -1875,6 +1875,17 @@ function lastEditedText(leg){
   return 'Last edited' + who + ' \u00b7 ' + whenStr;
 }
 
+function tripLastEditedText(trip){
+  if(!trip || !trip.legs || !trip.legs.length) return '';
+  let newest = null;
+  trip.legs.forEach(l => {
+    const w = l.lastEditedAt || l.updatedAt || 0;
+    const nw = newest ? (newest.lastEditedAt || newest.updatedAt || 0) : -1;
+    if(w > nw) newest = l;
+  });
+  return lastEditedText(newest);
+}
+
 async function saveLeg(leg){
   leg.updatedAt = Date.now();
   // Last-edited stamp: who touched this leg, and when.
@@ -3409,7 +3420,8 @@ function renderTripDetailView(){
       '<button type="button" class="dash-card dash-card-add" id="addLegTile"><span class="dash-card-add-plus">+</span><span class="dash-card-add-label">Add leg</span></button>' +
     '</div>' +
     tripNotesBlockHTML(trip) +
-    tripDocsBlockHTML(trip);
+    tripDocsBlockHTML(trip) +
+    (tripLastEditedText(trip) ? ('<div class="save-bar trip-edited-bar"><span class="save-hint">' + escapeHtml(tripLastEditedText(trip)) + '</span></div>') : '');
 
   document.getElementById('tripDetailBackBtn').addEventListener('click', () => {
     goToListView(state.tripDetailOrigin === 'history' ? 'history' : 'dashboard');
