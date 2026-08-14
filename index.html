@@ -3638,14 +3638,15 @@ function renderMain(){
 
   const tripNumForLeg = (leg.tripNumber || '').trim();
   const siblingTrip = tripNumForLeg ? groupIntoTrips(state.legs).find(t => t.key === tripNumForLeg) : null;
-  const legNavDots = siblingTrip ? siblingTrip.legs.map(l =>
+  const stripLegs = (siblingTrip && siblingTrip.legs.length > 0) ? siblingTrip.legs : [leg];
+  const legNavDots = stripLegs.map(l =>
     '<span class="leg-status-dot leg-status-' + escapeHtml(l.status) + ' leg-status-dot-clickable' + (l.id === leg.id ? ' leg-status-dot-current' : '') + '" data-leg-id="' + escapeHtml(l.id) + '">' + escapeHtml(l.legNumber || '?') + '</span>'
-  ).join('') : '';
-  const legNavGroupHTML = (siblingTrip && siblingTrip.legs.length > 0) ?
+  ).join('');
+  const legNavGroupHTML =
     '<div class="leg-nav-group" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
       '<span class="leg-status-strip-label">Legs:</span>' + legNavDots +
       '<button type="button" class="leg-nav-add-btn" id="legNavAddBtn">+ Add leg</button>' +
-    '</div>' : '<div></div>';
+    '</div>';
 
   const statusGroupHTML =
     '<select class="status-select" id="statusSelect" style="display:none;" aria-hidden="true">' +
