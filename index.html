@@ -814,7 +814,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T17:05:00Z';
+const BUILD_VERSION = '2026-08-15T17:18:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2309,7 +2309,9 @@ function markFieldVerified(leg, fieldId, who){
   const meta = legFieldMeta(leg);
   const prev = meta[fieldId] || {};
   meta[fieldId] = {
-    src: prev.src || 'human',
+    // Verifying is a HUMAN laying eyes on the value, so the field becomes
+    // human-owned even if a machine originally filled it. Cyan -> white.
+    src: 'human',
     ver: true,
     by: who || (window.currentUserProfile && currentUserProfile.displayName) || '',
     at: Date.now(),
