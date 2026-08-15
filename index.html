@@ -592,15 +592,15 @@
      Pax), and the individual fields where it doesn't. One ring per box either
      way - never both, so the screen never looks like a Christmas tree.
      Text colour continues to carry provenance per field. */
-  .subpanel.is-verified{ box-shadow:0 0 0 1.5px rgba(74,201,126,0.45); }
-  .subpanel.has-broken-verify{ box-shadow:0 0 0 1.5px rgba(242,169,59,0.75); }
+  .subpanel.is-verified{ box-shadow:0 0 0 1px rgba(74,201,126,0.28); }
+  .subpanel.has-broken-verify{ box-shadow:0 0 0 1px rgba(242,169,59,0.55); }
   .field.is-verified input, .field.is-verified textarea,
   .field.is-verified .yn{
-    box-shadow:0 0 0 1.5px rgba(74,201,126,0.45); border-radius:5px;
+    box-shadow:0 0 0 1px rgba(74,201,126,0.28); border-radius:5px;
   }
   .field.has-broken-verify input, .field.has-broken-verify textarea,
   .field.has-broken-verify .yn{
-    box-shadow:0 0 0 1.5px rgba(242,169,59,0.75); border-radius:5px;
+    box-shadow:0 0 0 1px rgba(242,169,59,0.55); border-radius:5px;
   }
   .field.verify-broken > label::after{
     content:'changed since verified';
@@ -802,7 +802,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T15:48:00Z';
+const BUILD_VERSION = '2026-08-15T16:02:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
