@@ -825,7 +825,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T20:31:00Z';
+const BUILD_VERSION = '2026-08-15T20:44:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2291,6 +2291,13 @@ function toISODate(s){
 // Additive: lives inside the existing leg JSON blob, no schema change.
 // normalizeLeg preserves unknown fields, so this survives round-trips.
 // ---------------------------------------------------------------
+// Safe accessor: currentUserProfile is module-scoped (NOT on window) and is
+// null until the profile loads, so read it defensively.
+function currentUserName(){
+  try {
+    return (typeof currentUserProfile !== 'undefined' && currentUserProfile && currentUserProfile.displayName) || '';
+  } catch(e){ return ''; }
+}
 function legFieldMeta(leg){
   if(!leg) return {};
   if(!leg.fieldMeta) leg.fieldMeta = {};
@@ -2310,9 +2317,7 @@ function markFieldSource(leg, fieldId, src){
     src: src,
     ver: false,
     // Record WHO, not just when - the section touch line needs a name.
-    by: src === 'human'
-      ? ((window.currentUserProfile && currentUserProfile.displayName) || 'Someone')
-      : '',
+    by: src === 'human' ? (currentUserName() || 'Someone') : '',
     at: Date.now(),
     // Flag the dangerous case: a field that HAD been verified was changed.
     brokeVerify: wasVerified || !!prev.brokeVerify
@@ -4718,7 +4723,7 @@ function renderMain(){
       if(!leg.sectionVerified) leg.sectionVerified = {};
       const nowVerified = !leg.sectionVerified[key];
       leg.sectionVerified[key] = nowVerified;
-      const who = (window.currentUserProfile && currentUserProfile.displayName) || '';
+      const who = currentUserName();
       sectionFieldIds(key).forEach(fid => {
         if(nowVerified) markFieldVerified(leg, fid, who);
         else {
