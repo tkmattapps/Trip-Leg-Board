@@ -647,7 +647,7 @@
     font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.06em;
     text-transform:uppercase; font-weight:600;
     padding:4px 9px; border-radius:4px; cursor:pointer;
-    display:inline-flex; align-items:flex-start; gap:0.6ch;
+    display:inline-flex; align-items:flex-start; gap:0;
     background:transparent; border:1px solid var(--fog-500); color:var(--fog-300);
   }
   .verify-progress{
@@ -851,7 +851,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T04:23:00Z';
+const BUILD_VERSION = '2026-08-16T04:31:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4332,7 +4332,7 @@ function renderMain(){
     // Chevron signals this is tappable and jumps DOWN to the next unverified
     // section; it disappears when there is nowhere left to jump.
     el.innerHTML = '<span class="vp-label"></span>' +
-      (allDone ? '' : '<span class="vp-chev" aria-hidden="true"><i>\u2304</i><i>\u2304</i></span>');
+      (allDone ? '' : '<span class="vp-space">\u00a0</span><span class="vp-chev" aria-hidden="true"><i>\u2304</i><i>\u2304</i></span>');
     el.querySelector('.vp-label').textContent = label;
     el.classList.toggle('is-done', allDone);
     el.setAttribute('title', allDone ? 'Every section signed off' : 'Jump to next unverified section');
