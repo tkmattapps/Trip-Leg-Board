@@ -844,7 +844,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T01:19:00Z';
+const BUILD_VERSION = '2026-08-16T01:33:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4303,7 +4303,18 @@ function renderMain(){
       return !(leg.sectionVerified && leg.sectionVerified[k]);
     });
     if(!order.length) return;
-    const pick = order[0];
+    const nav = document.getElementById('topNavBar');
+    const navH0 = (nav && nav.offsetHeight) ? nav.offsetHeight : 0;
+    const cands = order.map(function(k){
+      const b = document.querySelector('.section-verify-btn[data-verify-key="' + k + '"]');
+      const sec = b ? b.closest('.section') : null;
+      return { key: k, top: sec ? (sec.getBoundingClientRect().top + window.pageYOffset) : Infinity };
+    }).filter(function(c){ return isFinite(c.top); });
+    if(!cands.length) return;
+    cands.sort(function(a,b){ return a.top - b.top; });
+    const cursor = window.pageYOffset + navH0 + 20;
+    const below = cands.find(function(c){ return c.top > cursor; });
+    const pick = (below ? below : cands[0]).key;
     const btn = document.querySelector('.section-verify-btn[data-verify-key="' + pick + '"]');
     const target = btn ? btn.closest('.section') : null;
     if(target){
