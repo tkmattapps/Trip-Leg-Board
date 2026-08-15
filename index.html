@@ -593,6 +593,11 @@
   /* Source drives TEXT colour; verification drives the RING. Two channels, no clash. */
   .field.src-extracted input, .field.src-extracted textarea{ color:#5FD0E8; }
   .field.src-human input, .field.src-human textarea{ color:var(--paper-050); }
+  .section-touch{
+    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.02em;
+    color:var(--fog-500); opacity:0.85; margin:-6px 0 12px 0;
+  }
+
   /* Provenance on Y/N toggles: keep the button's red/green fill (that carries the
      warning meaning) and tint only the LABEL TEXT cyan, exactly like text fields. */
   .field.src-extracted .yn button.on-y,
@@ -820,7 +825,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T19:38:00Z';
+const BUILD_VERSION = '2026-08-15T20:01:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2422,6 +2427,32 @@ function paintSectionRings(leg){
   });
 }
 
+// Live awareness signal: who most recently touched anything in this section.
+// Derived from the per-field stamps we already record, so no new storage.
+function sectionTouchLine(leg, key){
+  if(!leg) return '';
+  const meta = legFieldMeta(leg);
+  let best = null;
+  sectionFieldIds(key).forEach(function(fid){
+    const m = meta[fid];
+    if(m && m.at && (!best || m.at > best.at)) best = m;
+  });
+  if(!best) return '';
+  const who = best.src === 'extracted' ? 'Imported' : (best.by || 'Someone');
+  const mins = Math.floor((Date.now() - best.at) / 60000);
+  let when;
+  if(mins < 1) when = 'just now';
+  else if(mins < 60) when = mins + (mins === 1 ? ' minute ago' : ' minutes ago');
+  else if(mins < 1440){
+    const h = Math.floor(mins / 60);
+    when = h + (h === 1 ? ' hour ago' : ' hours ago');
+  } else {
+    const d = Math.floor(mins / 1440);
+    when = d + (d === 1 ? ' day ago' : ' days ago');
+  }
+  const verb = best.src === 'extracted' ? '' : 'Last touched by ';
+  return '<div class="section-touch">' + escapeHtml(verb + who) + ' &middot; ' + escapeHtml(when) + '</div>';
+}
 function sectionTitleHTML(label, key, leg){
   const complete = !!(leg.sectionComplete && leg.sectionComplete[key]);
   const verified = !!(leg.sectionVerified && leg.sectionVerified[key]);
@@ -2433,7 +2464,8 @@ function sectionTitleHTML(label, key, leg){
     '<button type="button" class="section-verify-btn' + (verified ? ' is-verified' : '') + '" data-verify-key="' + key + '">' +
       '<span class="verify-mark">&#10003;</span><span class="verify-label">' + (verified ? 'Verified' : 'Verify section') + '</span>' +
     '</button>' +
-  '</div>';
+  '</div>' +
+  sectionTouchLine(leg, key);
 }
 
 function field(label, id, value, opts){
