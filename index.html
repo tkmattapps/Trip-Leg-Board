@@ -59,6 +59,25 @@
   }
   .bottom-bar{ position:fixed; left:0; right:0; bottom:0; z-index:35; background:var(--panel-800); border-top:1px solid var(--hairline); }
   .bottom-bar-inner{ display:flex; align-items:center; justify-content:space-between; gap:12px; max-width:1800px; margin:0 auto; padding:10px 20px; padding-bottom:max(10px, env(safe-area-inset-bottom)); min-height:52px; }
+  .bottom-bar-slot{ display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto; overflow:hidden; }
+  .menu-btn{ flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:40px; height:34px; background:none; border:1px solid var(--hairline); border-radius:4px; cursor:pointer; }
+  .menu-btn-bars{ display:flex; flex-direction:column; justify-content:center; gap:4px; width:18px; }
+  .menu-btn-bars i{ display:block; height:1.5px; background:var(--fog-300); border-radius:1px; }
+  .menu-btn:active{ background:var(--panel-700); }
+
+  .drawer-backdrop{ position:fixed; inset:0; z-index:60; background:rgba(6,12,22,0.55); opacity:0; pointer-events:none; transition:opacity 0.18s ease; }
+  .drawer-backdrop.open{ opacity:1; pointer-events:auto; }
+  .drawer{ position:fixed; top:0; right:0; bottom:0; z-index:61; width:min(320px, 86vw); background:var(--panel-800); border-left:1px solid var(--hairline); transform:translateX(100%); transition:transform 0.22s ease; display:flex; flex-direction:column; }
+  .drawer.open{ transform:translateX(0); }
+  .drawer-head{ display:flex; align-items:center; justify-content:space-between; padding:14px 18px; padding-top:max(14px, env(safe-area-inset-top)); border-bottom:1px solid var(--hairline); }
+  .drawer-title{ font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--fog-500); }
+  .drawer-close{ background:none; border:none; color:var(--fog-300); font-size:24px; line-height:1; cursor:pointer; padding:0 4px; }
+  .drawer-body{ flex:1; overflow-y:auto; padding:10px 12px; padding-bottom:max(10px, env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:4px; }
+  .drawer-item{ display:flex; align-items:center; gap:12px; width:100%; background:none; border:none; padding:11px 10px; border-radius:6px; cursor:pointer; text-align:left; color:var(--paper-050); font-size:14px; }
+  .drawer-item:active{ background:var(--panel-700); }
+  .drawer-ico{ flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:6px; font-size:14px; background:var(--panel-700); }
+  .drawer-label{ min-width:0; }
+
   .page-header{ position:fixed; left:0; right:0; top:0; z-index:34; background:var(--ink-900); border-bottom:1px solid var(--hairline); }
   .page-header-inner{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; max-width:1800px; margin:0 auto; padding:10px 20px 12px; padding-top:max(10px, env(safe-area-inset-top)); }
   .page-header-text{ display:flex; flex-direction:column; gap:2px; min-width:0; }
@@ -788,7 +807,26 @@
 </div>
 
 <div class="bottom-bar" id="bottomBar">
-  <div class="bottom-bar-inner" id="bottomBarInner"></div>
+  <div class="bottom-bar-inner" id="bottomBarInner">
+    <div class="bottom-bar-slot" id="bottomBarSlot"></div>
+    <button type="button" class="menu-btn" id="menuBtn" aria-label="Menu" title="Menu">
+      <span class="menu-btn-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+    </button>
+  </div>
+</div>
+
+<div class="drawer-backdrop" id="drawerBackdrop"></div>
+<div class="drawer" id="drawer" role="dialog" aria-label="Menu" aria-hidden="true">
+  <div class="drawer-head">
+    <span class="drawer-title">Menu</span>
+    <button type="button" class="drawer-close" id="drawerCloseBtn" aria-label="Close menu">&times;</button>
+  </div>
+  <div class="drawer-body">
+    <button type="button" class="drawer-item" id="drawerHomeBtn"><span class="drawer-ico di-home">&#127968;</span><span class="drawer-label">Home</span></button>
+    <button type="button" class="drawer-item" id="drawerFeedbackBtn"><span class="drawer-ico di-feedback">&#128172;</span><span class="drawer-label">Send feedback</span></button>
+    <button type="button" class="drawer-item" id="drawerInstallBtn"><span class="drawer-ico di-install">&#128241;</span><span class="drawer-label">Install on a device</span></button>
+    <button type="button" class="drawer-item" id="drawerLogoutBtn"><span class="drawer-ico di-logout">&#8617;</span><span class="drawer-label">Log out</span></button>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -882,7 +920,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T06:48:00Z';
+const BUILD_VERSION = '2026-08-16T11:48:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -6061,6 +6099,41 @@ document.getElementById('brandMark').addEventListener('click', () => {
     }
   }
 });
+
+function openDrawer(){
+  const d = document.getElementById('drawer');
+  const b = document.getElementById('drawerBackdrop');
+  if(d){ d.classList.add('open'); d.setAttribute('aria-hidden','false'); }
+  if(b) b.classList.add('open');
+}
+function closeDrawer(){
+  const d = document.getElementById('drawer');
+  const b = document.getElementById('drawerBackdrop');
+  if(d){ d.classList.remove('open'); d.setAttribute('aria-hidden','true'); }
+  if(b) b.classList.remove('open');
+}
+function openInstallOverlay(){
+  const ov = document.getElementById('installOverlay');
+  if(ov) ov.classList.add('open');
+  if(window.renderInstallQr) window.renderInstallQr();
+}
+(function wireDrawer(){
+  const mb = document.getElementById('menuBtn');
+  if(mb) mb.addEventListener('click', openDrawer);
+  const cb = document.getElementById('drawerCloseBtn');
+  if(cb) cb.addEventListener('click', closeDrawer);
+  const bd = document.getElementById('drawerBackdrop');
+  if(bd) bd.addEventListener('click', closeDrawer);
+  const hb = document.getElementById('drawerHomeBtn');
+  if(hb) hb.addEventListener('click', function(){ closeDrawer(); state.view = 'home'; if(typeof updateNavTabs === 'function') updateNavTabs(); renderMain(); });
+  const fb = document.getElementById('drawerFeedbackBtn');
+  if(fb) fb.addEventListener('click', function(){ closeDrawer(); openFeedbackModal(); });
+  const ib = document.getElementById('drawerInstallBtn');
+  if(ib) ib.addEventListener('click', function(){ closeDrawer(); openInstallOverlay(); });
+  const lb = document.getElementById('drawerLogoutBtn');
+  if(lb) lb.addEventListener('click', function(){ closeDrawer(); handleLogout(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeDrawer(); });
+})();
 
 document.getElementById('feedbackFab').addEventListener('click', openFeedbackModal);
 document.getElementById('logoutFab').addEventListener('click', handleLogout);
