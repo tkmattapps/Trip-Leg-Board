@@ -817,7 +817,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T18:04:00Z';
+const BUILD_VERSION = '2026-08-15T18:19:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2386,9 +2386,13 @@ function tagSectionBodies(){
 // otherwise its individual .field wrappers. Never both.
 function sectionRingTargets(sectionEl){
   if(!sectionEl) return [];
-  const cards = sectionEl.querySelectorAll('.subpanel');
-  if(cards.length) return Array.prototype.slice.call(cards);
-  return Array.prototype.slice.call(sectionEl.querySelectorAll('.field[data-field-id]'));
+  const cards = Array.prototype.slice.call(sectionEl.querySelectorAll('.subpanel'));
+  const fields = Array.prototype.slice.call(sectionEl.querySelectorAll('.field[data-field-id]'));
+  if(!cards.length) return fields;
+  // Cards carry the ring, PLUS any loose field not inside one (e.g. enroute notes,
+  // pax total/notes) - otherwise those get skipped entirely.
+  const loose = fields.filter(f => !f.closest('.subpanel'));
+  return cards.concat(loose);
 }
 // Paint verification rings for one section.
 function paintSectionRing(sectionEl, verified, broken){
