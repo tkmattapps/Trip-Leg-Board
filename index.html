@@ -590,7 +590,10 @@
   /* Provenance on Y/N toggles: keep the button's red/green fill (that carries the
      warning meaning) and tint only the LABEL TEXT cyan, exactly like text fields. */
   .field.src-extracted .yn button.on-y,
-  .field.src-extracted .yn button.on-n{ color:#5FD0E8; }
+  .field.src-extracted .yn button.on-n{
+    color:#A8F0FF; font-weight:700;
+    text-shadow:0 0 3px rgba(0,0,0,0.55);
+  }
 
   /* Verification rings outline the OUTERMOST visual container of a section:
      the rounded .subpanel cards where a section has them (Airports, Permits,
@@ -811,7 +814,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T16:44:00Z';
+const BUILD_VERSION = '2026-08-15T16:55:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
