@@ -660,8 +660,7 @@
   .vp-chev{ display:inline-flex; flex-direction:column; align-items:center; opacity:0.9;
     position:relative; top:-1px; }
   .vp-chev i{ font-style:normal; font-size:13px; line-height:0.42; }
-  .vp-chev i:nth-child(1){ opacity:0.45; }
-  .vp-chev i:nth-child(2){ opacity:0.7; }
+  .vp-chev i:nth-child(1){ opacity:0.55; }
   .verify-progress:hover{ background:var(--panel-800); }
   .verify-progress.is-done{ border-color:#4AC97E; color:#4AC97E; cursor:default; }
   .verify-progress.is-done:hover{ background:transparent; }
@@ -852,7 +851,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T04:07:00Z';
+const BUILD_VERSION = '2026-08-16T04:15:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4332,9 +4331,8 @@ function renderMain(){
     const label = allDone ? 'ALL VERIFIED' : (done + ' of ' + total + ' verified');
     // Chevron signals this is tappable and jumps DOWN to the next unverified
     // section; it disappears when there is nowhere left to jump.
-    el.innerHTML = (allDone ? '' : '<span class="vp-chev" aria-hidden="true"><i>\u2304</i><i>\u2304</i><i>\u2304</i></span>') +
-      '<span class="vp-label"></span>' +
-      (allDone ? '' : '<span class="vp-chev" aria-hidden="true"><i>\u2304</i><i>\u2304</i><i>\u2304</i></span>');
+    el.innerHTML = '<span class="vp-label"></span>' +
+      (allDone ? '' : '<span class="vp-chev" aria-hidden="true"><i>\u2304</i><i>\u2304</i></span>');
     el.querySelector('.vp-label').textContent = label;
     el.classList.toggle('is-done', allDone);
     el.setAttribute('title', allDone ? 'Every section signed off' : 'Jump to next unverified section');
