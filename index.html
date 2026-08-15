@@ -444,6 +444,9 @@
   .leg-status-dot.leg-status-ready{ background:#3DBE6B; }
   .leg-status-dot.leg-status-flown{ background:#4A9DE0; }
   .leg-status-dot-current{ box-shadow:0 0 0 2px var(--paper-050), 0 0 0 4px var(--amber-500); cursor:pointer; }
+  .leg-status-dot-current.leg-status-planning{ box-shadow:0 0 0 2px var(--paper-050), 0 0 0 4px #F2A93B; }
+  .leg-status-dot-current.leg-status-ready{ box-shadow:0 0 0 2px var(--paper-050), 0 0 0 4px #3DBE6B; }
+  .leg-status-dot-current.leg-status-flown{ box-shadow:0 0 0 2px var(--paper-050), 0 0 0 4px #4A9DE0; }
   /* ---- Document attachments ---- */
   .doc-section-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
   .doc-section-head .section-title{ margin:0; }
@@ -817,7 +820,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T19:02:00Z';
+const BUILD_VERSION = '2026-08-15T19:38:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4202,7 +4205,7 @@ function renderMain(){
   statusSelectEl.addEventListener('change', function(){
     if(statusSelectEl.value === 'ready' && !checkAllSectionsComplete()){
       statusSelectEl.value = leg.status === 'flown' ? 'flown' : 'planning';
-      showConfirm('All sections must be marked complete before this leg can be set to Ready.', {alertOnly:true});
+      showConfirm('All sections must be verified before this leg can be set to Ready.', {alertOnly:true});
     }
     applyStatusColor();
   });
@@ -4681,6 +4684,22 @@ function renderMain(){
           const w = main.querySelector('.field[data-field-id="' + fid + '"]');
           if(w){ w.classList.remove('src-extracted'); w.classList.add('src-human'); }
         });
+      }
+      // Verify now DRIVES status (the old auto-complete hook is retired), so it
+      // must promote on full verification AND demote the moment one is cleared.
+      const statusSelect = document.getElementById('statusSelect');
+      if(statusSelect && statusSelect.value !== 'flown'){
+        const allVerified = checkAllSectionsComplete();
+        if(allVerified && statusSelect.value === 'planning'){
+          statusSelect.value = 'ready';
+          leg.status = 'ready';
+        } else if(!allVerified && statusSelect.value === 'ready'){
+          statusSelect.value = 'planning';
+          leg.status = 'planning';
+        }
+        syncReadyOptionAvailability();
+        applyStatusColor();
+        refreshCurrentLegBubble();
       }
       autoSaveIfEditing();
     });
