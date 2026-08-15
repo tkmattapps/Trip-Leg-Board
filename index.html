@@ -647,7 +647,7 @@
     font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.06em;
     text-transform:uppercase; font-weight:600;
     padding:4px 9px; border-radius:4px; cursor:pointer;
-    display:inline-flex; align-items:center; gap:6px;
+    display:inline-flex; align-items:center; gap:9px;
     background:transparent; border:1px solid var(--fog-500); color:var(--fog-300);
   }
   .verify-progress{
@@ -657,7 +657,7 @@
     box-shadow:0 4px 14px rgba(0,0,0,0.38);
     padding:9px 14px; font-size:11px;
   }
-  .vp-chev{ font-size:14px; line-height:1; margin-top:-4px; opacity:0.75; }
+  .vp-chev{ font-size:14px; line-height:1; margin-top:-4px; opacity:0.9; letter-spacing:-1px; }
   .verify-progress:hover{ background:var(--panel-800); }
   .verify-progress.is-done{ border-color:#4AC97E; color:#4AC97E; cursor:default; }
   .verify-progress.is-done:hover{ background:transparent; }
@@ -848,7 +848,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T03:12:00Z';
+const BUILD_VERSION = '2026-08-16T03:20:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4329,7 +4329,7 @@ function renderMain(){
     // Chevron signals this is tappable and jumps DOWN to the next unverified
     // section; it disappears when there is nowhere left to jump.
     el.innerHTML = '<span class="vp-label"></span>' +
-      (allDone ? '' : '<span class="vp-chev" aria-hidden="true">\u2304</span>');
+      (allDone ? '' : '<span class="vp-chev" aria-hidden="true">\u2304\u2304\u2304</span>');
     el.querySelector('.vp-label').textContent = label;
     el.classList.toggle('is-done', allDone);
     el.setAttribute('title', allDone ? 'Every section signed off' : 'Jump to next unverified section');
