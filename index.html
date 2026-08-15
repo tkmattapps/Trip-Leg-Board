@@ -587,6 +587,11 @@
   /* Source drives TEXT colour; verification drives the RING. Two channels, no clash. */
   .field.src-extracted input, .field.src-extracted textarea{ color:#5FD0E8; }
   .field.src-human input, .field.src-human textarea{ color:var(--paper-050); }
+  /* Provenance on Y/N toggles: keep the button's red/green fill (that carries the
+     warning meaning) and tint only the LABEL TEXT cyan, exactly like text fields. */
+  .field.src-extracted .yn button.on-y,
+  .field.src-extracted .yn button.on-n{ color:#5FD0E8; }
+
   /* Verification rings outline the OUTERMOST visual container of a section:
      the rounded .subpanel cards where a section has them (Airports, Permits,
      Pax), and the individual fields where it doesn't. One ring per box either
@@ -806,7 +811,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T16:26:00Z';
+const BUILD_VERSION = '2026-08-15T16:44:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2355,6 +2360,13 @@ function stampExtractedProvenance(leg){
   Object.keys(arrMap).forEach(fid => put(fid, a[arrMap[fid]]));
   ['trim','levelOff','minBRF','fratRelease','maxShear','ete','windDirection','windComponent',
    'nextLegDestination','nextLegDate','nextLegEtd','nextLegEta'].forEach(k => put(k, leg[k]));
+  // Y/N toggles set by the extraction: compliance + slot/permit/transport flags.
+  const c = leg.compliance || {};
+  put('eapisReqd', c.eapisReqd); put('overflightReqd', c.overflightReqd); put('customsReqd', c.customsReqd);
+  put('depSlotReqd', d.slotReqd); put('arrSlotReqd', a.slotReqd);
+  put('depRampFeeWaived', d.rampFeeWaived); put('arrRampFeeWaived', a.rampFeeWaived);
+  put('depGroundTransportReqd', d.groundTransportReqd); put('arrGroundTransportReqd', a.groundTransportReqd);
+  put('arrPermitReqd', a.permitReqd);
 }
 function tagSectionBodies(){
   document.querySelectorAll('.section').forEach(sec => {
