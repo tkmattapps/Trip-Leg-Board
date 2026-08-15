@@ -591,7 +591,7 @@
     box-shadow:0 0 0 1.5px rgba(242,169,59,0.55);
   }
   .field.is-verified input, .field.is-verified textarea{
-    box-shadow:0 0 0 1.5px rgba(74,201,126,0.85);
+    box-shadow:0 0 0 1.5px rgba(74,201,126,0.42);
   }
   .field.verify-broken input, .field.verify-broken textarea{
     box-shadow:0 0 0 2px rgba(242,169,59,0.95);
@@ -602,6 +602,11 @@
     font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.04em;
     background:rgba(242,169,59,0.18); color:var(--amber-500);
   }
+  /* Y/N fields hold their value in a hidden input, so ring the visible buttons. */
+  .field.is-unverified .yn{ box-shadow:0 0 0 1.5px rgba(242,169,59,0.55); border-radius:5px; }
+  .field.is-verified .yn{ box-shadow:0 0 0 1.5px rgba(74,201,126,0.42); border-radius:5px; }
+  .field.verify-broken .yn{ box-shadow:0 0 0 2px rgba(242,169,59,0.95); border-radius:5px; }
+
   /* Section-level Verify control - deliberately heavier than "Complete". */
   .section-verify-btn{
     display:inline-flex; align-items:center; gap:6px; margin-left:10px;
@@ -796,7 +801,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T14:20:00Z';
+const BUILD_VERSION = '2026-08-15T14:52:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2400,7 +2405,10 @@ function overflightRowHTML(row){
 function ynField(label, id, value){
   const y = value === 'Y' ? ' on-y' : '';
   const n = value === 'N' ? ' on-n' : '';
-  return '<div class="field"><label>' + label + '</label><div class="yn">' +
+  const metaLeg = (typeof state !== 'undefined' && state.legs && state.activeId)
+    ? state.legs.find(l => l.id === state.activeId) : null;
+  const metaCls = metaLeg ? fieldMetaClass(metaLeg, id) : '';
+  return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label>' + label + '</label><div class="yn">' +
     '<button type="button" class="yn-btn' + y + '" data-target="' + id + '" data-val="Y">Y</button>' +
     '<button type="button" class="yn-btn' + n + '" data-target="' + id + '" data-val="N">N</button>' +
     '</div><input type="hidden" id="' + id + '" value="' + escapeHtml(value) + '" /></div>';
@@ -4512,6 +4520,73 @@ function renderMain(){
 
   // ---- Provenance / verification wiring ----
   tagSectionBodies();
+  // LIVE demotion: the moment a field's value actually changes, mark it human-entered,
+  // strip its green ring, and demote its whole section back to unverified.
+  // Done on the DOM directly so the user sees it instantly, not on next save/render.
+  // Shared demotion routine: called for typed fields AND for Y/N toggles,
+  // which write to a hidden input and never emit an 'input' event.
+  function demoteFieldByIdIfChanged(fid, newValue){
+    const wrap = main.querySelector('.field[data-field-id="' + fid + '"]');
+    if(!wrap) return;
+    const baseline = leg._fieldValueBaseline || (leg._fieldValueBaseline = {});
+    if(baseline[fid] === newValue) return;
+    baseline[fid] = newValue;
+    markFieldSource(leg, fid, 'human');
+    const m = legFieldMeta(leg)[fid] || {};
+    wrap.classList.remove('is-verified', 'src-extracted');
+    wrap.classList.add('is-unverified', 'src-human');
+    if(m.brokeVerify) wrap.classList.add('verify-broken');
+    const body = wrap.closest('[data-section-body]');
+    if(body){
+      const key = body.getAttribute('data-section-body');
+      if(leg.sectionVerified) leg.sectionVerified[key] = false;
+      const vbtn = main.querySelector('.section-verify-btn[data-verify-key="' + key + '"]');
+      if(vbtn){
+        vbtn.classList.remove('is-verified');
+        const lbl = vbtn.querySelector('.verify-label');
+        if(lbl) lbl.textContent = 'Verify section';
+      }
+    }
+  }
+  // Y/N toggles: re-read the hidden input after the existing handler has run.
+  main.querySelectorAll('.yn-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      const tid = b.dataset.target;
+      if(!tid) return;
+      setTimeout(() => {
+        const hid = document.getElementById(tid);
+        if(hid) demoteFieldByIdIfChanged(tid, hid.value);
+      }, 0);
+    });
+  });
+  main.addEventListener('input', (e) => {
+    const el = e.target;
+    if(!el || !el.id) return;
+    const wrap = el.closest ? el.closest('.field[data-field-id]') : null;
+    if(!wrap) return;
+    const fid = wrap.getAttribute('data-field-id');
+    const baseline = leg._fieldValueBaseline || (leg._fieldValueBaseline = {});
+    if(baseline[fid] === el.value) return;   // no real change
+    baseline[fid] = el.value;
+    markFieldSource(leg, fid, 'human');
+    // Field: green off, amber on. If it had been verified, flag the broken-verify case.
+    const m = legFieldMeta(leg)[fid] || {};
+    wrap.classList.remove('is-verified', 'src-extracted');
+    wrap.classList.add('is-unverified', 'src-human');
+    if(m.brokeVerify) wrap.classList.add('verify-broken');
+    // Section: demote the button and clear stored verification.
+    const body = wrap.closest('[data-section-body]');
+    if(body){
+      const key = body.getAttribute('data-section-body');
+      if(leg.sectionVerified) leg.sectionVerified[key] = false;
+      const vbtn = main.querySelector('.section-verify-btn[data-verify-key="' + key + '"]');
+      if(vbtn){
+        vbtn.classList.remove('is-verified');
+        const lbl = vbtn.querySelector('.verify-label');
+        if(lbl) lbl.textContent = 'Verify section';
+      }
+    }
+  });
   // Establish the value baseline so we only mark fields the user actually changes.
   if(!leg._fieldValueBaseline) leg._fieldValueBaseline = snapshotEditorFieldValues();
   // Section-level Verify: stamps every field in the section green in one action.
