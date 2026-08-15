@@ -57,6 +57,10 @@
     max-width:1800px; margin:0 auto;
     padding:12px 20px; padding-top:max(12px, env(safe-area-inset-top));
   }
+  .bottom-bar{ position:fixed; left:0; right:0; bottom:0; z-index:35; background:var(--panel-800); border-top:1px solid var(--hairline); }
+  .bottom-bar-inner{ display:flex; align-items:center; justify-content:space-between; gap:12px; max-width:1800px; margin:0 auto; padding:10px 20px; padding-bottom:max(10px, env(safe-area-inset-bottom)); min-height:52px; }
+  body:not(.authed) .bottom-bar{ display:none; }
+
   .top-nav-brand{ font-family:'Big Shoulders Display',sans-serif; font-size:20px; color:var(--amber-500); flex-shrink:0; }
   .top-nav-home-btn{ background:none; border:none; cursor:pointer; padding:4px 6px; border-radius:4px; }
   .top-nav-home-btn{ display:flex; align-items:center; }
@@ -168,7 +172,7 @@
   .leg-meta{ font-size:11px; color:var(--fog-500); margin-top:3px; }
   .empty-list{ color:var(--fog-500); font-size:13px; padding:20px 4px; line-height:1.6; }
 
-  .main{ flex:1; padding:28px 36px; overflow-y:auto; padding-top:16px; padding-bottom:max(28px, env(safe-area-inset-bottom)); }
+  .main{ flex:1; padding:28px 36px; overflow-y:auto; padding-top:16px; padding-bottom:calc(52px + max(28px, env(safe-area-inset-bottom))); }
   .main-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:16px; flex-wrap:wrap; }
   .main-title-group{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
   .main-title{
@@ -268,7 +272,7 @@
     }
     .app.sidebar-open .sidebar-backdrop{ opacity:1; pointer-events:auto; }
 
-    .main{ padding:20px 16px; padding-top:12px; }
+    .main{ padding:20px 16px; padding-top:12px; padding-bottom:calc(52px + max(20px, env(safe-area-inset-bottom))); }
 
     /* iOS zooms inputs under 16px on focus - keep all form controls at 16px on mobile */
     .field input, .field select, .field textarea, .search{ font-size:16px !important; }
@@ -761,6 +765,10 @@
   </div>
 </div>
 
+<div class="bottom-bar" id="bottomBar">
+  <div class="bottom-bar-inner" id="bottomBarInner"></div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <button class="feedback-fab icon-fab" id="feedbackFab" aria-label="Send feedback" data-tip="Feedback">&#128172;</button>
@@ -852,7 +860,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T05:29:00Z';
+const BUILD_VERSION = '2026-08-16T06:12:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
