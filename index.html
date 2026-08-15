@@ -356,7 +356,7 @@
   .subpanel.compact .field textarea{ min-height:40px; }
   .subpanel.compact .tz-hint{ font-size:10px; }
   .tz-hint{ font-size:11px; font-family:'JetBrains Mono',monospace; color:var(--fog-500); margin-top:-2px; }
-  .tz-hint.found{ color:var(--ok-500); }
+  .tz-hint.found{ color:var(--fog-500); }
   .tz-hint.unknown{ color:var(--amber-500); }
 
   .yn{ display:flex; gap:6px; }
@@ -826,7 +826,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T21:12:00Z';
+const BUILD_VERSION = '2026-08-15T21:47:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4418,6 +4418,26 @@ function renderMain(){
 
   function revalidateSectionComplete(sectionEl){
     if(!sectionEl) return;
+    // A toggle turning red invalidates any sign-off on that section.
+    const vkey = sectionEl.getAttribute('data-section-body');
+    if(vkey && leg.sectionVerified && leg.sectionVerified[vkey] && sectionHasRedToggle(sectionEl)){
+      leg.sectionVerified[vkey] = false;
+      const vb = sectionEl.querySelector('.section-verify-btn');
+      if(vb){
+        vb.classList.remove('is-verified');
+        const vl = vb.querySelector('.verify-label');
+        if(vl) vl.textContent = 'Verify section';
+      }
+      paintSectionRing(sectionEl, false, true);
+      const ss = document.getElementById('statusSelect');
+      if(ss && ss.value === 'ready'){
+        ss.value = 'planning';
+        leg.status = 'planning';
+        ss.classList.remove('status-planning','status-ready','status-flown');
+        ss.classList.add('status-planning');
+      }
+      refreshCurrentLegBubble();
+    }
     const cb = sectionEl.querySelector('.section-complete-checkbox');
     if(!cb || !cb.checked) return;
     if(sectionHasRedToggle(sectionEl)){
@@ -4727,6 +4747,15 @@ function renderMain(){
       const key = btn.getAttribute('data-verify-key');
       if(!leg.sectionVerified) leg.sectionVerified = {};
       const nowVerified = !leg.sectionVerified[key];
+      // Safety rail (previously tied to the retired Complete control): an
+      // unresolved red toggle must block sign-off, since Verify now gates Ready.
+      if(nowVerified){
+        const secEl = btn.closest('.section');
+        if(secEl && sectionHasRedToggle(secEl)){
+          showConfirm('This section has an unresolved item flagged in red. Resolve it before verifying.', {alertOnly:true});
+          return;
+        }
+      }
       leg.sectionVerified[key] = nowVerified;
       const who = currentUserName();
       sectionFieldIds(key).forEach(fid => {
