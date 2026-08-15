@@ -817,7 +817,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T17:52:00Z';
+const BUILD_VERSION = '2026-08-15T18:04:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2528,7 +2528,8 @@ function windToggleField(leg){
   const dir = leg.windDirection || '';
   const hwActive = dir === 'HW' ? ' wind-active wind-hw' : '';
   const twActive = dir === 'TW' ? ' wind-active wind-tw' : '';
-  return '<div class="field">' +
+  const meta = (typeof fieldMetaClass === 'function') ? fieldMetaClass(leg, 'windComponent') : '';
+  return '<div class="field' + meta + '" data-field-id="windComponent">' +
     '<label>Headwind / Tailwind</label>' +
     '<div style="display:flex; gap:8px; align-items:center;">' +
       '<div class="yn" style="max-width:110px; flex-shrink:0;">' +
