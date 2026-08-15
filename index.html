@@ -648,7 +648,14 @@
     padding:4px 9px; border-radius:999px; cursor:pointer;
     background:transparent; border:1px solid var(--fog-500); color:var(--fog-300);
   }
-  .verify-progress:hover{ background:rgba(126,143,172,0.14); }
+  .verify-progress{
+    position:fixed; z-index:29;
+    left:16px; bottom:max(20px, env(safe-area-inset-bottom));
+    background:var(--panel-700); border-color:var(--fog-500);
+    box-shadow:0 4px 14px rgba(0,0,0,0.38);
+    padding:9px 14px; font-size:11px;
+  }
+  .verify-progress:hover{ background:var(--panel-800); }
   .verify-progress.is-done{ border-color:#4AC97E; color:#4AC97E; cursor:default; }
   .verify-progress.is-done:hover{ background:transparent; }
   /* "Complete" demoted to a quiet progress mark so Verify reads as the real signal. */
@@ -834,7 +841,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T22:52:00Z';
+const BUILD_VERSION = '2026-08-15T23:04:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
