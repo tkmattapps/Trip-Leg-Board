@@ -650,7 +650,7 @@
   }
   .verify-progress{
     position:fixed; z-index:29;
-    right:16px; bottom:max(132px, calc(env(safe-area-inset-bottom) + 112px));
+    right:16px; top:max(26px, calc(env(safe-area-inset-top) + 16px));
     background:var(--panel-700); border-color:var(--fog-500);
     box-shadow:0 4px 14px rgba(0,0,0,0.38);
     padding:9px 14px; font-size:11px;
@@ -658,6 +658,8 @@
   .verify-progress:hover{ background:var(--panel-800); }
   .verify-progress.is-done{ border-color:#4AC97E; color:#4AC97E; cursor:default; }
   .verify-progress.is-done:hover{ background:transparent; }
+  body.view-editor .icon-fab{ display:none !important; }
+  body:not(.view-editor) .verify-progress{ display:none; }
   /* "Complete" demoted to a quiet progress mark so Verify reads as the real signal. */
   .section-complete-toggle .toggle-label{ opacity:0.65; font-size:10px; }
 
@@ -841,7 +843,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T23:19:00Z';
+const BUILD_VERSION = '2026-08-16T00:22:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -853,7 +855,7 @@ let currentFlightDepartmentId = null;
 async function getFlightDepartmentId(){
   if(currentFlightDepartmentId) return currentFlightDepartmentId;
   const { data: { user } } = await sb.auth.getUser();
-  if(!user) throw new Error('not signed in');
+  if(!user){ const _e = new Error('not signed in'); _e.isAuthError = true; throw _e; }
   const { data, error } = await sb.from('users').select('flight_department_id').eq('id', user.id).single();
   if(error) throw error;
   currentFlightDepartmentId = data.flight_department_id;
@@ -931,6 +933,10 @@ const storage = {
   // instead of listing ids then fetching each row one-at-a-time. This is the
   // quick-win fix for slow startup as flown-trip history grows.
   async listLegsFull(){
+    // Guard FIRST: without a live session, RLS legitimately returns zero rows
+    // and the app renders "no trips" instead of surfacing an auth problem.
+    const { data: { session } } = await sb.auth.getSession();
+    if(!session){ const _e = new Error('no session'); _e.isAuthError = true; throw _e; }
     const deptId = await getFlightDepartmentId();
     const { data, error } = await sb.from('legs').select('*').eq('flight_department_id', deptId).is('deleted_at', null);
     if(error) throw error;
@@ -1738,15 +1744,33 @@ async function loadLegs(){
     legs.sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
     state.legs = legs;
     snapshotAllLegs();
+    _legsLoadFailed = false;
   }catch(e){
     console.error('loadLegs failed', e);
-    state.legs = [];
+    // CRITICAL: a failed fetch must NOT render as "zero trips". Keep whatever
+    // we already had and flag the failure so the UI can say so honestly.
+    _legsLoadFailed = true;
+    if(!Array.isArray(state.legs)) state.legs = [];
+    if(e && e.isAuthError){
+      // Session died (commonly after a service-worker update). Sending the user
+      // to login is honest; showing an empty board is not.
+      showToast('Your session expired - please sign in again');
+      try{ await sb.auth.signOut(); }catch(_){}
+      currentFlightDepartmentId = null;
+      document.body.classList.remove('authed');
+      _appBooted = false; _legsLoaded = false;
+      const le = document.getElementById('loginError');
+      if(le) le.textContent = 'Your session expired. Please sign in again.';
+      return;
+    }
+    showToast('Could not load trips - tap Refresh');
   }
   _legsLoaded = true;
   renderList();
   renderMain();
 }
 
+let _legsLoadFailed = false;
 let refreshInFlight = false;
 function installRefreshHandler(){
   if(installRefreshHandler._done) return;
@@ -4003,6 +4027,10 @@ function renderMain(){
     appRootEl.classList.toggle('sidebar-hidden', hideSidebar);
   }
   document.body.classList.toggle('view-home', state.view === 'home');
+  // The leg checklist is the densest screen: hide the utility FABs there and
+  // give that top-right slot to the verify counter instead.
+  document.body.classList.toggle('view-editor',
+    ['home','dashboard','history','tripDetail','importPreview'].indexOf(state.view) === -1);
   // Reset the nav bar centrally: only renderHomeView() should hide it. The leg
   // editor never reset it, so it inherited a stale inline 'none' after boot.
   const navBarEl = document.getElementById('topNavBar');
