@@ -647,7 +647,7 @@
     font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.06em;
     text-transform:uppercase; font-weight:600;
     padding:4px 9px; border-radius:4px; cursor:pointer;
-    display:inline-flex; align-items:center; gap:9px;
+    display:inline-flex; align-items:flex-start; gap:0.6ch;
     background:transparent; border:1px solid var(--fog-500); color:var(--fog-300);
   }
   .verify-progress{
@@ -657,7 +657,8 @@
     box-shadow:0 4px 14px rgba(0,0,0,0.38);
     padding:9px 14px; font-size:11px;
   }
-  .vp-chev{ display:inline-flex; flex-direction:column; align-items:center; opacity:0.9; }
+  .vp-chev{ display:inline-flex; flex-direction:column; align-items:center; opacity:0.9;
+    margin-top:-3px; }
   .vp-chev i{ font-style:normal; font-size:13px; line-height:0.42; }
   .vp-chev i:nth-child(1){ opacity:0.45; }
   .vp-chev i:nth-child(2){ opacity:0.7; }
@@ -851,7 +852,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T03:34:00Z';
+const BUILD_VERSION = '2026-08-16T03:50:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
