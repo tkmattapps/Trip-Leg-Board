@@ -617,7 +617,11 @@
     font-size:10px; letter-spacing:0.06em; text-transform:uppercase; font-weight:600;
   }
   .section-verify-btn .verify-mark{ font-size:11px; }
-  .section-verify-btn.is-verified{ background:rgba(74,201,126,0.16); border-color:#4AC97E; }
+  /* Verified must read as a STAMP, not a pressable button: solid fill, dark text. */
+  .section-verify-btn.is-verified{
+    background:#4AC97E; border-color:#4AC97E; color:var(--ink-900); font-weight:700;
+  }
+  .section-verify-btn.is-verified:hover{ background:#43BC74; }
   .section-verify-btn:hover{ background:rgba(74,201,126,0.10); }
   /* "Complete" demoted to a quiet progress mark so Verify reads as the real signal. */
   .section-complete-toggle .toggle-label{ opacity:0.65; font-size:10px; }
@@ -802,7 +806,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T16:11:00Z';
+const BUILD_VERSION = '2026-08-15T16:26:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
