@@ -825,7 +825,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T20:01:00Z';
+const BUILD_VERSION = '2026-08-15T20:19:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2309,7 +2309,10 @@ function markFieldSource(leg, fieldId, src){
   meta[fieldId] = {
     src: src,
     ver: false,
-    by: '',
+    // Record WHO, not just when - the section touch line needs a name.
+    by: src === 'human'
+      ? ((window.currentUserProfile && currentUserProfile.displayName) || 'Someone')
+      : '',
     at: Date.now(),
     // Flag the dangerous case: a field that HAD been verified was changed.
     brokeVerify: wasVerified || !!prev.brokeVerify
@@ -2429,6 +2432,20 @@ function paintSectionRings(leg){
 
 // Live awareness signal: who most recently touched anything in this section.
 // Derived from the per-field stamps we already record, so no new storage.
+// Repaint one section's touch line in place, without a full re-render.
+function refreshSectionTouchLine(leg, key){
+  const body = document.querySelector('[data-section-body="' + key + '"]');
+  if(!body) return;
+  const title = body.querySelector('.section-title');
+  if(!title) return;
+  const html = sectionTouchLine(leg, key);
+  let line = title.nextElementSibling;
+  if(line && line.classList && line.classList.contains('section-touch')){
+    if(html) line.outerHTML = html; else line.remove();
+  } else if(html){
+    title.insertAdjacentHTML('afterend', html);
+  }
+}
 function sectionTouchLine(leg, key){
   if(!leg) return '';
   const meta = legFieldMeta(leg);
@@ -4647,6 +4664,7 @@ function renderMain(){
         const lbl = vbtn.querySelector('.verify-label');
         if(lbl) lbl.textContent = 'Verify section';
       }
+      refreshSectionTouchLine(leg, key);
     }
   }
   // Y/N toggles: re-read the hidden input after the existing handler has run.
@@ -4685,6 +4703,7 @@ function renderMain(){
         const lbl = vbtn.querySelector('.verify-label');
         if(lbl) lbl.textContent = 'Verify section';
       }
+      refreshSectionTouchLine(leg, key);
     }
   });
   // Establish the value baseline so we only mark fields the user actually changes.
@@ -4710,6 +4729,7 @@ function renderMain(){
       if(lbl) lbl.textContent = nowVerified ? 'Verified' : 'Verify section';
       const body = main.querySelector('[data-section-body="' + key + '"]');
       if(body) paintSectionRing(body, nowVerified, false);
+      refreshSectionTouchLine(leg, key);
       // Verifying makes the section human-owned: repaint cyan -> white live.
       if(nowVerified){
         sectionFieldIds(key).forEach(fid => {
