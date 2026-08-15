@@ -843,7 +843,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T00:22:00Z';
+const BUILD_VERSION = '2026-08-16T00:38:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4029,8 +4029,7 @@ function renderMain(){
   document.body.classList.toggle('view-home', state.view === 'home');
   // The leg checklist is the densest screen: hide the utility FABs there and
   // give that top-right slot to the verify counter instead.
-  document.body.classList.toggle('view-editor',
-    ['home','dashboard','history','tripDetail','importPreview'].indexOf(state.view) === -1);
+  document.body.classList.toggle('view-editor', state.view === 'editor');
   // Reset the nav bar centrally: only renderHomeView() should hide it. The leg
   // editor never reset it, so it inherited a stale inline 'none' after boot.
   const navBarEl = document.getElementById('topNavBar');
