@@ -650,7 +650,7 @@
   }
   .verify-progress{
     position:fixed; z-index:29;
-    left:16px; bottom:max(20px, env(safe-area-inset-bottom));
+    right:16px; bottom:max(132px, calc(env(safe-area-inset-bottom) + 112px));
     background:var(--panel-700); border-color:var(--fog-500);
     box-shadow:0 4px 14px rgba(0,0,0,0.38);
     padding:9px 14px; font-size:11px;
@@ -841,7 +841,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T23:04:00Z';
+const BUILD_VERSION = '2026-08-15T23:19:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
