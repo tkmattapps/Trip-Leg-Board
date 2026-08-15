@@ -817,7 +817,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T18:19:00Z';
+const BUILD_VERSION = '2026-08-15T18:33:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2388,11 +2388,19 @@ function sectionRingTargets(sectionEl){
   if(!sectionEl) return [];
   const cards = Array.prototype.slice.call(sectionEl.querySelectorAll('.subpanel'));
   const fields = Array.prototype.slice.call(sectionEl.querySelectorAll('.field[data-field-id]'));
-  if(!cards.length) return fields;
+  if(!cards.length){
+    const n0 = Array.prototype.slice.call(sectionEl.querySelectorAll('.leg-notes .field'))
+      .filter(f => fields.indexOf(f) === -1);
+    return fields.concat(n0);
+  }
   // Cards carry the ring, PLUS any loose field not inside one (e.g. enroute notes,
   // pax total/notes) - otherwise those get skipped entirely.
   const loose = fields.filter(f => !f.closest('.subpanel'));
-  return cards.concat(loose);
+  // Per-user note editors are built outside the field() system (no data-field-id),
+  // so pick them up explicitly or they never ring.
+  const notes = Array.prototype.slice.call(sectionEl.querySelectorAll('.leg-notes .field'))
+    .filter(f => !f.closest('.subpanel') && loose.indexOf(f) === -1);
+  return cards.concat(loose, notes);
 }
 // Paint verification rings for one section.
 function paintSectionRing(sectionEl, verified, broken){
