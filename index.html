@@ -817,7 +817,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T18:47:00Z';
+const BUILD_VERSION = '2026-08-15T19:02:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2422,11 +2422,11 @@ function paintSectionRings(leg){
 function sectionTitleHTML(label, key, leg){
   const complete = !!(leg.sectionComplete && leg.sectionComplete[key]);
   const verified = !!(leg.sectionVerified && leg.sectionVerified[key]);
+  // 'Complete' was retired: it auto-ticked on data presence, which said nothing
+  // about whether the data was CORRECT, and competed with Verify. Verify is the
+  // single control now. Stored sectionComplete data is left untouched/harmless.
+  void complete;
   return '<div class="section-title">' + escapeHtml(label) +
-    '<label class="section-complete-toggle' + (complete ? ' is-complete' : '') + '" data-section-key="' + key + '">' +
-      '<input type="checkbox" class="section-complete-checkbox" data-section-key="' + key + '"' + (complete ? ' checked' : '') + '>' +
-      '<span class="check-mark">&#10003;</span><span class="toggle-label">Complete</span>' +
-    '</label>' +
     '<button type="button" class="section-verify-btn' + (verified ? ' is-verified' : '') + '" data-verify-key="' + key + '">' +
       '<span class="verify-mark">&#10003;</span><span class="verify-label">' + (verified ? 'Verified' : 'Verify section') + '</span>' +
     '</button>' +
@@ -4546,9 +4546,9 @@ function renderMain(){
   }
 
   function runAllAutoCompleteChecks(){
-    // Passive on-render pass: may auto-complete, must NOT revoke existing completions.
-    Object.keys(autoCompleteFieldSections).forEach(key => evaluateFieldSection(key, autoCompleteFieldSections[key], false));
-    Object.keys(autoCompleteToggleSections).forEach(key => evaluateToggleSection(key, autoCompleteToggleSections[key], false));
+    // Retired with the Complete control. Auto-completion no longer runs, so it
+    // can never touch status - READY is driven solely by human verification.
+    return;
   }
 
   Object.keys(autoCompleteFieldSections).forEach(key => {
