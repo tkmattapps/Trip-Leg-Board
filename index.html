@@ -211,6 +211,7 @@
     color:var(--amber-500); margin-bottom:12px; display:flex; align-items:center; gap:10px;
   }
   .section-title::after{ content:''; flex:1; height:1px; background:var(--hairline); order:3; }
+  .section-title.is-checked{ color:#4AC97E; }
   .section-complete-toggle{
     display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;
     font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.5px; text-transform:none;
@@ -851,7 +852,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T04:31:00Z';
+const BUILD_VERSION = '2026-08-16T05:12:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2526,6 +2527,23 @@ function sectionTouchLine(leg, key){
   const verb = best.src === 'extracted' ? '' : 'Last touched by ';
   return '<div class="section-touch">' + escapeHtml(verb + who) + ' &middot; ' + escapeHtml(when) + '</div>';
 }
+// The button label IS the challenge: it shows the section's own name until
+// someone answers it with 'Checked'. These are the canonical names.
+const SECTION_LABELS = {
+  overview:'Overview', airports:'Airports', performance:'Performance',
+  enroute:'Enroute', permits:'Permits', dispatch:'Dispatch',
+  pax:'Pax', crew:'Crew', nextLeg:'Next pax leg'
+};
+// Restore a button to its unchecked (challenge) state and clear the green title.
+function resetVerifyButtonLabel(btn){
+  if(!btn) return;
+  const k = btn.getAttribute('data-verify-key');
+  const lbl = btn.querySelector('.verify-label');
+  if(lbl) lbl.textContent = SECTION_LABELS[k] || 'Check';
+  const title = btn.closest('.section-title');
+  if(title) title.classList.remove('is-checked');
+}
+
 function sectionTitleHTML(label, key, leg){
   const complete = !!(leg.sectionComplete && leg.sectionComplete[key]);
   const verified = !!(leg.sectionVerified && leg.sectionVerified[key]);
@@ -2533,9 +2551,9 @@ function sectionTitleHTML(label, key, leg){
   // about whether the data was CORRECT, and competed with Verify. Verify is the
   // single control now. Stored sectionComplete data is left untouched/harmless.
   void complete;
-  return '<div class="section-title">' + escapeHtml(label) +
+  return '<div class="section-title' + (verified ? ' is-checked' : '') + '">' + escapeHtml(label) +
     '<button type="button" class="section-verify-btn' + (verified ? ' is-verified' : '') + '" data-verify-key="' + key + '">' +
-      '<span class="verify-mark">&#10003;</span><span class="verify-label">' + (verified ? 'Verified' : 'Verify section') + '</span>' +
+      '<span class="verify-mark">&#10003;</span><span class="verify-label">' + (verified ? 'Checked' : escapeHtml(label)) + '</span>' +
     '</button>' +
   '</div>' +
   sectionTouchLine(leg, key);
@@ -4216,7 +4234,7 @@ function renderMain(){
     '</div>' +
 
     '<div class="section">' +
-      '' + sectionTitleHTML('Permits and permissions', 'permits', leg) + '' +
+      '' + sectionTitleHTML('Permits', 'permits', leg) + '' +
       '<div class="grid-3">' +
         '<div class="subpanel">' +
           '<div class="subpanel-title">EAPIS</div>' +
@@ -4328,14 +4346,14 @@ function renderMain(){
       return !!(leg.sectionVerified && leg.sectionVerified[k]);
     }).length;
     const allDone = done === total;
-    const label = allDone ? 'ALL VERIFIED' : (done + ' of ' + total + ' verified');
+    const label = allDone ? 'CHECKLIST COMPLETE' : (done + ' of ' + total + ' checked');
     // Chevron signals this is tappable and jumps DOWN to the next unverified
     // section; it disappears when there is nowhere left to jump.
     el.innerHTML = '<span class="vp-label"></span>' +
       (allDone ? '' : '<span class="vp-space">\u00a0</span><span class="vp-chev" aria-hidden="true"><i>\u2304</i><i>\u2304</i></span>');
     el.querySelector('.vp-label').textContent = label;
     el.classList.toggle('is-done', allDone);
-    el.setAttribute('title', allDone ? 'Every section signed off' : 'Jump to next unverified section');
+    el.setAttribute('title', allDone ? 'Every section signed off' : 'Jump to next unchecked item');
   }
   function jumpToNextUnverified(){
     const order = ALL_SECTION_KEYS.filter(function(k){
@@ -4387,8 +4405,7 @@ function renderMain(){
       if(sectionHasRedToggle(secEl)){
         leg.sectionVerified[k] = false;
         vb.classList.remove('is-verified');
-        const vl = vb.querySelector('.verify-label');
-        if(vl) vl.textContent = 'Verify section';
+        resetVerifyButtonLabel(vb);
         paintSectionRing(secEl, false, true);
       }
     });
@@ -4581,8 +4598,7 @@ function renderMain(){
       const vb = sectionEl.querySelector('.section-verify-btn');
       if(vb){
         vb.classList.remove('is-verified');
-        const vl = vb.querySelector('.verify-label');
-        if(vl) vl.textContent = 'Verify section';
+        resetVerifyButtonLabel(vb);
       }
       paintSectionRing(sectionEl, false, true);
       const ss = document.getElementById('statusSelect');
@@ -4851,8 +4867,7 @@ function renderMain(){
       const vbtn = main.querySelector('.section-verify-btn[data-verify-key="' + key + '"]');
       if(vbtn){
         vbtn.classList.remove('is-verified');
-        const lbl = vbtn.querySelector('.verify-label');
-        if(lbl) lbl.textContent = 'Verify section';
+        resetVerifyButtonLabel(vbtn);
       }
       refreshSectionTouchLine(leg, key);
     }
@@ -4890,8 +4905,7 @@ function renderMain(){
       const vbtn = main.querySelector('.section-verify-btn[data-verify-key="' + key + '"]');
       if(vbtn){
         vbtn.classList.remove('is-verified');
-        const lbl = vbtn.querySelector('.verify-label');
-        if(lbl) lbl.textContent = 'Verify section';
+        resetVerifyButtonLabel(vbtn);
       }
       refreshSectionTouchLine(leg, key);
     }
@@ -4909,7 +4923,7 @@ function renderMain(){
       if(nowVerified){
         const secEl = btn.closest('.section');
         if(secEl && sectionHasRedToggle(secEl)){
-          showConfirm('This section has an unresolved item flagged in red. Resolve it before verifying.', {alertOnly:true});
+          showConfirm('This section has an unresolved item flagged in red. Resolve before proceeding.', {alertOnly:true});
           return;
         }
       }
@@ -4924,8 +4938,14 @@ function renderMain(){
       });
       // Reflect immediately without a full re-render.
       btn.classList.toggle('is-verified', nowVerified);
-      const lbl = btn.querySelector('.verify-label');
-      if(lbl) lbl.textContent = nowVerified ? 'Verified' : 'Verify section';
+      if(nowVerified){
+        const lbl = btn.querySelector('.verify-label');
+        if(lbl) lbl.textContent = 'Checked';
+        const t = btn.closest('.section-title');
+        if(t) t.classList.add('is-checked');
+      } else {
+        resetVerifyButtonLabel(btn);
+      }
       const body = main.querySelector('[data-section-body="' + key + '"]');
       if(body) paintSectionRing(body, nowVerified, false);
       refreshSectionTouchLine(leg, key);
