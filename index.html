@@ -817,7 +817,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T18:33:00Z';
+const BUILD_VERSION = '2026-08-15T18:47:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4168,8 +4168,10 @@ function renderMain(){
 
   const ALL_SECTION_KEYS = ['overview','airports','performance','enroute','permits','dispatch','pax','crew','nextLeg'];
   function checkAllSectionsComplete(){
-    if(!leg.sectionComplete) return false;
-    return ALL_SECTION_KEYS.every(function(k){ return !!leg.sectionComplete[k]; });
+    // READY is gated on human VERIFICATION, not auto-ticked completeness:
+    // a machine filling boxes must never be able to declare a leg ready.
+    if(!leg.sectionVerified) return false;
+    return ALL_SECTION_KEYS.every(function(k){ return !!leg.sectionVerified[k]; });
   }
   function sectionHasRedToggle(sectionEl){
     return !!sectionEl.querySelector('.yn-btn.on-y');
