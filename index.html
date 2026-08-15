@@ -834,7 +834,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T22:41:00Z';
+const BUILD_VERSION = '2026-08-15T22:52:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4274,8 +4274,11 @@ function renderMain(){
     jumpToNextUnverified._last = ALL_SECTION_KEYS.indexOf(pick);
     const btn = document.querySelector('.section-verify-btn[data-verify-key="' + pick + '"]');
     const target = btn ? btn.closest('.section') : null;
-    if(target && target.scrollIntoView){
-      target.scrollIntoView({behavior:'smooth', block:'start'});
+    if(target){
+      const nav = document.getElementById('topNavBar');
+      const navH = (nav && nav.offsetHeight) ? nav.offsetHeight : 0;
+      const top = target.getBoundingClientRect().top + window.pageYOffset - navH - 12;
+      window.scrollTo({top: (top < 0 ? 0 : top), behavior:'smooth'});
     }
   }
   function syncReadyOptionAvailability(){
