@@ -59,6 +59,17 @@
   }
   .bottom-bar{ position:fixed; left:0; right:0; bottom:0; z-index:35; background:var(--panel-800); border-top:1px solid var(--hairline); }
   .bottom-bar-inner{ display:flex; align-items:center; justify-content:space-between; gap:12px; max-width:1800px; margin:0 auto; padding:10px 20px; padding-bottom:max(10px, env(safe-area-inset-bottom)); min-height:52px; }
+  .page-header{ position:sticky; top:0; z-index:34; background:var(--ink-900); border-bottom:1px solid var(--hairline); }
+  .page-header-inner{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; max-width:1800px; margin:0 auto; padding:10px 20px 12px; }
+  .page-header-text{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .page-back{ background:none; border:none; padding:0; text-align:left; color:var(--fog-500); font-family:'JetBrains Mono',monospace; font-size:12px; cursor:pointer; min-height:16px; }
+  .page-back:empty{ visibility:hidden; }
+  .page-header-title{ font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:30px; letter-spacing:0.5px; color:var(--paper-050); line-height:1.05; }
+  .page-header-sub{ font-size:12px; color:var(--fog-500); font-family:'JetBrains Mono',monospace; min-height:15px; }
+  .page-header-actions{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+  body:not(.authed) .page-header{ display:none; }
+  body.view-home .page-header{ display:none; }
+
   body:not(.authed) .bottom-bar{ display:none; }
 
   .top-nav-brand{ font-family:'Big Shoulders Display',sans-serif; font-size:20px; color:var(--amber-500); flex-shrink:0; }
@@ -765,6 +776,17 @@
   </div>
 </div>
 
+<div class="page-header" id="pageHeader">
+  <div class="page-header-inner">
+    <div class="page-header-text">
+      <button type="button" class="page-back" id="pageBackBtn"></button>
+      <div class="page-header-title" id="pageHeaderTitle"></div>
+      <div class="page-header-sub" id="pageHeaderSub"></div>
+    </div>
+    <div class="page-header-actions" id="pageHeaderActions"></div>
+  </div>
+</div>
+
 <div class="bottom-bar" id="bottomBar">
   <div class="bottom-bar-inner" id="bottomBarInner"></div>
 </div>
@@ -860,7 +882,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T06:12:00Z';
+const BUILD_VERSION = '2026-08-16T06:34:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2963,6 +2985,7 @@ function renderDashboardView(){
   const main = document.getElementById('mainPanel');
   const q = (state.dashboardFilter || '').trim().toLowerCase();
   const { cardsHtml, allActiveTrips } = dashboardCardsHtml(q);
+  setPageHeader({ title:'Active Trips', sub: allActiveTrips.length + ' active trip' + (allActiveTrips.length === 1 ? '' : 's'), backLabel:'Home', backTo:'home' });
   main.innerHTML =
     '<div class="view-header">' +
       '<div><div class="view-title">Active Trips</div><div class="view-subtitle" id="dashboardSubtitle">' + allActiveTrips.length + ' active trip' + (allActiveTrips.length === 1 ? '' : 's') + '</div></div>' +
@@ -3026,6 +3049,7 @@ function renderHistoryView(){
   const main = document.getElementById('mainPanel');
   const q = (state.historyFilter || '').trim().toLowerCase();
   const { cardsHtml, allFlownTrips } = historyCardsHtml(q);
+  setPageHeader({ title:'Flown Trips', sub: allFlownTrips.length + ' flown trip' + (allFlownTrips.length === 1 ? '' : 's'), backLabel:'Home', backTo:'home' });
   main.innerHTML =
     '<div class="view-header">' +
       '<div><div class="view-title">Flown Trips</div><div class="view-subtitle" id="historySubtitle">' + allFlownTrips.length + ' flown trip' + (allFlownTrips.length === 1 ? '' : 's') + '</div></div>' +
@@ -3830,6 +3854,12 @@ function renderTripDetailView(){
     return;
   }
   const backLabel = state.tripDetailOrigin === 'history' ? 'Flown Trips' : 'Active Trips';
+  setPageHeader({
+    title: trip.tripNumber ? ('Trip ' + trip.tripNumber) : 'Untitled trip',
+    sub: trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's'),
+    backLabel: backLabel,
+    backTo: state.tripDetailOrigin === 'history' ? 'history' : 'dashboard'
+  });
   main.innerHTML =
     '<button type="button" class="back-link" id="tripDetailBackBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
     '<div class="view-header">' +
@@ -4080,6 +4110,39 @@ function tuneEditorTailPadding(){
   }
 }
 
+function setPageHeader(opts){
+  const o = opts || {};
+  const backEl = document.getElementById('pageBackBtn');
+  const titleEl = document.getElementById('pageHeaderTitle');
+  const subEl = document.getElementById('pageHeaderSub');
+  if(titleEl) titleEl.textContent = o.title || '';
+  if(subEl) subEl.textContent = o.sub || '';
+  if(backEl){
+    if(o.backLabel){
+      backEl.innerHTML = '\u2190 Back to ' + escapeHtml(o.backLabel);
+      backEl.dataset.pageBack = o.backTo || '';
+    } else {
+      backEl.textContent = '';
+      backEl.dataset.pageBack = '';
+    }
+  }
+}
+
+
+document.addEventListener('click', function(e){
+  const b = e.target.closest && e.target.closest('#pageBackBtn');
+  if(!b) return;
+  const dest = b.dataset.pageBack || '';
+  if(!dest) return;
+  if(dest === 'home'){ state.view = 'home'; }
+  else if(dest === 'dashboard'){ state.view = 'dashboard'; }
+  else if(dest === 'history'){ state.view = 'history'; }
+  else if(dest === 'tripDetail'){ state.view = 'tripDetail'; }
+  else return;
+  if(typeof updateNavTabs === 'function') updateNavTabs();
+  renderMain();
+});
+
 function renderMain(){
   stopImportLoadingMessages();
   const appRootEl = document.getElementById('appRoot');
@@ -4095,7 +4158,7 @@ function renderMain(){
   // editor never reset it, so it inherited a stale inline 'none' after boot.
   const navBarEl = document.getElementById('topNavBar');
   if(navBarEl) navBarEl.style.display = '';
-  if(state.view === 'home'){ renderHomeView(); return; }
+  if(state.view === 'home'){ setPageHeader({}); renderHomeView(); return; }
   if(state.view === 'dashboard'){ renderDashboardView(); return; }
   if(state.view === 'history'){ renderHistoryView(); return; }
   if(state.view === 'tripDetail'){ renderTripDetailView(); return; }
@@ -4118,6 +4181,12 @@ function renderMain(){
     backLabel = 'Flown Trips';
   }
 
+  setPageHeader({
+    title:'Leg Checklist',
+    sub: (leg.cityPair || '').trim(),
+    backLabel: backLabel,
+    backTo: (state.previousView === 'tripDetail' && state.previousTripKey) ? 'tripDetail' : (state.previousView === 'history' ? 'history' : 'dashboard')
+  });
   const tripNumForLeg = (leg.tripNumber || '').trim();
   const siblingTrip = tripNumForLeg
     ? groupIntoTrips(state.legs).find(t => t.key === tripNumForLeg)
