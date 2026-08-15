@@ -366,7 +366,10 @@
   }
   .yn button.on-y{ background:rgba(226,87,76,0.18); border-color:var(--alert-600); color:var(--alert-600); }
   .yn button.on-n{ background:rgba(79,174,124,0.18); border-color:var(--ok-500); color:var(--ok-500); }
-  .yn button.wind-active{ background:rgba(242,169,59,0.18); border-color:var(--amber-500); color:var(--amber-500); }
+  /* Wind is a FACT, not a readiness problem, so it sits off the red/amber/green
+     ladder: grey = headwind penalty (informational), green = tailwind advantage. */
+  .yn button.wind-hw{ background:rgba(126,143,172,0.18); border-color:var(--fog-500); color:var(--fog-300); }
+  .yn button.wind-tw{ background:rgba(79,174,124,0.18); border-color:var(--ok-500); color:var(--ok-500); }
   .ovf-list{ display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px; }
   .subpanel-full{ grid-column:1 / -1; }
   .ovf-row{ border:1px solid var(--hairline); border-radius:4px; padding:10px; background:rgba(255,255,255,0.02); }
@@ -814,7 +817,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T17:31:00Z';
+const BUILD_VERSION = '2026-08-15T17:52:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2523,8 +2526,8 @@ function attachSlotAllowanceFormatting(id){
 
 function windToggleField(leg){
   const dir = leg.windDirection || '';
-  const hwActive = dir === 'HW' ? ' wind-active' : '';
-  const twActive = dir === 'TW' ? ' wind-active' : '';
+  const hwActive = dir === 'HW' ? ' wind-active wind-hw' : '';
+  const twActive = dir === 'TW' ? ' wind-active wind-tw' : '';
   return '<div class="field">' +
     '<label>Headwind / Tailwind</label>' +
     '<div style="display:flex; gap:8px; align-items:center;">' +
@@ -4391,8 +4394,8 @@ function renderMain(){
       const isOn = hiddenInput.value === val;
       hiddenInput.value = isOn ? '' : val;
       const group = btn.parentElement;
-      group.querySelectorAll('.wind-btn').forEach(b => b.classList.remove('wind-active'));
-      if(!isOn) btn.classList.add('wind-active');
+      group.querySelectorAll('.wind-btn').forEach(b => b.classList.remove('wind-active','wind-hw','wind-tw'));
+      if(!isOn) btn.classList.add('wind-active', val === 'HW' ? 'wind-hw' : 'wind-tw');
 
       const digitsOnly = componentInput.value.replace(/[^0-9.]/g, '');
       if(hiddenInput.value === 'HW'){
