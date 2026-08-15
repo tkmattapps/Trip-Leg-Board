@@ -587,14 +587,20 @@
   /* Source drives TEXT colour; verification drives the RING. Two channels, no clash. */
   .field.src-extracted input, .field.src-extracted textarea{ color:#5FD0E8; }
   .field.src-human input, .field.src-human textarea{ color:var(--paper-050); }
-  /* Rings live at BLOCK level, not per field - one ring per section instead of
-     forty, so the screen stops looking like a Christmas tree. Text colour still
-     carries provenance per field. */
-  .section[data-section-body].is-verified{
-    box-shadow:0 0 0 1.5px rgba(74,201,126,0.45);
+  /* Verification rings outline the OUTERMOST visual container of a section:
+     the rounded .subpanel cards where a section has them (Airports, Permits,
+     Pax), and the individual fields where it doesn't. One ring per box either
+     way - never both, so the screen never looks like a Christmas tree.
+     Text colour continues to carry provenance per field. */
+  .subpanel.is-verified{ box-shadow:0 0 0 1.5px rgba(74,201,126,0.45); }
+  .subpanel.has-broken-verify{ box-shadow:0 0 0 1.5px rgba(242,169,59,0.75); }
+  .field.is-verified input, .field.is-verified textarea,
+  .field.is-verified .yn{
+    box-shadow:0 0 0 1.5px rgba(74,201,126,0.45); border-radius:5px;
   }
-  .section[data-section-body].has-broken-verify{
-    box-shadow:0 0 0 1.5px rgba(242,169,59,0.75);
+  .field.has-broken-verify input, .field.has-broken-verify textarea,
+  .field.has-broken-verify .yn{
+    box-shadow:0 0 0 1.5px rgba(242,169,59,0.75); border-radius:5px;
   }
   .field.verify-broken > label::after{
     content:'changed since verified';
@@ -796,7 +802,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T15:24:00Z';
+const BUILD_VERSION = '2026-08-15T15:48:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2352,14 +2358,28 @@ function tagSectionBodies(){
     if(ctrl) sec.setAttribute('data-section-body', ctrl.getAttribute('data-section-key'));
   });
 }
-// Apply the block-level verified ring on first render of an editor.
+// Return the ring targets for a section: its .subpanel cards if it has any,
+// otherwise its individual .field wrappers. Never both.
+function sectionRingTargets(sectionEl){
+  if(!sectionEl) return [];
+  const cards = sectionEl.querySelectorAll('.subpanel');
+  if(cards.length) return Array.prototype.slice.call(cards);
+  return Array.prototype.slice.call(sectionEl.querySelectorAll('.field[data-field-id]'));
+}
+// Paint verification rings for one section.
+function paintSectionRing(sectionEl, verified, broken){
+  sectionRingTargets(sectionEl).forEach(t => {
+    t.classList.toggle('is-verified', !!verified);
+    t.classList.toggle('has-broken-verify', !verified && !!broken);
+  });
+}
+// Apply rings across the whole editor on first render.
 function paintSectionRings(leg){
   if(!leg) return;
   document.querySelectorAll('.section[data-section-body]').forEach(sec => {
+    sec.classList.remove('is-verified','has-broken-verify');
     const key = sec.getAttribute('data-section-body');
-    const verified = !!(leg.sectionVerified && leg.sectionVerified[key]);
-    sec.classList.toggle('is-verified', verified);
-    if(verified) sec.classList.remove('has-broken-verify');
+    paintSectionRing(sec, !!(leg.sectionVerified && leg.sectionVerified[key]), false);
   });
 }
 
@@ -4538,16 +4558,14 @@ function renderMain(){
     baseline[fid] = newValue;
     markFieldSource(leg, fid, 'human');
     const m = legFieldMeta(leg)[fid] || {};
-    // Field level: provenance text colour only.
-    wrap.classList.remove('src-extracted','is-verified','is-unverified','verify-broken');
+    wrap.classList.remove('src-extracted');
     wrap.classList.add('src-human');
     const body = wrap.closest('[data-section-body]');
     if(body){
       const key = body.getAttribute('data-section-body');
       const wasVerified = !!(leg.sectionVerified && leg.sectionVerified[key]);
-      body.classList.remove('is-verified');
-      // Only flag amber if a real sign-off was just invalidated.
-      if(wasVerified || m.brokeVerify) body.classList.add('has-broken-verify');
+      // Amber only if a real sign-off was just invalidated.
+      paintSectionRing(body, false, wasVerified || m.brokeVerify);
       if(leg.sectionVerified) leg.sectionVerified[key] = false;
       const vbtn = main.querySelector('.section-verify-btn[data-verify-key="' + key + '"]');
       if(vbtn){
@@ -4579,15 +4597,13 @@ function renderMain(){
     baseline[fid] = el.value;
     markFieldSource(leg, fid, 'human');
     const m = legFieldMeta(leg)[fid] || {};
-    wrap.classList.remove('src-extracted','is-verified','is-unverified','verify-broken');
+    wrap.classList.remove('src-extracted');
     wrap.classList.add('src-human');
-    // Section: demote the block ring and the button.
     const body = wrap.closest('[data-section-body]');
     if(body){
       const key = body.getAttribute('data-section-body');
       const wasVerified = !!(leg.sectionVerified && leg.sectionVerified[key]);
-      body.classList.remove('is-verified');
-      if(wasVerified || m.brokeVerify) body.classList.add('has-broken-verify');
+      paintSectionRing(body, false, wasVerified || m.brokeVerify);
       if(leg.sectionVerified) leg.sectionVerified[key] = false;
       const vbtn = main.querySelector('.section-verify-btn[data-verify-key="' + key + '"]');
       if(vbtn){
@@ -4619,14 +4635,7 @@ function renderMain(){
       const lbl = btn.querySelector('.verify-label');
       if(lbl) lbl.textContent = nowVerified ? 'Verified' : 'Verify section';
       const body = main.querySelector('[data-section-body="' + key + '"]');
-      if(body){
-        // Ring the whole block; clear any per-field leftovers.
-        body.classList.toggle('is-verified', nowVerified);
-        if(nowVerified) body.classList.remove('has-broken-verify');
-        body.querySelectorAll('.field[data-field-id]').forEach(w => {
-          w.classList.remove('is-verified','is-unverified','verify-broken');
-        });
-      }
+      if(body) paintSectionRing(body, nowVerified, false);
       autoSaveIfEditing();
     });
   });
