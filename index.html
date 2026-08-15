@@ -814,7 +814,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-15T17:18:00Z';
+const BUILD_VERSION = '2026-08-15T17:31:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4657,6 +4657,13 @@ function renderMain(){
       if(lbl) lbl.textContent = nowVerified ? 'Verified' : 'Verify section';
       const body = main.querySelector('[data-section-body="' + key + '"]');
       if(body) paintSectionRing(body, nowVerified, false);
+      // Verifying makes the section human-owned: repaint cyan -> white live.
+      if(nowVerified){
+        sectionFieldIds(key).forEach(fid => {
+          const w = main.querySelector('.field[data-field-id="' + fid + '"]');
+          if(w){ w.classList.remove('src-extracted'); w.classList.add('src-human'); }
+        });
+      }
       autoSaveIfEditing();
     });
   });
