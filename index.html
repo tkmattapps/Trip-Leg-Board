@@ -914,7 +914,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T12:55:00Z';
+const BUILD_VERSION = '2026-08-16T13:20:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -1773,6 +1773,8 @@ function uid(){ return 'leg_' + Date.now().toString(36) + Math.random().toString
 
 
 function normalizeLeg(leg){
+  // Legs saved before the baseline was made runtime-only may still carry one.
+  if(leg && leg._fieldValueBaseline) delete leg._fieldValueBaseline;
   leg.compliance = Object.assign({ eapisReqd:'', eapisNotes:'', overflightReqd:'', overflightPermits:[], customsReqd:'', customsNotes:'' }, leg.compliance || {});
   if(!Array.isArray(leg.compliance.overflightPermits)) leg.compliance.overflightPermits = [];
   leg.dep = Object.assign({ fuelPricePerGallon:'', paxBaggageNotes:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', agentPhone:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'' }, leg.dep || {});
@@ -1916,6 +1918,9 @@ function flattenLeg(obj, prefix, out){
   prefix = prefix || '';
   if(obj == null) return out;
   Object.keys(obj).forEach(function(k){
+    // Underscore-prefixed keys are runtime scratch state (e.g. _fieldValueBaseline),
+    // never user data. They must not appear in the change log.
+    if(k.charAt(0) === '_') return;
     const path = prefix ? (prefix + '.' + k) : k;
     const v = obj[k];
     if(v != null && typeof v === 'object' && !Array.isArray(v)){
@@ -2151,9 +2156,16 @@ async function saveLeg(leg){
   // Change log: diff against the last-saved snapshot BEFORE persisting.
   const _changes = diffLegs(_legSnapshots[leg.id], leg);
   try{ console.log('[changelog]', leg.id, 'hadSnapshot=', !!_legSnapshots[leg.id], 'changes=', _changes.length, _changes.map(function(c){return c.field_path;})); }catch(_e){}
+  // Strip runtime-only scratch state before persisting. _fieldValueBaseline is
+  // a snapshot of the RENDERED form, used to spot genuine human edits. Saving it
+  // means a stale baseline from an earlier session gets compared against a freshly
+  // rendered form, and any harmless formatting drift reads as an edit -- silently
+  // revoking a section's verification. It must be rebuilt per editor session.
+  const _persist = Object.assign({}, leg);
+  delete _persist._fieldValueBaseline;
   for(let attempt = 1; attempt <= 2; attempt++){
     try{
-      const result = await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
+      const result = await storage.set('leg:' + leg.id, JSON.stringify(_persist), true);
       if(!result) throw new Error('no result');
       if(_changes.length){ logLegChanges(leg, _changes); }
       snapshotLeg(leg);
