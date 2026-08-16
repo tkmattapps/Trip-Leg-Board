@@ -77,6 +77,7 @@
   .drawer-label{ min-width:0; }
   .drawer-item-danger .drawer-label{ color:var(--alert-600); }
   .drawer-ico.di-delete{ color:var(--alert-600); }
+  .drawer-ico.di-undo{ color:var(--amber-500); }
 
   .page-header{ position:fixed; left:0; right:0; top:0; z-index:34; background:var(--ink-900); border-bottom:1px solid var(--hairline); }
   .page-header-inner{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; max-width:1800px; margin:0 auto; padding:10px 36px 12px; padding-top:max(10px, env(safe-area-inset-top)); }
@@ -807,6 +808,7 @@
     <button type="button" class="drawer-item" id="drawerFeedbackBtn"><span class="drawer-ico di-feedback">&#128172;</span><span class="drawer-label">Send feedback</span></button>
     <button type="button" class="drawer-item" id="drawerInstallBtn"><span class="drawer-ico di-install">&#128241;</span><span class="drawer-label">Install on a device</span></button>
     <button type="button" class="drawer-item drawer-item-danger" id="drawerDeleteBtn" hidden><span class="drawer-ico di-delete">&#128465;</span><span class="drawer-label" id="drawerDeleteLabel">Delete</span></button>
+    <button type="button" class="drawer-item" id="drawerUndoBtn" hidden><span class="drawer-ico di-undo">&#8630;</span><span class="drawer-label" id="drawerUndoLabel">Undo delete</span></button>
     <button type="button" class="drawer-item" id="drawerLogoutBtn"><span class="drawer-ico di-logout">&#8617;</span><span class="drawer-label">Log out</span></button>
   </div>
 </div>
@@ -899,7 +901,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T00:31:00Z';
+const BUILD_VERSION = '2026-08-16T00:52:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2164,6 +2166,31 @@ async function deleteLeg(id){
     console.error('delete failed', e);
     showToast('Delete failed. Try again.');
     return false;
+  }
+}
+
+// ---- Session-only undo for the last delete -------------------------------
+// Deletes are soft (deleted_at stamp), so undo simply clears that column.
+// Deliberately NOT persisted: this protects against the mistake you notice
+// within seconds, and a stale offer to restore last week's trip is clutter.
+let lastDelete = null;   // { kind:'leg'|'trip', ids:[], label:'' }
+
+async function restoreLegIds(ids){
+  const { error } = await sb.from('legs').update({ deleted_at: null }).in('id', ids);
+  if(error) throw error;
+}
+
+async function undoLastDelete(){
+  if(!lastDelete) return;
+  const snap = lastDelete;
+  try{
+    await restoreLegIds(snap.ids);
+    lastDelete = null;
+    await loadLegs();
+    showToast('Restored ' + snap.label);
+  }catch(e){
+    console.error('undo failed', e);
+    showToast('Could not restore. Try again.');
   }
 }
 
@@ -3985,6 +4012,7 @@ async function handleDeleteTrip(tripKey){
   for(const id of idsToDelete){
     await deleteLeg(id);
   }
+  lastDelete = { kind:'trip', ids: idsToDelete.slice(), label: tripLabel };
   state.legs = state.legs.filter(l => !idsToDelete.includes(l.id));
   state.activeId = null;
   state.view = state.tripDetailOrigin === 'history' ? 'history' : 'dashboard';
@@ -5951,6 +5979,7 @@ async function handleDelete(id){
   }
   const ok = await deleteLeg(id);
   if(ok){
+    lastDelete = { kind:'leg', ids:[id], label: legLabel(leg) };
     state.legs = state.legs.filter(l => l.id !== id);
     if(fallbackLegId && state.legs.some(l => l.id === fallbackLegId)){
       // Stay on the checklist, drop to the adjacent leg in the same trip.
@@ -6082,6 +6111,18 @@ function syncDrawerDelete(){
     btn.hidden = true;
     btn.dataset.deleteMode = '';
   }
+  // Undo appears only while an undoable delete exists in this session, and names
+  // what it will bring back so you are never guessing.
+  const ub = document.getElementById('drawerUndoBtn');
+  const ul = document.getElementById('drawerUndoLabel');
+  if(ub){
+    if(lastDelete){
+      ub.hidden = false;
+      if(ul) ul.textContent = 'Undo delete: ' + lastDelete.label;
+    } else {
+      ub.hidden = true;
+    }
+  }
 }
 function openDrawer(){
   const d = document.getElementById('drawer');
@@ -6116,6 +6157,8 @@ function openInstallOverlay(){
   if(ib) ib.addEventListener('click', function(){ closeDrawer(); openInstallOverlay(); });
   const lb = document.getElementById('drawerLogoutBtn');
   if(lb) lb.addEventListener('click', function(){ closeDrawer(); handleLogout(); });
+  const ub2 = document.getElementById('drawerUndoBtn');
+  if(ub2) ub2.addEventListener('click', function(){ closeDrawer(); undoLastDelete(); });
   const db = document.getElementById('drawerDeleteBtn');
   if(db) db.addEventListener('click', function(){
     // Re-read mode and id at click time, not at wire time.
