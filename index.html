@@ -115,11 +115,15 @@
   
   
   
-  .home-view{ position:relative; display:flex; flex-direction:row; align-items:flex-start; justify-content:center; /* Reserve the height that is ACTUALLY left after the fixed header padding, this
-   view's own top margin, and main's bottom padding. The old 60vh was additive to
-   all three, so the page demanded 60vh + ~244px and overflowed in browsers with
-   taller chrome (Chrome yes, Safari only just fit). */
-  min-height:calc(100vh - var(--page-header-h, 84px) - 16px - 64px - 52px - max(28px, env(safe-area-inset-bottom))); gap:40px; overflow:visible; margin-top:64px; }
+  /* Only when the home view is on screen does .main become a measured flex column.
+   Scoped with :has() so the dashboard grid, the leg editor sections, and every
+   other view keep their normal block stacking and natural scrolling. */
+.main:has(> .home-view), .main.is-home-view{ max-height:100vh; max-height:100dvh; display:flex; flex-direction:column; }
+.home-view{ position:relative; display:flex; flex-direction:row; align-items:flex-start; justify-content:center; /* Fill whatever is left inside .main rather than computing 100vh minus a pile of
+   guessed constants. --page-header-h is set from the MEASURED header at runtime,
+   so any hardcoded arithmetic here drifts. flex:1 + min-height:0 lets this fill
+   the parent's content box exactly, which is why the scrollbar disappears. */
+  flex:1 1 auto; min-height:0; gap:40px; overflow:visible; margin-top:64px; }
   
   .logout-fab:hover{ background:var(--panel-800, rgba(255,255,255,0.08)); color:var(--text-primary, #fff); }
   .home-left-col{ position:relative; display:flex; flex-direction:column; align-items:flex-start; text-align:left; flex:1 1 auto; padding-left:140px; margin-top:100px; }
@@ -232,7 +236,10 @@
   .leg-meta{ font-size:11px; color:var(--fog-500); margin-top:3px; }
   .empty-list{ color:var(--fog-500); font-size:13px; padding:20px 4px; line-height:1.6; }
 
-  .main{ flex:1; padding:28px 36px; overflow-y:auto; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(52px + max(28px, env(safe-area-inset-bottom))); }
+  .main{ flex:1; padding:28px 36px; overflow-y:auto; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(52px + max(28px, env(safe-area-inset-bottom))); /* Cap the scroll box to the viewport so a child can size itself against the
+   space that ACTUALLY remains (border-box keeps the padding inside that cap).
+   Without this, 100%-height children measured against an auto-height parent. */
+  box-sizing:border-box; }
   .main-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:16px; flex-wrap:wrap; }
   .main-title-group{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
   .main-title{
@@ -968,7 +975,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T15:55:00Z';
+const BUILD_VERSION = '2026-08-16T16:00:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3023,6 +3030,7 @@ function renderHomeView(){
   document.getElementById('homeActiveBtn').addEventListener('click', () => goToListView('dashboard'));
   document.getElementById('homeHistoryBtn').addEventListener('click', () => goToListView('history'));
   document.getElementById('homeImportBtn').addEventListener('click', () => goToListView('importPreview'));
+  main.classList.add('is-home-view');
   const homeScope = main.querySelector('.home-view') || main;
   watchHomeLogo(homeScope);
 }
@@ -4319,6 +4327,10 @@ function renderMain(){
     appRootEl.classList.toggle('sidebar-hidden', hideSidebar);
   }
   document.body.classList.toggle('view-home', state.view === 'home');
+  // Clear the home-only layout mode centrally, before any view renders, so it can
+  // never leak into the dashboard or the leg editor. renderHomeView() re-adds it.
+  const mainPanelEl = document.getElementById('mainPanel');
+  if(mainPanelEl) mainPanelEl.classList.remove('is-home-view');
   // The leg checklist is the densest screen: hide the utility FABs there and
   // give that top-right slot to the verify counter instead.
   document.body.classList.toggle('view-editor', state.view === 'editor');
