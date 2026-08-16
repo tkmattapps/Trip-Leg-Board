@@ -140,6 +140,13 @@
     .leg-nav-strip.leg-nav-strip-checklist .leg-nav-group{ order:1; align-self:flex-start; justify-content:flex-start; margin-right:0; }
     .leg-nav-strip-checklist .doc-jump-btn{ order:0; align-self:center; margin-left:0; margin-right:0; margin-top:0; }
 
+    /* Overview at phone width: pin to exactly 2 columns so trip number and leg
+       number share row one and the city pair reliably owns row two. Without
+       this the layout depends on auto-fit happening to collapse, which is not
+       guaranteed as the field mix changes. */
+    .section .grid:has(.field[data-field-id="cityPair"]){ grid-template-columns:repeat(2, 1fr); }
+    .field[data-field-id="cityPair"]{ grid-column:1 / -1; }
+
     /* Top padding clears the notch/status bar AND leaves room for the watermark,
        which extends above the wordmark. JS sizes/centres the watermark itself. */
     .home-view{ flex-direction:column; gap:128px; align-items:center; justify-content:flex-start; min-height:auto; margin-top:0; padding-top:calc(env(safe-area-inset-top, 0px) + 132px); overflow-x:hidden; }
@@ -654,7 +661,14 @@
   .lg-sample.ring-broken{ color:var(--paper-050); box-shadow:0 0 0 1.25px rgba(242,169,59,0.65); }
   .lg-chip{ display:inline-block; padding:1px 6px; border-radius:3px; font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.04em; background:rgba(242,169,59,0.18); color:var(--amber-500); }
   .lg-note{ font-size:11px; line-height:1.55; color:var(--fog-500); margin:18px 0 0; padding-top:14px; border-top:1px solid var(--hairline); }
-  .section-touch{
+  /* ---- Overview: city pair spans the two columns the Date field vacated ---- */
+/* Keeps the original 4-column rhythm: trip number and leg number stay narrow,
+   city pair gets room for long names like "Windsor Locks -> Westhampton Beach".
+   On narrow screens auto-fit drops to fewer columns and this becomes full-width,
+   which is the desired result there too. */
+.field[data-field-id="cityPair"]{ grid-column: span 2; }
+
+.section-touch{
     font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.02em;
     color:var(--fog-500); opacity:0.85; margin:-6px 0 12px 0;
   }
@@ -950,7 +964,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T14:56:00Z';
+const BUILD_VERSION = '2026-08-16T15:03:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
