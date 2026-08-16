@@ -92,6 +92,7 @@
   .drawer-ico{ flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:6px; font-size:14px; background:var(--panel-700); }
   .drawer-label{ min-width:0; }
   .drawer-item-danger .drawer-label{ color:var(--alert-600); }
+  .drawer-ico-mark{ display:block; width:22px; height:22px; }
   .drawer-ico.di-delete{ color:var(--alert-600); }
   .drawer-ico.di-undo{ color:var(--amber-500); }
   .drawer-ico.di-legend{ color:var(--fog-300); }
@@ -472,8 +473,6 @@
   .dash-status-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
   .dash-status-dot.ok{ background:var(--ok-500); }
   .dash-status-dot.pending{ background:var(--alert-600); }
-  .leg-status-legend{ display:flex; gap:18px; margin-bottom:18px; flex-wrap:wrap; }
-  .legend-item{ display:flex; align-items:center; gap:6px; font-size:11px; color:var(--fog-500); font-family:'JetBrains Mono',monospace; text-transform:uppercase; letter-spacing:0.5px; }
   .leg-status-strip{ display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap; align-items:center; }
   .leg-nav-strip{ display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
   .leg-nav-strip-end{ justify-content:flex-end; }
@@ -634,6 +633,23 @@
   /* Source drives TEXT colour; verification drives the RING. Two channels, no clash. */
   .field.src-extracted input, .field.src-extracted textarea{ color:#5FD0E8; }
   .field.src-human input, .field.src-human textarea{ color:var(--paper-050); }
+  /* ---- LEGEND (slide-out reference sheet) ---- */
+  .lg-group{ margin:0 0 20px; }
+  .lg-group:last-child{ margin-bottom:0; }
+  .lg-group-title{ font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--amber-500); margin:0 0 10px; }
+  .lg-row{ display:flex; align-items:flex-start; gap:10px; margin-bottom:10px; }
+  .lg-row:last-child{ margin-bottom:0; }
+  .lg-key{ flex:0 0 92px; display:flex; align-items:center; padding-top:1px; }
+  .lg-row.compact .lg-key{ flex:0 0 22px; padding-top:4px; }
+  .lg-body{ flex:1 1 auto; min-width:0; font-size:12px; line-height:1.5; color:var(--fog-300); }
+  .lg-body b{ color:var(--paper-050); font-weight:600; }
+  .lg-sample{ display:inline-block; font-family:'JetBrains Mono',monospace; font-size:12px; background:var(--panel-700); border:1px solid var(--hairline); border-radius:4px; padding:4px 8px; }
+  .lg-sample.extracted{ color:#5FD0E8; }
+  .lg-sample.human{ color:var(--paper-050); }
+  .lg-sample.ring-ok{ color:var(--paper-050); box-shadow:0 0 0 1.25px rgba(74,201,126,0.36); }
+  .lg-sample.ring-broken{ color:var(--paper-050); box-shadow:0 0 0 1.25px rgba(242,169,59,0.65); }
+  .lg-chip{ display:inline-block; padding:1px 6px; border-radius:3px; font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.04em; background:rgba(242,169,59,0.18); color:var(--amber-500); }
+  .lg-note{ font-size:11px; line-height:1.55; color:var(--fog-500); margin:18px 0 0; padding-top:14px; border-top:1px solid var(--hairline); }
   .section-touch{
     font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.02em;
     color:var(--fog-500); opacity:0.85; margin:-6px 0 12px 0;
@@ -822,7 +838,7 @@
     <button type="button" class="drawer-close" id="drawerCloseBtn" aria-label="Close menu">&times;</button>
   </div>
   <div class="drawer-body">
-    <button type="button" class="drawer-item" id="drawerHomeBtn"><span class="drawer-ico di-home">&#127968;</span><span class="drawer-label">Home</span></button>
+    <button type="button" class="drawer-item" id="drawerHomeBtn"><span class="drawer-ico di-home"><img class="drawer-ico-mark" src="data:image/png;base64,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" alt="" /></span><span class="drawer-label">Home</span></button>
     <button type="button" class="drawer-item" id="drawerFeedbackBtn"><span class="drawer-ico di-feedback">&#128172;</span><span class="drawer-label">Send feedback</span></button>
     <button type="button" class="drawer-item" id="drawerInstallBtn"><span class="drawer-ico di-install">&#128241;</span><span class="drawer-label">Install on a device</span></button>
     <button type="button" class="drawer-item" id="drawerLegendBtn"><span class="drawer-ico di-legend">&#128273;</span><span class="drawer-label">Legend</span></button>
@@ -930,7 +946,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T13:26:00Z';
+const BUILD_VERSION = '2026-08-16T13:52:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2886,14 +2902,6 @@ function tripBriefLegCardHTML(leg){
   '</div>';
 }
 
-function legStatusLegendHTML(){
-  return '<div class="leg-status-legend">' +
-    '<span class="legend-item"><span class="leg-status-dot leg-status-planning"></span>Planning</span>' +
-    '<span class="legend-item"><span class="leg-status-dot leg-status-ready"></span>Ready</span>' +
-    '<span class="legend-item"><span class="leg-status-dot leg-status-flown"></span>Flown</span>' +
-  '</div>';
-}
-
 function tripCardHTML(trip){
   if(trip.isOrphan && trip.legs.length <= 1){
     return dashboardCardHTML(trip.legs[0]);
@@ -3097,7 +3105,6 @@ function renderDashboardView(){
     actionsHTML: '<button type="button" class="bar-action" id="newTripBtn">+ Create new trip</button>' });
   main.innerHTML =
         '<input class="search" id="dashboardSearchInput" placeholder="Search missions by route, airport, trip #..." style="width:100%; max-width:420px; margin-bottom:18px;" value="' + escapeHtml(state.dashboardFilter) + '" />' +
-    legStatusLegendHTML() +
     '<div id="dashboardCardsContainer">' + cardsHtml + '</div>';
   const dashboardSearchInput = document.getElementById('dashboardSearchInput');
   if(dashboardSearchInput){
@@ -3152,7 +3159,6 @@ function renderHistoryView(){
   setPageHeader({ title:'Flown Trips', sub: allFlownTrips.length + ' flown trip' + (allFlownTrips.length === 1 ? '' : 's'), backLabel:'Home', backTo:'home' });
   main.innerHTML =
     '<input class="search" id="historySearchInput" placeholder="Search past trips by route, airport, trip #..." style="width:100%; max-width:420px; margin-bottom:18px;" value="' + escapeHtml(state.historyFilter) + '" />' +
-    legStatusLegendHTML() +
     '<div id="historyCardsContainer">' + cardsHtml + '</div>';
   const historySearchInput = document.getElementById('historySearchInput');
   if(historySearchInput){
@@ -6282,7 +6288,26 @@ function closeDrawer(){
 // rather than taking up space at the top of every page. Body is rendered from a
 // single source so entries can be added without touching markup.
 function legendBodyHTML(){
-  return '<p style="font-size:12px; color:var(--fog-500); line-height:1.6; margin:0;">Legend content goes here.</p>';
+  return [
+    '<div class="lg-group">',
+      '<div class="lg-group-title">Leg status</div>',
+      '<div class="lg-row compact"><span class="lg-key"><span class="leg-status-dot leg-status-dot-plain leg-status-planning"></span></span><span class="lg-body"><b>Planning</b> &mdash; the leg is still being built. One or more sections have not been verified.</span></div>',
+      '<div class="lg-row compact"><span class="lg-key"><span class="leg-status-dot leg-status-dot-plain leg-status-ready"></span></span><span class="lg-body"><b>Ready</b> &mdash; every section on the leg has been verified by a person.</span></div>',
+      '<div class="lg-row compact"><span class="lg-key"><span class="leg-status-dot leg-status-dot-plain leg-status-flown"></span></span><span class="lg-body"><b>Flown</b> &mdash; the leg is complete and sits in the trip archive.</span></div>',
+    '</div>',
+    '<div class="lg-group">',
+      '<div class="lg-group-title">Where a value came from</div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample extracted">KBDL</span></span><span class="lg-body"><b>Cyan</b> &mdash; pulled out of an imported trip document. Nobody has confirmed it yet. Read it against the source.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">KBDL</span></span><span class="lg-body"><b>White</b> &mdash; entered by hand by crew or dispatch.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample extracted">YES</span></span><span class="lg-body">On a Yes/No toggle the button keeps its own red or green fill &mdash; that carries the warning. Only the wording turns cyan.</span></div>',
+    '</div>',
+    '<div class="lg-group">',
+      '<div class="lg-group-title">Verification</div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample ring-ok">KBDL</span></span><span class="lg-body"><b>Green outline</b> &mdash; verified. Where a section is built from cards (Airports, Permits, Pax) the outline sits on the whole card; elsewhere it sits on the field.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample ring-broken">KBDL</span></span><span class="lg-body"><b>Amber outline</b> with a <span class="lg-chip">changed since verified</span> tag &mdash; the value was edited after it was signed off. Check it and verify again.</span></div>',
+    '</div>',
+    '<p class="lg-note">Verification is a human decision. Opening a leg to read it never removes a sign-off &mdash; only a real edit does.</p>'
+  ].join('');
 }
 function openLegendOverlay(){
   const body = document.getElementById('legendBody');
