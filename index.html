@@ -910,7 +910,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T01:41:00Z';
+const BUILD_VERSION = '2026-08-16T02:03:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4239,8 +4239,6 @@ function renderMain(){
     title:'Leg Checklist',
     sub: (leg.cityPair || '').trim(),
     actionsHTML: '<button type="button" class="verify-progress" id="verifyProgress"></button>',
-    barSlotHTML: legBarSlotHTML,
-    barDocHTML: legBarDocHTML,
     backLabel: backLabel,
     backTo: (state.previousView === 'tripDetail' && state.previousTripKey) ? 'tripDetail' : (state.previousView === 'history' ? 'history' : 'dashboard')
   });
@@ -4274,6 +4272,13 @@ function renderMain(){
     '<div class="bar-legs-track">' + legNavGroupHTML + '</div>';
   const legBarDocHTML =
     '<button type="button" class="doc-jump-btn" id="docJumpBtn" title="Jump to documents" aria-label="Jump to documents">' + DOC_PAPERCLIP_SVG + '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(leg.id) + '" style="' + _docCountInit + '">' + _docCountText + '</span></button>';
+  // The header render already cleared both bar slots; fill them now that the
+  // pieces are built. Populating here (not inside setPageHeader) avoids reading
+  // these consts before their dependencies exist.
+  const _barSlotEl = document.getElementById('bottomBarSlot');
+  if(_barSlotEl) _barSlotEl.innerHTML = legBarSlotHTML;
+  const _barDocEl = document.getElementById('barDocSlot');
+  if(_barDocEl) _barDocEl.innerHTML = legBarDocHTML;
 
   main.innerHTML =
     '<button type="button" class="back-link" id="backToDashboardBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
