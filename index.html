@@ -72,7 +72,7 @@
   .drawer-label{ min-width:0; }
 
   .page-header{ position:fixed; left:0; right:0; top:0; z-index:34; background:var(--ink-900); border-bottom:1px solid var(--hairline); }
-  .page-header-inner{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; max-width:1800px; margin:0 auto; padding:10px 20px 12px; padding-top:max(10px, env(safe-area-inset-top)); }
+  .page-header-inner{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; max-width:1800px; margin:0 auto; padding:10px 36px 12px; padding-top:max(10px, env(safe-area-inset-top)); }
   .page-header-text{ display:flex; flex-direction:column; gap:2px; min-width:0; }
   .page-back{ background:none; border:none; padding:0; text-align:left; color:var(--fog-500); font-family:'JetBrains Mono',monospace; font-size:12px; cursor:pointer; min-height:16px; }
   .page-back:empty{ visibility:hidden; }
@@ -296,6 +296,8 @@
     .app.sidebar-open .sidebar-backdrop{ opacity:1; pointer-events:auto; }
 
     .main{ padding:20px 16px; padding-top:calc(var(--page-header-h, 84px) + 12px); padding-bottom:calc(52px + max(20px, env(safe-area-inset-bottom))); }
+    .page-header-inner{ padding-left:16px; padding-right:16px; }
+    .bottom-bar-inner{ padding-left:16px; padding-right:16px; }
 
     /* iOS zooms inputs under 16px on focus - keep all form controls at 16px on mobile */
     .field input, .field select, .field textarea, .search{ font-size:16px !important; }
@@ -665,10 +667,7 @@
     background:transparent; border:1px solid var(--fog-500); color:var(--fog-300);
   }
   .verify-progress{
-    position:fixed; z-index:40;
-    right:20px; top:max(31px, calc(env(safe-area-inset-top) + 21px));
     background:var(--panel-700); border-color:var(--fog-500);
-    box-shadow:0 4px 14px rgba(0,0,0,0.38);
     padding:9px 14px; font-size:11px;
   }
   .vp-chev{ display:inline-flex; flex-direction:column; align-items:center; opacity:0.9;
@@ -891,7 +890,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T12:05:00Z';
+const BUILD_VERSION = '2026-08-16T12:22:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4124,6 +4123,10 @@ function setPageHeader(opts){
   const subEl = document.getElementById('pageHeaderSub');
   if(titleEl) titleEl.textContent = o.title || '';
   if(subEl) subEl.textContent = o.sub || '';
+  // Cleared unconditionally on EVERY render before anything repopulates it, so a
+  // mistake shows a missing pill rather than a stale count from another leg.
+  const actEl = document.getElementById('pageHeaderActions');
+  if(actEl) actEl.innerHTML = o.actionsHTML || '';
   if(backEl){
     if(o.backLabel){
       backEl.innerHTML = '\u2190 Back to ' + escapeHtml(o.backLabel);
@@ -4190,6 +4193,7 @@ function renderMain(){
   setPageHeader({
     title:'Leg Checklist',
     sub: (leg.cityPair || '').trim(),
+    actionsHTML: '<button type="button" class="verify-progress" id="verifyProgress"></button>',
     backLabel: backLabel,
     backTo: (state.previousView === 'tripDetail' && state.previousTripKey) ? 'tripDetail' : (state.previousView === 'history' ? 'history' : 'dashboard')
   });
@@ -4204,7 +4208,7 @@ function renderMain(){
   const legNavGroupHTML =
     '<div class="leg-nav-group" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
       '<span class="leg-status-strip-label">Legs:</span>' + legNavDots +
-      '<button type="button" class="leg-nav-add-btn" id="legNavAddBtn">+ Add leg</button>' + '<button type="button" class="verify-progress" id="verifyProgress"></button>' +
+      '<button type="button" class="leg-nav-add-btn" id="legNavAddBtn">+ Add leg</button>' +
     '</div>';
 
   const statusGroupHTML =
