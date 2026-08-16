@@ -53,7 +53,15 @@
   .bottom-bar{ position:fixed; left:0; right:0; bottom:0; z-index:35; background:var(--panel-800); border-top:1px solid var(--hairline); }
   .bottom-bar-inner{ display:flex; align-items:center; justify-content:space-between; gap:12px; max-width:1800px; margin:0 auto; padding:10px 20px; padding-bottom:max(10px, env(safe-area-inset-bottom)); min-height:52px; }
   .bottom-bar-slot{ display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto; overflow:hidden; }
-    .bar-btn{ display:flex; align-items:center; justify-content:center; width:40px; height:34px;
+    .bar-fixed{ display:flex; align-items:center; flex:0 0 auto; }
+  .bar-fixed:empty{ display:none; }
+  /* Legs scroll sideways INSIDE this track. The bar never grows or wraps, so the
+     paperclip / refresh / menu anchors stay in one place on every trip. */
+  .bar-legs-track{ flex:1 1 auto; min-width:0; overflow-x:auto; overflow-y:hidden;
+    -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .bar-legs-track::-webkit-scrollbar{ display:none; }
+  .bar-legs-track .leg-nav-group{ flex-wrap:nowrap !important; width:max-content; }
+  .bar-btn{ display:flex; align-items:center; justify-content:center; width:40px; height:34px;
     background:none; border:1px solid var(--hairline); border-radius:3px; color:var(--fog-300);
     font-size:17px; cursor:pointer; flex:0 0 auto; }
   .bar-btn:active{ background:var(--panel-700); }
@@ -790,6 +798,7 @@
 <div class="bottom-bar" id="bottomBar">
   <div class="bottom-bar-inner" id="bottomBarInner">
     <div class="bottom-bar-slot" id="bottomBarSlot"></div>
+    <div class="bar-fixed" id="barDocSlot"></div>
     <button type="button" class="bar-btn" id="barRefreshBtn" data-refresh="1" title="Refresh from server" aria-label="Refresh"><span class="refresh-icon" aria-hidden="true">&#8635;</span></button>
     <button type="button" class="menu-btn" id="menuBtn" aria-label="Menu" title="Menu">
       <span class="menu-btn-bars" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -901,7 +910,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T00:52:00Z';
+const BUILD_VERSION = '2026-08-16T01:29:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4157,6 +4166,12 @@ function setPageHeader(opts){
   // mistake shows a missing pill rather than a stale count from another leg.
   const actEl = document.getElementById('pageHeaderActions');
   if(actEl) actEl.innerHTML = o.actionsHTML || '';
+  // Same rule for the bottom bar's contextual areas: wiped every render, so a
+  // leg's controls can never linger on a page that has no legs.
+  const slotEl = document.getElementById('bottomBarSlot');
+  if(slotEl) slotEl.innerHTML = o.barSlotHTML || '';
+  const docSlotEl = document.getElementById('barDocSlot');
+  if(docSlotEl) docSlotEl.innerHTML = o.barDocHTML || '';
   if(backEl){
     if(o.backLabel){
       backEl.innerHTML = '\u2190 Back to ' + escapeHtml(o.backLabel);
@@ -4224,6 +4239,8 @@ function renderMain(){
     title:'Leg Checklist',
     sub: (leg.cityPair || '').trim(),
     actionsHTML: '<button type="button" class="verify-progress" id="verifyProgress"></button>',
+    barSlotHTML: legBarSlotHTML,
+    barDocHTML: legBarDocHTML,
     backLabel: backLabel,
     backTo: (state.previousView === 'tripDetail' && state.previousTripKey) ? 'tripDetail' : (state.previousView === 'history' ? 'history' : 'dashboard')
   });
@@ -4250,8 +4267,13 @@ function renderMain(){
   const _cachedDocN = (leg && leg.id && Object.prototype.hasOwnProperty.call(_legDocCountCache, leg.id)) ? _legDocCountCache[leg.id] : null;
   const _docCountInit = (_cachedDocN === null) ? 'visibility:hidden' : 'visibility:visible';
   const _docCountText = (_cachedDocN === null) ? '' : String(_cachedDocN);
-  const legNavStripWithStatusHTML =
-    '<div class="leg-nav-strip leg-nav-strip-checklist">' + statusGroupHTML + '<button type="button" class="doc-jump-btn" id="docJumpBtn" title="Jump to documents" aria-label="Jump to documents">' + DOC_PAPERCLIP_SVG + '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(leg.id) + '" style="' + _docCountInit + '">' + _docCountText + '</span></button>' + legNavGroupHTML + '</div>';
+  // Bottom bar: legs scroll horizontally in their own track so the bar keeps ONE
+  // height and the fixed anchors (paperclip / refresh / menu) never move.
+  const legBarSlotHTML =
+    statusGroupHTML +
+    '<div class="bar-legs-track">' + legNavGroupHTML + '</div>';
+  const legBarDocHTML =
+    '<button type="button" class="doc-jump-btn" id="docJumpBtn" title="Jump to documents" aria-label="Jump to documents">' + DOC_PAPERCLIP_SVG + '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(leg.id) + '" style="' + _docCountInit + '">' + _docCountText + '</span></button>';
 
   main.innerHTML =
     '<button type="button" class="back-link" id="backToDashboardBtn">&larr; Back to ' + escapeHtml(backLabel) + '</button>' +
@@ -4262,7 +4284,6 @@ function renderMain(){
       '<div class="main-actions">' +
       '</div>' +
     '</div>' +
-    legNavStripWithStatusHTML +
 
     '<div class="section">' +
       '' + sectionTitleHTML('Overview', 'overview', leg) + '' +
