@@ -950,7 +950,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T14:47:00Z';
+const BUILD_VERSION = '2026-08-16T14:56:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -1814,7 +1814,7 @@ function normalizeLeg(leg){
   leg.compliance = Object.assign({ eapisReqd:'', eapisNotes:'', overflightReqd:'', overflightPermits:[], customsReqd:'', customsNotes:'' }, leg.compliance || {});
   if(!Array.isArray(leg.compliance.overflightPermits)) leg.compliance.overflightPermits = [];
   leg.dep = Object.assign({ fuelPricePerGallon:'', paxBaggageNotes:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', agentPhone:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'' }, leg.dep || {});
-  leg.arr = Object.assign({ fuelPricePerGallon:'', paxBaggageNotes:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', agentPhone:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'' }, leg.arr || {});
+  leg.arr = Object.assign({ date:'', fuelPricePerGallon:'', paxBaggageNotes:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', agentPhone:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'' }, leg.arr || {});
   if(leg.windDirection === undefined) leg.windDirection = '';
   if(leg.windComponent === undefined) leg.windComponent = '';
   if(leg.nextLegDestination === undefined) leg.nextLegDestination = '';
@@ -1836,7 +1836,7 @@ function blankLeg(){
     eapisRequired: '',
     compliance: { eapisReqd:'', eapisNotes:'', overflightReqd:'', overflightPermits:[], customsReqd:'', customsNotes:'' },
     dep: { airportId:'', tz:'', etdLocal:'', etdZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', notes:'' },
-    arr: { airportId:'', tz:'', etaLocal:'', etaZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', hotelCarNotes:'', permitReqd:'', permitNumber:'', notes:'' },
+    arr: { airportId:'', tz:'', date:'', etaLocal:'', etaZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', hotelCarNotes:'', permitReqd:'', permitNumber:'', notes:'' },
     permitReqd: '', permitNumber: '',
     trim:'', levelOff:'', minBRF:'', fratRelease:'',
     departureNotes:'', paxBagsTransport:'', enrouteNotes:'', maxShear:'', ete:'', windDirection:'', windComponent:'', paxTotalNotes:'', crewHotelCarNotes:'',
@@ -1927,7 +1927,7 @@ const CHANGELOG_SKIP = {
 // prettified version of the path when not listed.
 const CHANGELOG_LABELS = {
   'status':'Status', 'tripNumber':'Trip number', 'legNumber':'Leg number',
-  'date':'Date', 'cityPair':'City pair',
+  'date':'Departure date', 'arr.date':'Arrival date', 'cityPair':'City pair',
   'compliance.eapisReqd':'eAPIS required', 'compliance.eapisNotes':'eAPIS notes',
   'compliance.overflightReqd':'Overflight required', 'compliance.customsReqd':'Customs required',
   'compliance.customsNotes':'Customs notes', 'compliance.overflightPermits':'Overflight permits',
@@ -2586,7 +2586,7 @@ function stampExtractedProvenance(leg){
     depFuelPaymentMethod:'fuelPaymentMethod', depFuelPricePerGallon:'fuelPricePerGallon',
     depRampFee:'rampFee', depGroundTransportDetails:'groundTransportDetails'};
   Object.keys(depMap).forEach(fid => put(fid, d[depMap[fid]]));
-  const arrMap = {arrAirportId:'airportId', arrEtaLocal:'etaLocal', arrEtaZ:'etaZ', arrHours:'hours',
+  const arrMap = {arrAirportId:'airportId', arrDate:'date', arrEtaLocal:'etaLocal', arrEtaZ:'etaZ', arrHours:'hours',
     arrSlotReqd:'slotReqd', arrSlotTimeNumber:'slotTimeNumber', arrSlotAllowance:'slotAllowance',
     arrAgent:'agent', arrAgentPhone:'agentPhone', arrFrequency:'frequency', arrFuelVendor:'fuelVendor',
     arrFuelPaymentMethod:'fuelPaymentMethod', arrFuelPricePerGallon:'fuelPricePerGallon',
@@ -4360,7 +4360,6 @@ function renderMain(){
       '<div class="grid">' +
         field('Trip number', 'tripNumber', leg.tripNumber, {placeholder:'4521'}) +
         field('Leg', 'legNumber', leg.legNumber, {placeholder:'1'}) +
-        field('Date', 'date', leg.date, {type:'date', lang:'en-US'}) +
         field('City pair', 'cityPair', leg.cityPair, {placeholder:'New York \u2192 London'}) +
       '</div>' +
     '</div>' +
@@ -4373,6 +4372,7 @@ function renderMain(){
           '<div class="grid">' +
             field('Airport ID', 'depAirportId', leg.dep.airportId, {placeholder:'KTEB'}) +
             field('UTC offset', 'depUtcOffset', leg.dep.utcOffsetManual || '', {placeholder:'auto or -4'}) +
+            field('Departure date', 'date', leg.date, {type:'date', lang:'en-US'}) +
             '<div class="field" style="grid-column:1/-1"><div class="tz-hint" id="depTzHint"></div></div>' +
             field('ETD local', 'depEtdLocal', displayLocal12h(leg.dep.etdLocal), {type:'text', placeholder:'02:30 PM'}) +
             field('ETD Z (UTC)', 'depEtdZ', leg.dep.etdZ, {type:'text', placeholder:'1430'}) +
@@ -4397,6 +4397,7 @@ function renderMain(){
           '<div class="grid">' +
             field('Airport ID', 'arrAirportId', leg.arr.airportId, {placeholder:'EGGW'}) +
             field('UTC offset', 'arrUtcOffset', leg.arr.utcOffsetManual || '', {placeholder:'auto or -4'}) +
+            field('Arrival date', 'arrDate', leg.arr.date, {type:'date', lang:'en-US'}) +
             '<div class="field" style="grid-column:1/-1"><div class="tz-hint" id="arrTzHint"></div></div>' +
             field('ETA local', 'arrEtaLocal', displayLocal12h(leg.arr.etaLocal), {type:'text', placeholder:'02:30 PM'}) +
             field('ETA Z (UTC)', 'arrEtaZ', leg.arr.etaZ, {type:'text', placeholder:'1430'}) +
@@ -4940,10 +4941,10 @@ function renderMain(){
   const manualOverrideKeys = window._legSectionOverrides.get(leg.id);
 
   const autoCompleteFieldSections = {
-    overview: ['tripNumber', 'legNumber', 'date', 'cityPair'],
+    overview: ['tripNumber', 'legNumber', 'cityPair'],
     performance: ['trim', 'levelOff', 'minBRF'],
-    airports: ['depAirportId', 'depAgent', 'depAgentPhone', 'depFrequency', 'depEtdLocal', 'depEtdZ',
-               'arrAirportId', 'arrAgent', 'arrAgentPhone', 'arrFrequency', 'arrEtaLocal', 'arrEtaZ'],
+    airports: ['depAirportId', 'depAgent', 'depAgentPhone', 'depFrequency', 'date', 'depEtdLocal', 'depEtdZ',
+               'arrAirportId', 'arrAgent', 'arrAgentPhone', 'arrFrequency', 'arrDate', 'arrEtaLocal', 'arrEtaZ'],
     enroute: ['maxShear', 'ete'],
     nextLeg: ['nextLegDestination', 'nextLegDate', 'nextLegEtd', 'nextLegEta']
   };
@@ -5971,7 +5972,7 @@ async function collectAndSave(id, opts){
     notes: (leg.dep.notes || '')
   };
   leg.arr = {
-    airportId: val('arrAirportId'), tz: leg.arr.tz || '', etaLocal: val('arrEtaLocal'), etaZ: val('arrEtaZ'),
+    airportId: val('arrAirportId'), tz: leg.arr.tz || '', date: val('arrDate'), etaLocal: val('arrEtaLocal'), etaZ: val('arrEtaZ'),
     hours: val('arrHours'), slotReqd: val('arrSlotReqd'), slotTimeNumber: val('arrSlotTimeNumber'),
     slotAllowance: val('arrSlotAllowance'), agent: val('arrAgent'), agentPhone: val('arrAgentPhone'), frequency: val('arrFrequency'),
     fuelVendor: val('arrFuelVendor'), fuelPaymentMethod: val('arrFuelPaymentMethod'), fuelPricePerGallon: val('arrFuelPricePerGallon'), rampFee: val('arrRampFee'), rampFeeWaived: val('arrRampFeeWaived'), rampFeeMinGallons: val('arrRampFeeMinGallons'), groundTransportReqd: val('arrGroundTransportReqd'), groundTransportDetails: val('arrGroundTransportDetails'), utcOffsetManual: val('arrUtcOffset'), notes: (leg.arr.notes || ''),
