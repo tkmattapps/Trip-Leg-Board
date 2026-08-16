@@ -75,6 +75,8 @@
   .drawer-item:active{ background:var(--panel-700); }
   .drawer-ico{ flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:6px; font-size:14px; background:var(--panel-700); }
   .drawer-label{ min-width:0; }
+  .drawer-item-danger .drawer-label{ color:var(--alert-600); }
+  .drawer-ico.di-delete{ color:var(--alert-600); }
 
   .page-header{ position:fixed; left:0; right:0; top:0; z-index:34; background:var(--ink-900); border-bottom:1px solid var(--hairline); }
   .page-header-inner{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; max-width:1800px; margin:0 auto; padding:10px 36px 12px; padding-top:max(10px, env(safe-area-inset-top)); }
@@ -804,6 +806,7 @@
     <button type="button" class="drawer-item" id="drawerHomeBtn"><span class="drawer-ico di-home">&#127968;</span><span class="drawer-label">Home</span></button>
     <button type="button" class="drawer-item" id="drawerFeedbackBtn"><span class="drawer-ico di-feedback">&#128172;</span><span class="drawer-label">Send feedback</span></button>
     <button type="button" class="drawer-item" id="drawerInstallBtn"><span class="drawer-ico di-install">&#128241;</span><span class="drawer-label">Install on a device</span></button>
+    <button type="button" class="drawer-item drawer-item-danger" id="drawerDeleteBtn" hidden><span class="drawer-ico di-delete">&#128465;</span><span class="drawer-label" id="drawerDeleteLabel">Delete</span></button>
     <button type="button" class="drawer-item" id="drawerLogoutBtn"><span class="drawer-ico di-logout">&#8617;</span><span class="drawer-label">Log out</span></button>
   </div>
 </div>
@@ -896,7 +899,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T00:14:00Z';
+const BUILD_VERSION = '2026-08-16T00:31:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3865,7 +3868,6 @@ function renderTripDetailView(){
     '<div class="view-header">' +
       '<div><div class="view-title">' + (trip.tripNumber ? ('Trip ' + escapeHtml(trip.tripNumber)) : 'Untitled trip') + '</div><div class="view-subtitle">' + trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') + '</div></div>' +
       '<div class="main-actions">' +
-        '<button type="button" class="btn btn-danger" id="deleteTripBtn">Delete trip</button>' +
       '</div>' +
     '</div>' +
     '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') +
@@ -3896,7 +3898,6 @@ function renderTripDetailView(){
     await saveLeg(newLeg);
     renderMain();
   });
-  document.getElementById('deleteTripBtn').addEventListener('click', () => handleDeleteTrip(trip.key));
   wireTripHistory(trip);
   document.querySelectorAll('.dash-card[data-id]').forEach(card => {
     card.addEventListener('click', () => openLegEditor(card.dataset.id));
@@ -4231,7 +4232,6 @@ function renderMain(){
         '<div class="main-title">Leg Checklist</div>' +
       '</div>' +
       '<div class="main-actions">' +
-        '<button class="btn btn-danger" id="deleteBtn">Delete leg</button>' +
       '</div>' +
     '</div>' +
     legNavStripWithStatusHTML +
@@ -5064,7 +5064,6 @@ function renderMain(){
     });
   });
 
-  document.getElementById('deleteBtn').addEventListener('click', () => handleDelete(leg.id));
   document.querySelectorAll('#mainPanel .leg-nav-strip .leg-status-dot-clickable').forEach(dot => {
     dot.addEventListener('click', (ev) => {
       if(dot.classList.contains('leg-status-dot-current')){
@@ -6066,9 +6065,28 @@ document.getElementById('brandMark').addEventListener('click', () => {
   }
 });
 
+function syncDrawerDelete(){
+  // Read the CURRENT view each time the slide-out opens, so the delete item can
+  // never act on a page you have already navigated away from.
+  const btn = document.getElementById('drawerDeleteBtn');
+  const lbl = document.getElementById('drawerDeleteLabel');
+  if(!btn) return;
+  let mode = null, label = '';
+  if(state.view === 'tripDetail' && state.activeTripKey){ mode = 'trip'; label = 'Delete trip'; }
+  else if(state.view === 'editor' && state.activeId){ mode = 'leg'; label = 'Delete leg'; }
+  if(mode){
+    btn.hidden = false;
+    btn.dataset.deleteMode = mode;
+    if(lbl) lbl.textContent = label;
+  } else {
+    btn.hidden = true;
+    btn.dataset.deleteMode = '';
+  }
+}
 function openDrawer(){
   const d = document.getElementById('drawer');
   const b = document.getElementById('drawerBackdrop');
+  syncDrawerDelete();
   if(d){ d.classList.add('open'); d.setAttribute('aria-hidden','false'); }
   if(b) b.classList.add('open');
 }
@@ -6098,6 +6116,14 @@ function openInstallOverlay(){
   if(ib) ib.addEventListener('click', function(){ closeDrawer(); openInstallOverlay(); });
   const lb = document.getElementById('drawerLogoutBtn');
   if(lb) lb.addEventListener('click', function(){ closeDrawer(); handleLogout(); });
+  const db = document.getElementById('drawerDeleteBtn');
+  if(db) db.addEventListener('click', function(){
+    // Re-read mode and id at click time, not at wire time.
+    const mode = db.dataset.deleteMode || '';
+    closeDrawer();
+    if(mode === 'trip' && state.activeTripKey) handleDeleteTrip(state.activeTripKey);
+    else if(mode === 'leg' && state.activeId) handleDelete(state.activeId);
+  });
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeDrawer(); });
 })();
 
