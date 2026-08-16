@@ -914,7 +914,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T13:20:00Z';
+const BUILD_VERSION = '2026-08-16T14:05:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -1921,6 +1921,10 @@ function flattenLeg(obj, prefix, out){
     // Underscore-prefixed keys are runtime scratch state (e.g. _fieldValueBaseline),
     // never user data. They must not appear in the change log.
     if(k.charAt(0) === '_') return;
+    // Provenance / verification bookkeeping is app state, not trip data. Diffing
+    // it floods the change log with 'At changed' (per-field timestamps) and
+    // 'Broke Verify' noise, and every save re-stamps it. Never flatten it.
+    if(prefix === '' && (k === 'fieldMeta' || k === 'sectionVerified')) return;
     const path = prefix ? (prefix + '.' + k) : k;
     const v = obj[k];
     if(v != null && typeof v === 'object' && !Array.isArray(v)){
@@ -5903,10 +5907,13 @@ function applyHumanEditProvenance(leg, before){
     const nowVal = before[fid];
     if(!(fid in baseline)){ baseline[fid] = nowVal; return; }
     if(baseline[fid] !== nowVal){
+      // Mark provenance, but DO NOT clear verification here. This runs at SAVE
+      // time against a re-snapshotted DOM, so harmless re-rendering differences
+      // (reformatted times, normalized values) look like edits and wrongly
+      // revoked sign-offs. Real human edits already demote their section live,
+      // the instant they happen, via demoteFieldByIdIfChanged on input/toggle.
       markFieldSource(leg, fid, 'human');
       baseline[fid] = nowVal;
-      // A changed field invalidates its section's verification.
-      clearSectionVerifyForField(leg, fid);
     }
   });
   leg._fieldValueBaseline = baseline;
