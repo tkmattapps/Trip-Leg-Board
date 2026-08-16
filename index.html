@@ -914,7 +914,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T14:05:00Z';
+const BUILD_VERSION = '2026-08-16T12:58:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4573,39 +4573,18 @@ function renderMain(){
       readyOption.disabled = !checkAllSectionsComplete();
     }
   }
-  // A red toggle may have arrived from ANOTHER DEVICE while this section was
-  // already signed off. Sweep every section on load and revoke stale sign-offs
-  // before reconciling status, so Ready can never rest on an unresolved item.
-  if(leg.sectionVerified){
-    document.querySelectorAll('#mainPanel .section').forEach(function(secEl){
-      const vb = secEl.querySelector('.section-verify-btn');
-      if(!vb) return;
-      const k = vb.getAttribute('data-verify-key');
-      if(!k || !leg.sectionVerified[k]) return;
-      if(sectionHasRedToggle(secEl)){
-        leg.sectionVerified[k] = false;
-        vb.classList.remove('is-verified');
-        resetVerifyButtonLabel(vb);
-        paintSectionRing(secEl, false, true);
-      }
-    });
-  }
-  // Reconcile status with actual section completeness on load, in case status was
-  // saved as 'ready' while sections are incomplete (e.g. data edited elsewhere).
-  if(leg.status !== 'flown'){
-    const shouldBeReady = checkAllSectionsComplete();
-    if(shouldBeReady && leg.status === 'planning'){
-      leg.status = 'ready';
-      statusSelectEl.value = 'ready';
-      statusSelectEl.classList.remove('status-planning', 'status-ready', 'status-flown');
-      statusSelectEl.classList.add('status-ready');
-    } else if(!shouldBeReady && leg.status === 'ready'){
-      leg.status = 'planning';
-      statusSelectEl.value = 'planning';
-      statusSelectEl.classList.remove('status-planning', 'status-ready', 'status-flown');
-      statusSelectEl.classList.add('status-planning');
-    }
-  }
+  // DELIBERATELY NOT REVOKING SIGN-OFFS OR RECONCILING STATUS ON OPEN.
+  // Two blocks used to live here: a sweep that cleared sectionVerified for any
+  // section whose toggles looked red, and a reconcile that demoted status to
+  // 'planning' when checkAllSectionsComplete() came back false. Both ran BEFORE
+  // the Y/N colour sweep (allYNIds.forEach(updateYNColor)) further down this same
+  // synchronous render, so they read unpainted toggles, revoked healthy sign-offs,
+  // and wrote status='planning'. The colour sweep then settled and verify logic
+  // re-promoted to 'ready' -- producing a ready/planning oscillation on every open.
+  // Beyond the timing bug, the behaviour itself was wrong: crew and dispatch open
+  // legs read-only throughout a trip, and merely LOOKING at a leg must never undo
+  // another person's checklist sign-off. Verification is a human decision now; the
+  // only path that may demote is a real edit (demoteFieldByIdIfChanged on input).
   syncReadyOptionAvailability();
   refreshVerifyProgress();
   (function(){
