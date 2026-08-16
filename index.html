@@ -964,7 +964,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T15:11:00Z';
+const BUILD_VERSION = '2026-08-16T15:35:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2920,6 +2920,24 @@ function tripBriefLegCardHTML(leg){
   '</div>';
 }
 
+// Build the date line for a trip card: departure date of the FIRST leg to the
+// arrival date of the LAST leg. Always shown as a range, including same-day
+// turns ('Jun 11 \u2013 Jun 11'), because a range is what the reader expects
+// on a trip. If the last leg has no arrival date, show the start plus a
+// trailing en dash so the missing half is visible rather than hidden \u2014
+// extraction deliberately leaves the arrival date blank when a trip sheet is
+// ambiguous, so a blank here is honest, not an error.
+function tripCardDateRange(legs){
+  const first = legs[0];
+  const last = legs[legs.length - 1];
+  const startLabel = formatISODateDisplay(first && first.date) || '';
+  const endLabel = formatISODateDisplay(last && last.arr && last.arr.date) || '';
+  if(!startLabel && !endLabel) return 'No date';
+  if(!startLabel) return '\u2013 ' + endLabel;
+  if(!endLabel) return startLabel + ' \u2013';
+  return startLabel + ' \u2013 ' + endLabel;
+}
+
 function tripCardHTML(trip){
   if(trip.isOrphan && trip.legs.length <= 1){
     return dashboardCardHTML(trip.legs[0]);
@@ -2932,7 +2950,7 @@ function tripCardHTML(trip){
     if(l.arr.airportId) routeParts.push(l.arr.airportId);
   });
   const route = routeParts.length ? routeParts.join(' \u2192 ') : (first.cityPair || 'No routing defined');
-  const dateLabel = formatISODateDisplay(first.date) || 'No date';
+  const dateLabel = tripCardDateRange(legs);
   const legCount = legs.length;
   const statusCounts = {};
   legs.forEach(l => { statusCounts[l.status] = (statusCounts[l.status] || 0) + 1; });
@@ -4127,11 +4145,12 @@ function updateNavTabs(){
 
 const IMPORT_LOADING_MESSAGES = [
   'Patience is a virtue\u2026 and a required checklist item.',
-  'Slow is smooth, and smooth is fast.',
+  'Remember\u2026 slow is smooth, and smooth is fast.',
   'Reading the fine print so you don\u2019t have to.',
   'Cross-checking the cross-checks.',
   'Still working \u2014 big documents take a minute.',
-  'Don\u2019t taxi off now \u2014 we\u2019re nearly cleared for departure.'
+  'Don\u2019t taxi off now \u2014 we\u2019re nearly cleared for departure.',
+  'I\u2019m heads down for a moment\u2026'
 ];
 let importLoadingTimer = null;
 let importLoadingIndex = 0;
