@@ -910,7 +910,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T01:29:00Z';
+const BUILD_VERSION = '2026-08-16T01:41:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4715,7 +4715,7 @@ function renderMain(){
 
   function refreshCurrentLegBubble(){
     const sel = document.getElementById('statusSelect');
-    const dot = document.querySelector('#mainPanel .leg-nav-strip .leg-status-dot-current');
+    const dot = document.querySelector('#bottomBar .leg-status-dot-current');
     if(!sel || !dot) return;
     dot.classList.remove('leg-status-planning','leg-status-ready','leg-status-flown');
     dot.classList.add('leg-status-' + sel.value);
@@ -5113,7 +5113,7 @@ function renderMain(){
     });
   });
 
-  document.querySelectorAll('#mainPanel .leg-nav-strip .leg-status-dot-clickable').forEach(dot => {
+  document.querySelectorAll('#bottomBar .leg-status-dot-clickable').forEach(dot => {
     dot.addEventListener('click', (ev) => {
       if(dot.classList.contains('leg-status-dot-current')){
         ev.stopPropagation();
