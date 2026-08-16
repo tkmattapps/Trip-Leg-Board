@@ -115,7 +115,11 @@
   
   
   
-  .home-view{ position:relative; display:flex; flex-direction:row; align-items:flex-start; justify-content:center; min-height:60vh; gap:40px; overflow:visible; margin-top:64px; }
+  .home-view{ position:relative; display:flex; flex-direction:row; align-items:flex-start; justify-content:center; /* Reserve the height that is ACTUALLY left after the fixed header padding, this
+   view's own top margin, and main's bottom padding. The old 60vh was additive to
+   all three, so the page demanded 60vh + ~244px and overflowed in browsers with
+   taller chrome (Chrome yes, Safari only just fit). */
+  min-height:calc(100vh - var(--page-header-h, 84px) - 16px - 64px - 52px - max(28px, env(safe-area-inset-bottom))); gap:40px; overflow:visible; margin-top:64px; }
   
   .logout-fab:hover{ background:var(--panel-800, rgba(255,255,255,0.08)); color:var(--text-primary, #fff); }
   .home-left-col{ position:relative; display:flex; flex-direction:column; align-items:flex-start; text-align:left; flex:1 1 auto; padding-left:140px; margin-top:100px; }
@@ -964,7 +968,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T15:35:00Z';
+const BUILD_VERSION = '2026-08-16T15:55:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
