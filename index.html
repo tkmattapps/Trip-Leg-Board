@@ -115,11 +115,7 @@
   
   
   
-  /* Only when the home view is on screen does .main become a measured flex column.
-   Scoped with :has() so the dashboard grid, the leg editor sections, and every
-   other view keep their normal block stacking and natural scrolling. */
-.main:has(> .home-view), .main.is-home-view{ max-height:100vh; max-height:100dvh; display:flex; flex-direction:column; }
-.home-view{ position:relative; display:flex; flex-direction:row; align-items:flex-start; justify-content:center; /* Fill whatever is left inside .main rather than computing 100vh minus a pile of
+  .home-view{ position:relative; display:flex; flex-direction:row; align-items:flex-start; justify-content:center; /* Fill whatever is left inside .main rather than computing 100vh minus a pile of
    guessed constants. --page-header-h is set from the MEASURED header at runtime,
    so any hardcoded arithmetic here drifts. flex:1 + min-height:0 lets this fill
    the parent's content box exactly, which is why the scrollbar disappears. */
@@ -133,6 +129,13 @@
   .home-subtitle{ font-size:16px; color:var(--fog-300); margin-top:12px; position:relative; z-index:1; }
   .home-watermark-img{ position:absolute; top:50%; left:50%; width:510px; height:510px; transform:translate(-50%, calc(-50% + 69.5px)); opacity:0.08; pointer-events:none; z-index:0; }
   @media (min-width: 701px){
+    /* DESKTOP/TABLET ONLY. The home view fills the space left inside .main so the
+       page fits exactly and no scrollbar appears. Deliberately NOT applied below
+       701px: the phone home layout is a tall stacked column (~980px of content in
+       a ~700px viewport) that MUST be free to scroll. Capping it there clips the
+       buttons off the bottom. */
+    .main:has(> .home-view), .main.is-home-view{ max-height:100vh; max-height:100dvh; display:flex; flex-direction:column; }
+
     .home-brand-mark{ transform:translate(40px, 40px); }
     .home-subtitle{ transform:translate(40px, 40px); }
     #loginEmail, #loginPassword{ letter-spacing:0.5px; }
@@ -157,7 +160,7 @@
 
     /* Top padding clears the notch/status bar AND leaves room for the watermark,
        which extends above the wordmark. JS sizes/centres the watermark itself. */
-    .home-view{ flex-direction:column; gap:128px; align-items:center; justify-content:flex-start; min-height:auto; margin-top:0; padding-top:calc(env(safe-area-inset-top, 0px) + 132px); overflow-x:hidden; }
+    .home-view{ flex-direction:column; gap:128px; align-items:center; justify-content:flex-start; min-height:auto; flex:0 0 auto; margin-top:0; padding-top:calc(env(safe-area-inset-top, 0px) + 132px); overflow-x:hidden; }
     #loginOverlay.home-view{ gap:28px; margin-top:0; padding-top:calc(env(safe-area-inset-top, 0px) + 132px); overflow-x:hidden !important; }
     .home-left-col{ align-items:center; text-align:center; padding-left:0; margin-top:0; }
     .home-right-col{ flex-direction:column; margin-top:0; align-items:center; padding-right:0; }
@@ -236,10 +239,7 @@
   .leg-meta{ font-size:11px; color:var(--fog-500); margin-top:3px; }
   .empty-list{ color:var(--fog-500); font-size:13px; padding:20px 4px; line-height:1.6; }
 
-  .main{ flex:1; padding:28px 36px; overflow-y:auto; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(52px + max(28px, env(safe-area-inset-bottom))); /* Cap the scroll box to the viewport so a child can size itself against the
-   space that ACTUALLY remains (border-box keeps the padding inside that cap).
-   Without this, 100%-height children measured against an auto-height parent. */
-  box-sizing:border-box; }
+  .main{ flex:1; padding:28px 36px; overflow-y:auto; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(52px + max(28px, env(safe-area-inset-bottom))); box-sizing:border-box; }
   .main-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:16px; flex-wrap:wrap; }
   .main-title-group{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
   .main-title{
@@ -975,7 +975,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T16:00:00Z';
+const BUILD_VERSION = '2026-08-16T16:04:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
