@@ -914,7 +914,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T04:00:00Z';
+const BUILD_VERSION = '2026-08-16T11:56:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2232,14 +2232,21 @@ function showConfirm(message, opts){
     } else {
       if(titleEl) titleEl.textContent = opts.title || 'Please confirm';
       okBtn.textContent = opts.okLabel || 'Confirm';
-      okBtn.classList.add('btn-danger');
-      okBtn.style.borderColor = 'var(--alert-600)';
+      if(opts.danger === false){
+        okBtn.classList.remove('btn-danger');
+        okBtn.style.borderColor = '';
+      } else {
+        okBtn.classList.add('btn-danger');
+        okBtn.style.borderColor = 'var(--alert-600)';
+      }
     }
+    if(opts.cancelLabel) cancelBtn.textContent = opts.cancelLabel;
     overlay.classList.add('open');
 
     function cleanup(result){
       overlay.classList.remove('open');
       cancelBtn.style.display = '';
+      cancelBtn.textContent = 'Cancel';
       okBtn.textContent = 'Confirm';
       okBtn.classList.add('btn-danger');
       okBtn.style.borderColor = 'var(--alert-600)';
@@ -4003,7 +4010,7 @@ async function handleDeleteTrip(tripKey){
   if(!trip) return;
   const legCount = trip.legs.length;
   const tripLabel = trip.tripNumber ? ('trip ' + trip.tripNumber) : 'this untitled trip';
-  const confirmed = await showConfirm('Delete ' + tripLabel + '? This will permanently delete all ' + legCount + ' leg' + (legCount === 1 ? '' : 's') + '. This cannot be undone.');
+  const confirmed = await showConfirm('Delete ' + tripLabel + '? This removes all ' + legCount + ' leg' + (legCount === 1 ? '' : 's') + '. You can undo this from the menu until you close the app.');
   if(!confirmed) return;
   const idsToDelete = trip.legs.map(l => l.id);
   for(const id of idsToDelete){
@@ -5970,10 +5977,55 @@ function autoSaveIfEditing(){
   }
 }
 
+// ---- Renumber the tail of a trip after a mid-trip leg deletion -----------
+// Legs BEFORE the deleted one are never touched: they may already be flown
+// and verified, and history should not move under someone's feet.
+// Only clean integer leg numbers are shifted. Anything unusual (e.g. "3A"
+// on an imported sheet) is left exactly as the sheet had it.
+function isPlainLegNumber(v){
+  return /^[0-9]+$/.test(String(v == null ? '' : v).trim());
+}
+
+async function offerRenumberAfterDelete(deletedLeg, tripLegsBefore){
+  if(!deletedLeg || !Array.isArray(tripLegsBefore)) return;
+  const idx = tripLegsBefore.findIndex(l => l.id === deletedLeg.id);
+  if(idx < 0) return;
+  const tail = tripLegsBefore.slice(idx + 1);
+  if(!tail.length) return;                       // deleted the last leg: no gap
+  const shiftable = tail.filter(l => isPlainLegNumber(l.legNumber));
+  if(!shiftable.length) return;                  // nothing safe to shift
+  const skipped = tail.length - shiftable.length;
+  let msg = 'Renumber the ' + shiftable.length + ' remaining leg' +
+            (shiftable.length === 1 ? '' : 's') + ' to close the gap?';
+  if(skipped){
+    msg += ' (' + skipped + ' leg' + (skipped === 1 ? '' : 's') +
+           ' with a non-standard number will be left as is.)';
+  }
+  const yes = await showConfirm(msg, { title:'Leg deleted', okLabel:'Renumber', cancelLabel:'Leave gap', danger:false });
+  if(!yes) return;
+  let changed = 0;
+  for(const l of shiftable){
+    const live = state.legs.find(x => x.id === l.id);
+    if(!live) continue;
+    const n = parseInt(String(live.legNumber).trim(), 10);
+    if(!isFinite(n) || n <= 1) continue;
+    live.legNumber = String(n - 1);
+    live.updatedAt = Date.now();
+    try{ await saveLeg(live); changed++; }
+    catch(e){ console.error('renumber save failed', l.id, e); }
+  }
+  if(changed){
+    showToast('Renumbered ' + changed + ' leg' + (changed === 1 ? '' : 's'));
+    updateNavTabs();
+    renderList();
+    renderMain();
+  }
+}
+
 async function handleDelete(id){
   const leg = state.legs.find(l => l.id === id);
   if(!leg) return;
-  const confirmed = await showConfirm('Delete ' + legLabel(leg) + '? This cannot be undone.');
+  const confirmed = await showConfirm('Delete ' + legLabel(leg) + '? You can undo this from the menu until you close the app.');
   if(!confirmed) return;
   // Determine the sibling leg to fall back to BEFORE removing from state,
   // so a delete keeps us on the leg checklist instead of jumping to the trip page.
@@ -5981,6 +6033,7 @@ async function handleDelete(id){
   const sibKey = tripKeyForLeg ? tripKeyForLeg : ('__grp_' + (leg.groupId || ''));
   let fallbackLegId = null;
   const sibTrip = groupIntoTrips(state.legs).find(t => t.key === sibKey);
+  const tripLegsBefore = sibTrip ? sibTrip.legs.slice() : [];
   if(sibTrip){
     const idx = sibTrip.legs.findIndex(l => l.id === id);
     if(idx > 0){ fallbackLegId = sibTrip.legs[idx - 1].id; }
@@ -5990,6 +6043,7 @@ async function handleDelete(id){
   if(ok){
     lastDelete = { kind:'leg', ids:[id], label: legLabel(leg) };
     state.legs = state.legs.filter(l => l.id !== id);
+    await offerRenumberAfterDelete(leg, tripLegsBefore);
     if(fallbackLegId && state.legs.some(l => l.id === fallbackLegId)){
       // Stay on the checklist, drop to the adjacent leg in the same trip.
       showToast('Leg deleted');
