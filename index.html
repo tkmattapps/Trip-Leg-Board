@@ -964,7 +964,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T15:03:00Z';
+const BUILD_VERSION = '2026-08-16T15:11:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3226,7 +3226,7 @@ function mergeLegInto(dst, src){
   mergeFlat(dst.compliance, src.compliance || {}, ['eapisReqd','eapisNotes','customsReqd','customsNotes','overflightReqd']);
   ['dep','arr'].forEach(end => {
     dst[end] = dst[end] || {};
-    mergeFlat(dst[end], src[end] || {}, ['airportId','etdLocal','etdZ','etaLocal','etaZ','agent','agentPhone','frequency','slotReqd','slotTimeNumber','slotAllowance','fuelVendor','groundTransportReqd','groundTransportDetails','permitReqd','permitNumber','notes']);
+    mergeFlat(dst[end], src[end] || {}, ['airportId','date','etdLocal','etdZ','etaLocal','etaZ','agent','agentPhone','frequency','slotReqd','slotTimeNumber','slotAllowance','fuelVendor','groundTransportReqd','groundTransportDetails','permitReqd','permitNumber','notes']);
   });
   return dst;
 }
@@ -3282,7 +3282,7 @@ function buildLegFromExtraction(extracted){
     notes: ed.notes || ''
   });
   Object.assign(leg.arr, {
-    airportId: ea.airportId || '', etaLocal: ea.etaLocal || '', etaZ: ea.etaZ || '',
+    airportId: ea.airportId || '', date: toISODate(ea.date || ''), etaLocal: ea.etaLocal || '', etaZ: ea.etaZ || '',
     agent: ea.agent || '', agentPhone: ea.agentPhone || '', frequency: ea.frequency || '',
     slotReqd: ea.slotReqd || '', slotTimeNumber: ea.slotTimeNumber || '', slotAllowance: ea.slotAllowance || '',
     fuelVendor: ea.fuelVendor || '', fuelPricePerGallon: ea.fuelPricePerGallon || '', fuelPaymentMethod: ea.fuelPaymentMethod || '',
@@ -3386,7 +3386,7 @@ function enrichmentPatchFromExtraction(extracted){
   const ed = extracted.dep || {};
   const ea = extracted.arr || {};
   ['agent', 'agentPhone', 'frequency', 'etdLocal', 'etdZ'].forEach(k => { if(ed[k]) patch.dep[k] = ed[k]; });
-  ['agent', 'agentPhone', 'frequency', 'etaLocal', 'etaZ'].forEach(k => { if(ea[k]) patch.arr[k] = ea[k]; });
+  ['agent', 'agentPhone', 'frequency', 'date', 'etaLocal', 'etaZ'].forEach(k => { if(ea[k]) patch.arr[k] = ea[k]; });
   return patch;
 }
 
@@ -3479,7 +3479,8 @@ function importEnrichmentCardHTML(item, index){
 }
 
 const RECONCILE_FIELD_LABELS = {
-  date: 'Date',
+  date: 'Departure date',
+  'arr.date': 'Arrival date',
   cityPair: 'City pair',
   'dep.airportId': 'Departure airport',
   'dep.etdLocal': 'Departure time (local)',
@@ -3524,7 +3525,7 @@ function describeLegChanges(leg, built){
   check('date', leg.date, built.date);
   check('cityPair', leg.cityPair, built.cityPair);
   ['airportId', 'etdLocal', 'etdZ', 'agent', 'agentPhone', 'frequency', 'fuelVendor', 'fuelPricePerGallon', 'fuelPaymentMethod', 'rampFee', 'rampFeeWaived', 'rampFeeMinGallons'].forEach(k => check('dep.' + k, leg.dep[k], built.dep[k]));
-  ['airportId', 'etaLocal', 'etaZ', 'agent', 'agentPhone', 'frequency', 'fuelVendor', 'fuelPricePerGallon', 'fuelPaymentMethod', 'rampFee', 'rampFeeWaived', 'rampFeeMinGallons'].forEach(k => check('arr.' + k, leg.arr[k], built.arr[k]));
+  ['airportId', 'date', 'etaLocal', 'etaZ', 'agent', 'agentPhone', 'frequency', 'fuelVendor', 'fuelPricePerGallon', 'fuelPaymentMethod', 'rampFee', 'rampFeeWaived', 'rampFeeMinGallons'].forEach(k => check('arr.' + k, leg.arr[k], built.arr[k]));
   return changes;
 }
 
