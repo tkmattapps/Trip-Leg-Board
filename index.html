@@ -84,6 +84,10 @@
   .drawer-close{ background:none; border:none; color:var(--fog-300); font-size:24px; line-height:1; cursor:pointer; padding:0 4px; }
   .drawer-body{ flex:1; overflow-y:auto; padding:10px 12px; padding-bottom:max(10px, env(safe-area-inset-bottom)); display:flex; flex-direction:column; gap:4px; }
   .drawer-item{ display:flex; align-items:center; gap:12px; width:100%; background:none; border:none; padding:11px 10px; border-radius:6px; cursor:pointer; text-align:left; color:var(--paper-050); font-size:14px; }
+  /* .drawer-item sets display:flex, which beats the browser default
+     [hidden]{display:none} -- so items hidden in JS (Delete, Undo delete)
+     kept rendering and showed their placeholder label. Restore hiding. */
+  .drawer-item[hidden]{ display:none; }
   .drawer-item:active{ background:var(--panel-700); }
   .drawer-ico{ flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:6px; font-size:14px; background:var(--panel-700); }
   .drawer-label{ min-width:0; }
@@ -914,7 +918,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T13:05:00Z';
+const BUILD_VERSION = '2026-08-16T13:14:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
