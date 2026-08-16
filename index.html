@@ -94,6 +94,7 @@
   .drawer-item-danger .drawer-label{ color:var(--alert-600); }
   .drawer-ico.di-delete{ color:var(--alert-600); }
   .drawer-ico.di-undo{ color:var(--amber-500); }
+  .drawer-ico.di-legend{ color:var(--fog-300); }
 
   .page-header{ position:fixed; left:0; right:0; top:0; z-index:34; background:var(--ink-900); border-bottom:1px solid var(--hairline); }
   .page-header-inner{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; max-width:1800px; margin:0 auto; padding:10px 36px 12px; padding-top:max(10px, env(safe-area-inset-top)); }
@@ -824,9 +825,20 @@
     <button type="button" class="drawer-item" id="drawerHomeBtn"><span class="drawer-ico di-home">&#127968;</span><span class="drawer-label">Home</span></button>
     <button type="button" class="drawer-item" id="drawerFeedbackBtn"><span class="drawer-ico di-feedback">&#128172;</span><span class="drawer-label">Send feedback</span></button>
     <button type="button" class="drawer-item" id="drawerInstallBtn"><span class="drawer-ico di-install">&#128241;</span><span class="drawer-label">Install on a device</span></button>
+    <button type="button" class="drawer-item" id="drawerLegendBtn"><span class="drawer-ico di-legend">&#128273;</span><span class="drawer-label">Legend</span></button>
     <button type="button" class="drawer-item drawer-item-danger" id="drawerDeleteBtn" hidden><span class="drawer-ico di-delete">&#128465;</span><span class="drawer-label" id="drawerDeleteLabel">Delete</span></button>
     <button type="button" class="drawer-item" id="drawerUndoBtn" hidden><span class="drawer-ico di-undo">&#8630;</span><span class="drawer-label" id="drawerUndoLabel">Undo delete</span></button>
     <button type="button" class="drawer-item" id="drawerLogoutBtn"><span class="drawer-ico di-logout">&#8617;</span><span class="drawer-label">Log out</span></button>
+  </div>
+</div>
+
+<div class="feedback-overlay" id="legendOverlay">
+  <div class="feedback-modal">
+    <div class="feedback-modal-head">
+      <span class="feedback-modal-title">Legend</span>
+      <button class="feedback-close-btn" id="legendCloseBtn" aria-label="Close">&times;</button>
+    </div>
+    <div id="legendBody"></div>
   </div>
 </div>
 
@@ -918,7 +930,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T13:14:00Z';
+const BUILD_VERSION = '2026-08-16T13:26:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -6266,6 +6278,22 @@ function closeDrawer(){
   if(d){ d.classList.remove('open'); d.setAttribute('aria-hidden','true'); }
   if(b) b.classList.remove('open');
 }
+// The Legend is reference material, not a control: it lives in the slide-out
+// rather than taking up space at the top of every page. Body is rendered from a
+// single source so entries can be added without touching markup.
+function legendBodyHTML(){
+  return '<p style="font-size:12px; color:var(--fog-500); line-height:1.6; margin:0;">Legend content goes here.</p>';
+}
+function openLegendOverlay(){
+  const body = document.getElementById('legendBody');
+  if(body) body.innerHTML = legendBodyHTML();
+  const ov = document.getElementById('legendOverlay');
+  if(ov) ov.classList.add('open');
+}
+function closeLegendOverlay(){
+  const ov = document.getElementById('legendOverlay');
+  if(ov) ov.classList.remove('open');
+}
 function openInstallOverlay(){
   const ov = document.getElementById('installOverlay');
   if(ov) ov.classList.add('open');
@@ -6284,6 +6312,8 @@ function openInstallOverlay(){
   if(fb) fb.addEventListener('click', function(){ closeDrawer(); openFeedbackModal(); });
   const ib = document.getElementById('drawerInstallBtn');
   if(ib) ib.addEventListener('click', function(){ closeDrawer(); openInstallOverlay(); });
+  const lgb = document.getElementById('drawerLegendBtn');
+  if(lgb) lgb.addEventListener('click', function(){ closeDrawer(); openLegendOverlay(); });
   const lb = document.getElementById('drawerLogoutBtn');
   if(lb) lb.addEventListener('click', function(){ closeDrawer(); handleLogout(); });
   const ub2 = document.getElementById('drawerUndoBtn');
@@ -6334,6 +6364,10 @@ function openInstallOverlay(){
     box.setAttribute('data-rendered', '1');
   };
 })();
+document.getElementById('legendCloseBtn').addEventListener('click', closeLegendOverlay);
+document.getElementById('legendOverlay').addEventListener('click', (e) => {
+  if(e.target.id === 'legendOverlay') closeLegendOverlay();
+});
 document.getElementById('installCloseBtn').addEventListener('click', () => {
   document.getElementById('installOverlay').classList.remove('open');
 });
