@@ -363,7 +363,13 @@
   }
   .field textarea{ height:auto; padding:9px 10px; }
   .field input[type=date]{ min-width:0; -webkit-appearance:none; appearance:none; }
-  .field input[type=date]::-webkit-calendar-picker-indicator{ margin-left:4px; padding:0; }
+  /* Date inputs render browser-drawn text ("Jun 28, 2026") we can't reshape, so
+     buy horizontal room instead: the UI font is far narrower than JetBrains Mono,
+     and the picker indicator is pulled in tight. Keeps the spelled month, which
+     is unambiguous across regions, without wrapping in the narrow compact grid. */
+  .field input[type=date]{ font-family:'Inter',system-ui,sans-serif; letter-spacing:-0.1px; padding-left:8px; padding-right:2px; }
+  .subpanel.compact .field input[type=date]{ padding-left:6px; padding-right:0; }
+  .field input[type=date]::-webkit-calendar-picker-indicator{ margin-left:0; padding:0; opacity:0.7; transform:scale(0.85); }
   .field input[type=date]::-webkit-date-and-time-value{ text-align:left; }
   .field textarea{ font-family:'Inter',sans-serif; resize:vertical; min-height:56px; }
   .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--amber-700); }
@@ -964,7 +970,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T16:15:00Z';
+const BUILD_VERSION = '2026-08-16T16:38:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
