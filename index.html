@@ -968,7 +968,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T18:00:05Z';
+const BUILD_VERSION = '2026-08-16T18:05:47Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -1314,10 +1314,9 @@ async function hydrateLegAttachments(leg){
     ? legRows.map(function(r){ return docRowHTML(r); }).join('')
     : '<div class="doc-empty">No documents on this leg yet.</div>';
   // The badge counts everything visible in this section: the leg's own
-  // documents PLUS the trip-wide ones shown beneath them. Seed it with the
-  // leg count now so something appears immediately, then correct it below.
-  _legDocCountCache[leg.id] = legRows.length;
-  setDocJumpCount(leg.id, legRows.length);
+  // documents PLUS the trip-wide ones shown beneath them. Paint it ONCE, after
+  // both counts are known - painting the leg-only figure first made the number
+  // visibly flash to a different value a moment later.
   // trip-level documents surfaced below (view/download only here; managed at trip level)
   if(tripWrap){
     const tripId = legTripId(leg);
@@ -1333,7 +1332,12 @@ async function hydrateLegAttachments(leg){
         : '';
     } else {
       tripWrap.innerHTML = '';
+      _legDocCountCache[leg.id] = legRows.length;
+      setDocJumpCount(leg.id, legRows.length);
     }
+  } else {
+    _legDocCountCache[leg.id] = legRows.length;
+    setDocJumpCount(leg.id, legRows.length);
   }
 }
 
