@@ -473,7 +473,10 @@
   .dash-status-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
   .dash-status-dot.ok{ background:var(--ok-500); }
   .dash-status-dot.pending{ background:var(--alert-600); }
-  .leg-status-strip{ display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap; align-items:center; }
+  /* Card leg bubbles. No label: the summary line directly beneath is the caption,
+     so overflow rows wrap against the full card width. */
+  .leg-status-strip{ display:flex; margin-bottom:6px; }
+  .leg-status-dots{ flex:1 1 auto; min-width:0; display:flex; column-gap:10px; row-gap:8px; flex-wrap:wrap; align-items:center; }
   .leg-nav-strip{ display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
   .leg-nav-strip-end{ justify-content:flex-end; }
 .leg-nav-strip-checklist{ justify-content:flex-start; width:100%; align-self:stretch; }
@@ -545,8 +548,9 @@
   .status-popover-item:hover{ background:var(--panel-700, #1E2E48); color:var(--paper-050); }
   .status-popover-item.is-current{ color:var(--paper-050); font-weight:600; }
   .status-popover-dot{ width:12px; height:12px; border-radius:50%; flex-shrink:0; }
-  .dash-card-route{ font-size:13px; color:var(--paper-050); margin-bottom:4px; }
+  .dash-card-route{ font-size:13px; color:var(--paper-050); margin-bottom:8px; }
   .dash-card-date{ font-size:11px; color:var(--fog-500); font-family:'JetBrains Mono',monospace; }
+  .dash-card-legsum{ font-size:11px; color:var(--fog-500); font-family:'JetBrains Mono',monospace; margin-bottom:4px; }
   .dash-card-edited{ font-size:10px; color:var(--fog-500); font-family:'JetBrains Mono',monospace; letter-spacing:0.3px; margin-top:6px; opacity:0.85; }
   .dash-card-pending{ font-size:11px; color:var(--alert-600); margin-top:8px; font-family:'JetBrains Mono',monospace; }
   .dash-card-status-pill{ font-size:10px; font-family:'JetBrains Mono',monospace; padding:2px 6px; border-radius:2px; text-transform:uppercase; letter-spacing:0.5px; margin-top:8px; display:inline-block; }
@@ -946,7 +950,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T13:52:00Z';
+const BUILD_VERSION = '2026-08-16T14:30:00Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2926,10 +2930,10 @@ function tripCardHTML(trip){
     '<div class="dash-card-top">' +
       '<span class="dash-card-code">Trip ' + escapeHtml(trip.tripNumber) + '</span>' +
     '</div>' +
-    '<div class="leg-status-strip"><span class="leg-status-strip-label">Legs:</span>' + legStatusDots + '</div>' +
     '<div class="dash-card-route">' + escapeHtml(route) + '</div>' +
+    '<div class="leg-status-strip"><span class="leg-status-dots">' + legStatusDots + '</span></div>' +
+    '<div class="dash-card-legsum">' + legCount + ' leg' + (legCount === 1 ? '' : 's') + ' \u2022 ' + escapeHtml(statusSummary) + '</div>' +
     '<div class="dash-card-date">' + escapeHtml(dateLabel) + '</div>' +
-    '<div class="dash-card-date">' + legCount + ' leg' + (legCount === 1 ? '' : 's') + ' \u2022 ' + escapeHtml(statusSummary) + '</div>' +
   '</div>';
 }
 
