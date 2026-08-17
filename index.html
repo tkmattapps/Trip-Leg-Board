@@ -1051,7 +1051,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T22:36:10Z';
+const BUILD_VERSION = '2026-08-17T22:41:21Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -6306,9 +6306,10 @@ function setupTZAutofill(cfg){
       showHint(tz);
     } else {
       cfg.leg[cfg.subObjKey].tz = '';
-      // Short enough to read in a narrow field. 'checking' is transient; when the
+      // Kept short so it fits the narrow offset field on a phone. 'checking' is
+      // transient; when the
       // remote database lands, refreshOpenTZFields() re-renders and resolves it.
-      flagOffset(AIRPORT_TZ_REMOTE_LOADING ? 'checking\u2026' : 'not in database');
+      flagOffset(AIRPORT_TZ_REMOTE_LOADING ? 'checking\u2026' : 'not avail');
     }
   }
 
