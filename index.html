@@ -102,11 +102,6 @@
      Full page rather than an overlay: settings contains sub-lists (aircraft
      today, more later) and an overlay opening an overlay gets messy fast.
      A page also gets a real header and back button for free. */
-  /* Matches .field input so a picker doesn't read as a different kind of control. */
-  .field-select{ -webkit-appearance:none; appearance:none; width:100%; font:inherit; font-size:14px; padding:9px 11px; border-radius:8px; background:var(--panel-800); border:1px solid var(--hairline,#24384f); color:var(--paper-050); cursor:pointer; }
-  .field-select:focus{ outline:none; border-color:var(--amber-500); }
-  @media (max-width:820px){ .field-select{ font-size:16px !important; } }
-
   .set-section{ margin-bottom:30px; max-width:560px; }
   .set-section-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:4px; }
   .set-section-title{ font-size:12px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); }
@@ -334,6 +329,10 @@
   .field-row-inline > .field:last-child textarea{ height:60px; min-height:60px; }
   @media (max-width:820px){
     .grid{ grid-template-columns:1fr 1fr; }
+    /* A grid holding a SINGLE field has nothing to pair with, so the field was
+       sitting in the left column with dead space beside it — most visibly the
+       Dispatch FRAT/release Y/N. Let an only-child span the full width. */
+    .grid > .field:only-child{ grid-column:1 / -1; }
     .grid-2{ grid-template-columns:1fr; }
     .grid-3{ grid-template-columns:1fr; }
     /* Next pax leg: wrap fields horizontally first, then down, instead of one tall stack.
@@ -386,6 +385,11 @@
     /* Bigger tap targets */
     /* Y/N buttons match the 36px input height beside them (was 44px, caused misalignment) */
     .yn-btn{ min-height:36px; height:36px; }
+    /* Full width deserves a taller target: gloved-hand, in-cockpit taps.
+       Must come AFTER .yn-btn above, which pins 36px to match an adjacent input.
+       Scoped to an only-child grid, so the dense paired Y/N rows keep their size
+       and the earlier 44px misalignment problem cannot come back. */
+    .grid > .field:only-child .yn-btn{ min-height:46px; height:46px; font-size:13px; }
     .btn, .new-btn, .status-select{ min-height:44px; }
     .leg-row{ padding:14px 12px; }
     .ovf-remove-btn{ min-height:32px; min-width:32px; }
@@ -694,8 +698,8 @@
 
   /* ---- FIELD PROVENANCE + VERIFICATION ---- */
   /* Source drives TEXT colour; verification drives the RING. Two channels, no clash. */
-  .field.src-extracted input, .field.src-extracted textarea{ color:#5FD0E8; }
-  .field.src-human input, .field.src-human textarea{ color:var(--paper-050); }
+  .field.src-extracted input, .field.src-extracted textarea, .field.src-extracted select{ color:#5FD0E8; }
+  .field.src-human input, .field.src-human textarea, .field.src-human select{ color:var(--paper-050); }
   /* ---- LEGEND (slide-out reference sheet) ---- */
   .lg-group{ margin:0 0 20px; }
   .lg-group:last-child{ margin-bottom:0; }
@@ -740,11 +744,11 @@
      Text colour continues to carry provenance per field. */
   .subpanel.is-verified{ box-shadow:0 0 0 1.25px rgba(74,201,126,0.36); }
   .subpanel.has-broken-verify{ box-shadow:0 0 0 1.25px rgba(242,169,59,0.65); }
-  .field.is-verified input, .field.is-verified textarea,
+  .field.is-verified input, .field.is-verified textarea, .field.is-verified select,
   .field.is-verified .yn{
     box-shadow:0 0 0 1.25px rgba(74,201,126,0.36); border-radius:5px;
   }
-  .field.has-broken-verify input, .field.has-broken-verify textarea,
+  .field.has-broken-verify input, .field.has-broken-verify textarea, .field.has-broken-verify select,
   .field.has-broken-verify .yn{
     box-shadow:0 0 0 1.25px rgba(242,169,59,0.65); border-radius:5px;
   }
@@ -1017,7 +1021,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T20:55:16Z';
+const BUILD_VERSION = '2026-08-17T21:10:10Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2683,7 +2687,9 @@ function sectionFieldIds(key){
   const el = document.querySelector('[data-section-body="' + key + '"]');
   if(!el) return [];
   const ids = [];
-  el.querySelectorAll('input[id], textarea[id]').forEach(n => { if(n.id) ids.push(n.id); });
+  // Selects count too: the tail-number picker is a real field, and leaving it out
+  // meant verifying a section silently skipped it.
+  el.querySelectorAll('input[id], textarea[id], select[id]').forEach(n => { if(n.id) ids.push(n.id); });
   return ids;
 }
 // Section wrappers are plain <div class="section">. Tag each one with its key
@@ -2874,7 +2880,7 @@ function selectField(label, id, value, choices, opts){
       escapeHtml(c.label == null ? v : c.label) + '</option>';
   });
   return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label>' + label + '</label>' +
-    '<select id="' + id + '" class="field-select">' + opts_html + '</select></div>';
+    '<select id="' + id + '">' + opts_html + '</select></div>';
 }
 
 // The picker offers ACTIVE aircraft, plus whatever tail is already on this leg
@@ -5486,6 +5492,16 @@ function renderMain(){
         if(hid) demoteFieldByIdIfChanged(tid, hid.value);
       }, 0);
     });
+  });
+  // A <select> fires 'change', never 'input', so without this a picker change
+  // left a section's green sign-off standing on data that had just moved.
+  // Same shape as the Y/N toggle handler above.
+  main.addEventListener('change', (e) => {
+    const el = e.target;
+    if(!el || !el.id || el.tagName !== 'SELECT') return;
+    const wrap = el.closest ? el.closest('.field[data-field-id]') : null;
+    if(!wrap) return;
+    demoteFieldByIdIfChanged(wrap.getAttribute('data-field-id'), el.value);
   });
   main.addEventListener('input', (e) => {
     const el = e.target;
