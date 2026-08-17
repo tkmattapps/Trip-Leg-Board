@@ -321,6 +321,19 @@
   .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
   .grid-3{ display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; }
   .grid-5{ display:grid; grid-template-columns:repeat(5, 1fr); gap:14px; }
+  /* Six across is the readable maximum for the airport cards: wide enough to use
+     the full-width card, narrow enough that a row still scans as a group.
+     Eight (what auto-fit produced) separated related fields too far. */
+  .grid-6{ display:grid; grid-template-columns:repeat(6, 1fr); gap:8px; }
+  /* The UTC-offset hint is a full-width note, not a field: kept out of the grid
+     so it can't consume a cell and shunt the row order. */
+  .tz-hint-row{ margin-top:8px; }
+  .tz-hint-row:empty{ display:none; }
+  /* Tablet portrait: six columns would be too narrow to read, two wastes the
+     card. Three keeps the row groupings visible. */
+  @media (min-width:821px) and (max-width:1100px){
+    .grid-6{ grid-template-columns:repeat(3, 1fr); }
+  }
   .field-row-inline{ display:flex; gap:14px; align-items:flex-start; }
   .field-row-inline > .field:first-child{ flex:0 0 auto; }
   .field-row-inline > .field:first-child .yn{ max-width:none; width:140px; align-self:stretch; }
@@ -329,6 +342,7 @@
   .field-row-inline > .field:last-child textarea{ height:60px; min-height:60px; }
   @media (max-width:820px){
     .grid{ grid-template-columns:1fr 1fr; }
+    .grid-6{ grid-template-columns:1fr 1fr; }
     /* A grid holding a SINGLE field has nothing to pair with, so the field was
        sitting in the left column with dead space beside it — most visibly the
        Dispatch FRAT/release Y/N. Let an only-child span the full width. */
@@ -1025,7 +1039,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T21:30:23Z';
+const BUILD_VERSION = '2026-08-17T21:38:12Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4786,14 +4800,15 @@ function renderMain(){
       '' + sectionTitleHTML('Departure', 'departure', leg) + '' +
       '<div>' +
         '<div class="subpanel compact">' +
-          '<div class="grid">' +
+          '<div class="grid-6">' +
+            // Row 1: identity and times.
             field('Airport ID', 'depAirportId', leg.dep.airportId, {placeholder:'KTEB'}) +
             field('UTC offset', 'depUtcOffset', leg.dep.utcOffsetManual || '', {placeholder:'auto or -4'}) +
             field('Departure date', 'date', leg.date, {type:'date', lang:'en-US'}) +
-            '<div class="field" style="grid-column:1/-1"><div class="tz-hint" id="depTzHint"></div></div>' +
             field('ETD local', 'depEtdLocal', displayLocal12h(leg.dep.etdLocal), {type:'text', placeholder:'02:30 PM'}) +
             field('ETD Z (UTC)', 'depEtdZ', leg.dep.etdZ, {type:'text', placeholder:'1430'}) +
             field('Hours of operation', 'depHours', leg.dep.hours, {placeholder:'local time'}) +
+            // Row 2: slots and who you talk to.
             ynField('Dep slot req\u2019d', 'depSlotReqd', leg.dep.slotReqd) +
             field('Slot time / number', 'depSlotTimeNumber', leg.dep.slotTimeNumber) +
             field('Slot time allowance', 'depSlotAllowance', leg.dep.slotAllowance, {placeholder:'+30 / -60'}) +
@@ -4807,6 +4822,9 @@ function renderMain(){
             ynField('Waived w/ fuel', 'depRampFeeWaived', leg.dep.rampFeeWaived) +
             field('Min GAL to waive', 'depRampFeeMinGallons', leg.dep.rampFeeMinGallons, {placeholder:'200'}) +
           '</div>' +
+          // Outside the grid: the hint is a full-width note, and inside a fixed
+          // six-column grid it would eat a cell and shunt the row order.
+          '<div class="tz-hint-row"><div class="tz-hint" id="depTzHint"></div></div>' +
           '<div style="margin-top:14px">' + legNotesBlockHTML('dep', airfieldNotesLabel('dep', leg.dep.airportId), 'depNotesLabel', 'Add a note for this stop\u2026') + '</div>' +
         '</div>' +
       '</div>' +
@@ -4816,14 +4834,15 @@ function renderMain(){
       '' + sectionTitleHTML('Arrival', 'arrival', leg) + '' +
       '<div>' +
         '<div class="subpanel compact">' +
-          '<div class="grid">' +
+          '<div class="grid-6">' +
+            // Row 1: identity and times. Mirrors Departure deliberately.
             field('Airport ID', 'arrAirportId', leg.arr.airportId, {placeholder:'EGGW'}) +
             field('UTC offset', 'arrUtcOffset', leg.arr.utcOffsetManual || '', {placeholder:'auto or -4'}) +
             field('Arrival date', 'arrDate', leg.arr.date, {type:'date', lang:'en-US'}) +
-            '<div class="field" style="grid-column:1/-1"><div class="tz-hint" id="arrTzHint"></div></div>' +
             field('ETA local', 'arrEtaLocal', displayLocal12h(leg.arr.etaLocal), {type:'text', placeholder:'02:30 PM'}) +
             field('ETA Z (UTC)', 'arrEtaZ', leg.arr.etaZ, {type:'text', placeholder:'1430'}) +
             field('Hours of operation', 'arrHours', leg.arr.hours, {placeholder:'local time'}) +
+            // Row 2: slots and who you talk to.
             ynField('Arr slot req\u2019d', 'arrSlotReqd', leg.arr.slotReqd) +
             field('Slot time / number', 'arrSlotTimeNumber', leg.arr.slotTimeNumber) +
             field('Slot time allowance', 'arrSlotAllowance', leg.arr.slotAllowance, {placeholder:'+30 / -60'}) +
@@ -4837,6 +4856,7 @@ function renderMain(){
             ynField('Waived w/ fuel', 'arrRampFeeWaived', leg.arr.rampFeeWaived) +
             field('Min GAL to waive', 'arrRampFeeMinGallons', leg.arr.rampFeeMinGallons, {placeholder:'200'}) +
           '</div>' +
+          '<div class="tz-hint-row"><div class="tz-hint" id="arrTzHint"></div></div>' +
           '<div style="margin-top:14px">' + legNotesBlockHTML('arr', airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotesLabel', 'Add a note for this stop\u2026') + '</div>' +
         '</div>' +
       '</div>' +
