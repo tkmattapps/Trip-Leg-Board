@@ -844,7 +844,8 @@
   .review-history-btn{ margin-left:8px; font-size:11px; font-family:system-ui,'Inter',sans-serif; color:var(--amber-500); background:none; border:none; text-decoration:underline; cursor:pointer; padding:0; }
   .leg-history-panel{ margin-top:12px; padding-top:12px; border-top:1px solid var(--hairline); }
   .toast{
-    position:fixed; bottom:24px; right:24px; background:var(--panel-700); border:1px solid var(--amber-500);
+    position:fixed; bottom:24px; left:24px; background:var(--panel-700); border:1px solid var(--amber-500);
+    /* Left, not right: the slide-out opens from the right and would cover it. */
     color:var(--paper-050); padding:11px 18px; border-radius:4px; font-size:13px; font-family:system-ui,'Inter',sans-serif;
     opacity:0; transform:translateY(8px); transition:opacity 0.2s ease, transform 0.2s ease; pointer-events:none; z-index:50;
   }
@@ -1051,7 +1052,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T23:31:06Z';
+const BUILD_VERSION = '2026-08-17T23:36:18Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
