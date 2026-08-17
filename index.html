@@ -342,7 +342,10 @@
   .field-row-inline > .field:last-child textarea{ height:60px; min-height:60px; }
   @media (max-width:820px){
     .grid{ grid-template-columns:1fr 1fr; }
-    .grid-6{ grid-template-columns:1fr 1fr; }
+    /* Phone: match the old auto-fit behaviour (three across at a 120px floor),
+       not two. Selector matches .subpanel.compact's specificity so it wins
+       inside a card. */
+    .subpanel.compact .grid-6{ grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); }
     /* A grid holding a SINGLE field has nothing to pair with, so the field was
        sitting in the left column with dead space beside it — most visibly the
        Dispatch FRAT/release Y/N. Let an only-child span the full width. */
@@ -1039,7 +1042,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T21:38:12Z';
+const BUILD_VERSION = '2026-08-17T21:43:39Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
