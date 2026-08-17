@@ -975,7 +975,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T18:01:21Z';
+const BUILD_VERSION = '2026-08-17T20:06:23Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -988,9 +988,24 @@ async function getFlightDepartmentId(){
   if(currentFlightDepartmentId) return currentFlightDepartmentId;
   const { data: { user } } = await sb.auth.getUser();
   if(!user){ const _e = new Error('not signed in'); _e.isAuthError = true; throw _e; }
-  const { data, error } = await sb.from('users').select('flight_department_id').eq('id', user.id).single();
+  // Department comes from the memberships table, not a column on users, so a
+  // person can belong to more than one department over time. We still resolve
+  // exactly ONE here to keep currentFlightDepartmentId a scalar; the picker is
+  // a later change. ends_on null = the current membership.
+  const { data, error } = await sb.from('memberships')
+    .select('flight_department_id, starts_on')
+    .eq('user_id', user.id)
+    .is('ends_on', null)
+    .not('flight_department_id', 'is', null)
+    .order('starts_on', { ascending: true })
+    .limit(1);
   if(error) throw error;
-  currentFlightDepartmentId = data.flight_department_id;
+  if(!data || !data.length){
+    const _e = new Error('no flight department membership');
+    _e.isAuthError = true;
+    throw _e;
+  }
+  currentFlightDepartmentId = data[0].flight_department_id;
   return currentFlightDepartmentId;
 }
 
@@ -1110,7 +1125,8 @@ async function loadCurrentUserProfile(){
     if(data){
       displayName = data.display_name || '';
       role = data.role || data.author_role || '';
-      if(data.flight_department_id) currentFlightDepartmentId = data.flight_department_id;
+      // NOTE: department deliberately NOT taken from the users row any more.
+      // getFlightDepartmentId() resolves it from memberships.
     }
   } catch(e){ /* own-row read failed; fall back to email below */ }
   currentUserProfile = {
