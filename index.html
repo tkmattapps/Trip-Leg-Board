@@ -1042,7 +1042,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T21:50:24Z';
+const BUILD_VERSION = '2026-08-17T22:00:02Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2678,6 +2678,39 @@ function markFieldSource(leg, fieldId, src){
     // Flag the dangerous case: a field that HAD been verified was changed.
     brokeVerify: wasVerified || !!prev.brokeVerify
   };
+}
+// A DERIVED value: computed by the app, not typed and not extracted from a
+// document. Visually it shares 'extracted' (cyan) because the legend's real
+// distinction is machine-origin vs human-entered. Deliberately does NOT set
+// 'by' to a person, and deliberately does NOT set brokeVerify: recomputing the
+// same fact from a new date is not someone editing verified data.
+function markFieldDerived(leg, fieldId, newValue){
+  if(!leg || !fieldId) return;
+  const meta = legFieldMeta(leg);
+  const prev = meta[fieldId] || {};
+  meta[fieldId] = { src:'extracted', ver:false, by:'', at:Date.now(), brokeVerify:!!prev.brokeVerify };
+  // Keep the save-time baseline in step. applyHumanEditProvenance compares the
+  // DOM against this baseline, so without it the next save would see the app's
+  // own derived write as a human edit and repaint the field white.
+  const baseline = leg._fieldValueBaseline || (leg._fieldValueBaseline = {});
+  baseline[fieldId] = (newValue === undefined || newValue === null) ? '' : newValue;
+}
+// Repaint a single field's provenance classes in place, without a full re-render.
+function repaintFieldProvenance(fieldId, cls){
+  const wrap = document.querySelector('.field[data-field-id="' + fieldId + '"]');
+  if(!wrap) return;
+  wrap.classList.remove('src-extracted', 'src-human');
+  if(cls) wrap.classList.add(cls);
+}
+// Clear provenance entirely: the app blanked the field because the value became
+// unknowable (no airport, or no date to resolve DST against).
+function clearFieldDerived(leg, fieldId){
+  if(!leg || !fieldId) return;
+  const meta = legFieldMeta(leg);
+  if(meta[fieldId]) delete meta[fieldId];
+  const baseline = leg._fieldValueBaseline || (leg._fieldValueBaseline = {});
+  baseline[fieldId] = '';
+  repaintFieldProvenance(fieldId, '');
 }
 function markFieldVerified(leg, fieldId, who){
   if(!leg || !fieldId) return;
@@ -5730,7 +5763,7 @@ function renderMain(){
   }
 
   setupTZAutofill({ airportInputId:'depAirportId', hintId:'depTzHint', localInputId:'depEtdLocal', zInputId:'depEtdZ', offsetInputId:'depUtcOffset', leg:leg, subObjKey:'dep' });
-  setupTZAutofill({ airportInputId:'arrAirportId', hintId:'arrTzHint', localInputId:'arrEtaLocal', zInputId:'arrEtaZ', offsetInputId:'arrUtcOffset', leg:leg, subObjKey:'arr' });
+  setupTZAutofill({ airportInputId:'arrAirportId', hintId:'arrTzHint', localInputId:'arrEtaLocal', zInputId:'arrEtaZ', offsetInputId:'arrUtcOffset', dateInputId:'arrDate', leg:leg, subObjKey:'arr' });
 
   function updateRelativeTime(){
     const out = document.getElementById('relativeTimeToDestination');
@@ -6209,7 +6242,10 @@ function setupTZAutofill(cfg){
   const localInput = document.getElementById(cfg.localInputId);
   const zInput = document.getElementById(cfg.zInputId);
   const offsetInput = document.getElementById(cfg.offsetInputId);
-  const dateInput = document.getElementById('date');
+  // The arrival card has its own date; fall back to the departure date so the
+  // dep call site is unchanged. An arrival offset must track the ARRIVAL date,
+  // or an overnight leg derives its offset from the wrong day.
+  const dateInput = document.getElementById(cfg.dateInputId || 'date');
   if(!airportInput || !hintEl || !localInput || !zInput) return;
 
   function showHint(tz){
@@ -6217,17 +6253,28 @@ function setupTZAutofill(cfg){
     if(!dateVal){
       hintEl.textContent = tz + ' \u2014 enter the trip date to confirm UTC offset (DST-dependent)';
       hintEl.className = 'tz-hint unknown';
+      // Without a date the offset is unknowable, so don't leave the previous
+      // date's answer sitting there looking authoritative.
+      if(offsetInput){ offsetInput.value = ''; clearFieldDerived(cfg.leg, cfg.offsetInputId); }
       return;
     }
     const off = getOffsetMinutes(Date.parse(dateVal + 'T12:00:00Z'), tz);
     hintEl.textContent = tz + formatOffset(off);
     hintEl.className = 'tz-hint found';
-    if(offsetInput && !offsetInput.value.trim()) offsetInput.value = formatOffsetShort(off);
+    // When the airport's timezone is known, the offset is DERIVED, never typed:
+    // always overwrite, because it moves with the date (DST). A hand-typed offset
+    // only matters for airports missing from the database, where tz is empty and
+    // showHint never runs.
+    if(offsetInput){
+      offsetInput.value = formatOffsetShort(off);
+      markFieldDerived(cfg.leg, cfg.offsetInputId, offsetInput.value);
+      repaintFieldProvenance(cfg.offsetInputId, 'src-extracted');
+    }
   }
 
   function refreshTz(){
     const code = airportInput.value.trim().toUpperCase();
-    if(!code){ hintEl.textContent = ''; hintEl.className = 'tz-hint'; cfg.leg[cfg.subObjKey].tz = ''; return; }
+    if(!code){ hintEl.textContent = ''; hintEl.className = 'tz-hint'; cfg.leg[cfg.subObjKey].tz = ''; if(offsetInput){ offsetInput.value = ''; clearFieldDerived(cfg.leg, cfg.offsetInputId); } return; }
     const tz = lookupAirportTZ(code);
     if(tz){
       cfg.leg[cfg.subObjKey].tz = tz;
@@ -6289,6 +6336,10 @@ function setupTZAutofill(cfg){
       const parsed = parseOffsetToMinutes(offsetInput.value);
       if(parsed === null) return;
       offsetInput.value = formatOffsetShort(parsed);
+      // Typed by a person: white, per the legend. Only reachable for airports
+      // with no known timezone, since a known one re-derives on every refresh.
+      markFieldSource(cfg.leg, cfg.offsetInputId, 'human');
+      repaintFieldProvenance(cfg.offsetInputId, 'src-human');
       if(!cfg.leg[cfg.subObjKey].tz){
         if(localInput.value){
           const hhmm24 = parse12hToHHMM(localInput.value);
