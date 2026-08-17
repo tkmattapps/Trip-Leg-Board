@@ -938,7 +938,7 @@
 <div class="drawer-backdrop" id="drawerBackdrop"></div>
 <div class="drawer" id="drawer" role="dialog" aria-label="Menu" aria-hidden="true">
   <div class="drawer-head">
-    <span class="drawer-title">Menu</span>
+    <span class="drawer-title" id="drawerTitle">Menu</span>
     <button type="button" class="drawer-close" id="drawerCloseBtn" aria-label="Close menu">&times;</button>
   </div>
   <div class="drawer-body">
@@ -1042,8 +1042,8 @@
       <textarea id="feedbackText" placeholder="Tell us what's working, what's not, or what you'd like to see..." rows="4"></textarea>
     </div>
     <button class="btn btn-primary" id="feedbackSubmitBtn" style="margin-top:12px; width:100%;">Send feedback</button>
-    <div id="feedbackAdminSection" style="display:none;">
-      <div class="feedback-list-head">Previous feedback (admin view)</div>
+    <div id="feedbackDevSection" style="display:none;">
+      <div class="feedback-list-head">Previous feedback (dev view)</div>
       <div class="feedback-list" id="feedbackList"><div class="empty-list">Loading...</div></div>
     </div>
   </div>
@@ -1051,7 +1051,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T22:41:21Z';
+const BUILD_VERSION = '2026-08-17T23:31:06Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -6767,30 +6767,39 @@ async function loadFeedbackList(){
 
 function openFeedbackModal(){
   document.getElementById('feedbackOverlay').classList.add('open');
-  const adminSection = document.getElementById('feedbackAdminSection');
-  const isAdmin = localStorage.getItem('tlb_admin_mode') === '1';
-  adminSection.style.display = isAdmin ? 'block' : 'none';
-  if(isAdmin) loadFeedbackList();
+  const devSection = document.getElementById('feedbackDevSection');
+  const isDev = localStorage.getItem('tlb_dev_mode') === '1';
+  devSection.style.display = isDev ? 'block' : 'none';
+  if(isDev) loadFeedbackList();
 }
 function closeFeedbackModal(){
   document.getElementById('feedbackOverlay').classList.remove('open');
 }
 
-let brandTapCount = 0;
-let brandTapTimer = null;
-document.getElementById('brandMark').addEventListener('click', () => {
-  brandTapCount++;
-  clearTimeout(brandTapTimer);
-  brandTapTimer = setTimeout(() => { brandTapCount = 0; }, 1500);
-  if(brandTapCount >= 5){
-    brandTapCount = 0;
-    const isAdmin = localStorage.getItem('tlb_admin_mode') === '1';
-    if(isAdmin){
-      localStorage.removeItem('tlb_admin_mode');
-      showToast('Admin mode off');
+/* DEV MODE -- five taps on the slide-out "Menu" title. It used to live on the
+   sidebar wordmark, but renderMain() now hides that sidebar unconditionally, so
+   the tap target had silently become unreachable. The title is inert -- tapping
+   it does nothing else -- which is why it is a safe host. This is a LOCAL convenience flag for
+   the developer only: it reveals the feedback list and nothing else. It lives in
+   localStorage, so anyone can set it themselves; it must never gate anything that
+   matters. Department ADMIN is a separate, database-backed concept enforced
+   server-side, and deliberately does not share this name. */
+let devTapCount = 0;
+let devTapTimer = null;
+const devTapTarget = document.getElementById('drawerTitle');
+if(devTapTarget) devTapTarget.addEventListener('click', () => {
+  devTapCount++;
+  clearTimeout(devTapTimer);
+  devTapTimer = setTimeout(() => { devTapCount = 0; }, 1500);
+  if(devTapCount >= 5){
+    devTapCount = 0;
+    const isDev = localStorage.getItem('tlb_dev_mode') === '1';
+    if(isDev){
+      localStorage.removeItem('tlb_dev_mode');
+      showToast('Dev mode off');
     } else {
-      localStorage.setItem('tlb_admin_mode', '1');
-      showToast('Admin mode on \u2014 feedback will show in the Feedback panel');
+      localStorage.setItem('tlb_dev_mode', '1');
+      showToast('Dev mode on \u2014 feedback will show in the Feedback panel');
     }
   }
 });
