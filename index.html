@@ -111,6 +111,8 @@
   .set-row.is-inactive{ opacity:0.5; }
   .set-row-main{ min-width:0; flex:1; }
   .set-tail{ font-size:15px; font-weight:600; letter-spacing:0.04em; color:var(--paper-050); }
+  /* Slightly lighter than a tail number: a person's name is not an identifier. */
+  .set-person{ font-family:system-ui,'Inter',sans-serif; font-size:14px; color:var(--paper-050); }
   .set-row-sub{ font-size:12px; color:var(--fog-500); margin-top:2px; }
   .set-status{ -webkit-appearance:none; appearance:none; font-family:inherit; cursor:pointer; flex:0 0 auto; font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; padding:4px 9px; border-radius:999px; border:1px solid transparent; white-space:nowrap; }
   .set-status.st-home{ color:#3DBE6B; border-color:rgba(61,190,107,0.45); background:rgba(61,190,107,0.10); }
@@ -1052,7 +1054,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T23:36:18Z';
+const BUILD_VERSION = '2026-08-17T23:52:49Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3462,6 +3464,7 @@ function openSettingsView(){
   if(typeof updateNavTabs === 'function') updateNavTabs();
   renderMain();
   loadAircraft();
+  loadRoster();
 }
 
 async function loadAircraft(){
@@ -3524,6 +3527,15 @@ function renderSettingsView(){
     listHTML = '<div class="set-list">' + aircraftCache.map(aircraftRowHTML).join('') + '</div>';
   }
 
+  let rosterHTML;
+  if(rosterCache === null){
+    rosterHTML = '<div class="set-empty">Loading\u2026</div>';
+  } else if(!rosterCache.length){
+    rosterHTML = '<div class="set-empty">No people found.</div>';
+  } else {
+    rosterHTML = '<div class="set-list">' + rosterCache.map(rosterRowHTML).join('') + '</div>';
+  }
+
   main.innerHTML =
     '<div class="set-section">' +
       '<div class="set-section-head"><div class="set-section-title">Aircraft</div></div>' +
@@ -3534,6 +3546,13 @@ function renderSettingsView(){
         '<input id="acNewTail" placeholder="N667BB" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="12" />' +
         '<button type="button" class="set-btn" id="acAddBtn">Add aircraft</button>' +
       '</div>' +
+    '</div>' +
+    '<div class="set-section">' +
+      '<div class="set-section-head"><div class="set-section-title">People</div></div>' +
+      '<p class="set-section-note">Job titles decide who appears in each crew slot. ' +
+        'Pilots fill PIC, SIC and ACM; flight attendants fill FA.</p>' +
+      rosterHTML +
+      '<p class="set-section-note">New accounts are still created in Supabase for now.</p>' +
     '</div>';
 
   const addBtn = document.getElementById('acAddBtn');
@@ -3551,6 +3570,101 @@ function renderSettingsView(){
   main.querySelectorAll('[data-ac-toggle]').forEach(btn => {
     btn.addEventListener('click', function(){ handleToggleAircraftActive(btn.getAttribute('data-ac-toggle')); });
   });
+  main.querySelectorAll('[data-person-title]').forEach(sel => {
+    sel.addEventListener('change', function(){
+      handlePersonTitleChange(sel.getAttribute('data-person-title'), sel.value);
+    });
+  });
+}
+
+// ---- Department roster -------------------------------------------------
+// JOB TITLES ARE A FIXED LIST, NOT FREE TEXT. Crew pickers filter on this value
+// (PIC/SIC/ACM show pilots, FA shows flight attendants), so a hand-typed
+// "Chief Pilot" would silently remove that person from every picker they belong
+// in. A dropdown makes that class of bug impossible.
+//
+// This is users.role -- a DESCRIPTIVE title that grants NOTHING. Access is
+// memberships.membership_role plus memberships.is_admin, and the two must never
+// be conflated.
+const JOB_TITLES = ['pilot', 'dispatcher', 'flight attendant', 'maintenance'];
+const JOB_TITLE_LABELS = {
+  'pilot': 'Pilot',
+  'dispatcher': 'Dispatcher',
+  'flight attendant': 'Flight attendant',
+  'maintenance': 'Maintenance'
+};
+
+// null = not loaded yet, [] = loaded and empty. Same convention as aircraftCache.
+let rosterCache = null;
+
+async function loadRoster(){
+  try {
+    const deptId = await getFlightDepartmentId();
+    // Read through memberships: that table is the source of truth for who is in
+    // a department. Joining from users would rely on the legacy
+    // users.flight_department_id column, which is slated to be dropped.
+    const { data, error } = await sb.from('memberships')
+      .select('user_id, membership_role, is_admin, users(id, email, name, role)')
+      .eq('flight_department_id', deptId);
+    if(error) throw error;
+    rosterCache = (data || [])
+      .filter(m => m.users)
+      .map(m => ({
+        id: m.users.id,
+        email: m.users.email || '',
+        name: m.users.name || '',
+        title: m.users.role || '',
+        membershipRole: m.membership_role || 'member',
+        isAdmin: !!m.is_admin
+      }))
+      .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
+  } catch(e){
+    rosterCache = [];
+    showToast('Could not load people.');
+  }
+  if(state.view === 'settings') renderSettingsView();
+}
+
+function rosterRowHTML(p){
+  const t = JOB_TITLES.includes(p.title) ? p.title : '';
+  const opts =
+    (t ? '' : '<option value="" selected>Not set</option>') +
+    JOB_TITLES.map(s =>
+      '<option value="' + s + '"' + (s === t ? ' selected' : '') + '>' +
+      JOB_TITLE_LABELS[s] + '</option>').join('');
+  // Fall back to the email when no display name is set: an account with a blank
+  // name would otherwise render as an anonymous row.
+  const primary = p.name || p.email;
+  const sub = [];
+  if(p.name && p.email) sub.push(escapeHtml(p.email));
+  if(p.isAdmin) sub.push('Admin');
+  if(p.membershipRole === 'contractor') sub.push('Contractor');
+  return '' +
+    '<div class="set-row" data-person-id="' + escapeHtml(p.id) + '">' +
+      '<div class="set-row-main">' +
+        '<div class="set-person">' + escapeHtml(primary) + '</div>' +
+        (sub.length ? '<div class="set-row-sub">' + sub.join(' \u00b7 ') + '</div>' : '') +
+      '</div>' +
+      '<select class="set-status" data-person-title="' + escapeHtml(p.id) + '">' + opts + '</select>' +
+    '</div>';
+}
+
+async function handlePersonTitleChange(userId, newTitle){
+  const person = (rosterCache || []).find(p => p.id === userId);
+  const prev = person ? person.title : '';
+  if(person) person.title = newTitle;
+  try {
+    const { error } = await sb.from('users').update({ role: newTitle }).eq('id', userId);
+    if(error) throw error;
+    showToast('Job title updated');
+  } catch(e){
+    // users has NO update policy by design, so this is the expected failure
+    // until one is added. Roll the local value back rather than showing a title
+    // that was never actually saved.
+    if(person) person.title = prev;
+    showToast('Could not update job title.');
+    if(state.view === 'settings') renderSettingsView();
+  }
 }
 
 // Tails are stored and compared upper-case. The database has a case-insensitive
@@ -7027,6 +7141,7 @@ async function handleLogout(){
   // Clear the fleet too: otherwise the next person to sign in on this device
   // could be offered the previous department's tails.
   aircraftCache = null;
+  rosterCache = null;
   showLoginOverlay();
 }
 
