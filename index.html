@@ -714,8 +714,8 @@
   .section-verify-btn{
     display:inline-flex; align-items:center; gap:6px; margin-left:10px;
     padding:3px 10px; border-radius:4px; cursor:pointer;
-    background:transparent; border:1px solid rgba(74,201,126,0.5);
-    color:#4AC97E; font-family:system-ui,'Inter',sans-serif;
+    background:transparent; border:1px solid rgba(242,169,59,0.5);
+    color:var(--amber-500); font-family:system-ui,'Inter',sans-serif;
     font-size:10px; letter-spacing:0.06em; text-transform:uppercase; font-weight:600;
   }
   .section-verify-btn .verify-mark{ font-size:11px; }
@@ -724,7 +724,7 @@
     background:#4AC97E; border-color:#4AC97E; color:var(--ink-900); font-weight:700;
   }
   .section-verify-btn.is-verified:hover{ background:#43BC74; }
-  .section-verify-btn:hover{ background:rgba(74,201,126,0.10); }
+  .section-verify-btn:hover{ background:rgba(242,169,59,0.10); }
   .section-verify-btn{ order:4; flex-shrink:0; margin-left:auto; }
   .verify-progress{
     font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:0.06em;
@@ -972,7 +972,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-16T21:20:31Z';
+const BUILD_VERSION = '2026-08-17T16:57:13Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
