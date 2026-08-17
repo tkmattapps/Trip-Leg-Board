@@ -760,16 +760,17 @@
   .field.is-verified .yn{
     box-shadow:0 0 0 1.25px rgba(74,201,126,0.36); border-radius:5px;
   }
-  /* iOS Safari paints a <select>'s own background over an edge box-shadow, so the
-     verified ring was invisible on mobile while working on desktop. An outline is
-     drawn outside the box and survives that. Selects only -- inputs are fine. */
-  .field.is-verified select{
-    /* Same drawing technique as every other verified field, so it reads the same
-       weight. INSET is the key: iOS Safari paints a <select>'s own background
-       over an EDGE box-shadow, which is why an outline was used here before.
-       Drawn inside, the background can't cover it. */
-    box-shadow:inset 0 0 0 1.25px rgba(74,201,126,0.36);
-    outline:none;
+  /* Verified/broken rings for selects are handled on .select-wrap below. */
+  /* The ring goes on the wrapper, never on the <select> itself. iOS Safari paints
+     a select's background over any box-shadow on the element (edge OR inset),
+     so it vanishes on iPhone. The wrapper hugs the select, so visually it's
+     identical to the rings on the text fields, drawn the same way. */
+  .select-wrap{ display:block; border-radius:5px; }
+  /* No stray descender gap under the control, or the ring sits low. */
+  .select-wrap select{ display:block; width:100%; }
+  .field.is-verified select{ box-shadow:none; outline:none; }
+  .field.is-verified .select-wrap{
+    box-shadow:0 0 0 1.25px rgba(74,201,126,0.36);
   }
   .field.has-broken-verify input, .field.has-broken-verify textarea, .field.has-broken-verify select,
   .field.has-broken-verify .yn{
@@ -777,9 +778,9 @@
   }
   /* Must sit AFTER the rule above, which also targets select: equal specificity,
      so source order decides. Inset survives iOS; see the verified rule. */
-  .field.has-broken-verify select{
-    box-shadow:inset 0 0 0 1.25px rgba(242,169,59,0.65);
-    outline:none;
+  .field.has-broken-verify select{ box-shadow:none; outline:none; }
+  .field.has-broken-verify .select-wrap{
+    box-shadow:0 0 0 1.25px rgba(242,169,59,0.65);
   }
   .field.verify-broken > label::after{
     content:'changed since verified';
@@ -1050,7 +1051,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T22:16:22Z';
+const BUILD_VERSION = '2026-08-17T22:21:52Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2941,8 +2942,13 @@ function selectField(label, id, value, choices, opts){
     opts_html += '<option value="' + escapeHtml(v) + '"' + (v === cur ? ' selected' : '') + '>' +
       escapeHtml(c.label == null ? v : c.label) + '</option>';
   });
+  // The select sits inside a wrapper that hugs it exactly. The verified/broken
+  // ring is drawn on the WRAPPER, not the select: iOS Safari paints a select's
+  // own background over ANY box-shadow on it, inset or edge, so a ring on the
+  // element itself is invisible on iPhone. A ring on .field won't do either,
+  // because .field is a flex column that also contains the label.
   return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label>' + label + '</label>' +
-    '<select id="' + id + '">' + opts_html + '</select></div>';
+    '<div class="select-wrap"><select id="' + id + '">' + opts_html + '</select></div></div>';
 }
 
 // The picker offers ACTIVE aircraft, plus whatever tail is already on this leg
