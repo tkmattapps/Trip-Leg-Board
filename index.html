@@ -385,11 +385,6 @@
     /* Bigger tap targets */
     /* Y/N buttons match the 36px input height beside them (was 44px, caused misalignment) */
     .yn-btn{ min-height:36px; height:36px; }
-    /* Full width deserves a taller target: gloved-hand, in-cockpit taps.
-       Must come AFTER .yn-btn above, which pins 36px to match an adjacent input.
-       Scoped to an only-child grid, so the dense paired Y/N rows keep their size
-       and the earlier 44px misalignment problem cannot come back. */
-    .grid > .field:only-child .yn-btn{ min-height:46px; height:46px; font-size:13px; }
     .btn, .new-btn, .status-select{ min-height:44px; }
     .leg-row{ padding:14px 12px; }
     .ovf-remove-btn{ min-height:32px; min-width:32px; }
@@ -748,6 +743,15 @@
   .field.is-verified .yn{
     box-shadow:0 0 0 1.25px rgba(74,201,126,0.36); border-radius:5px;
   }
+  /* iOS Safari paints a <select>'s own background over an edge box-shadow, so the
+     verified ring was invisible on mobile while working on desktop. An outline is
+     drawn outside the box and survives that. Selects only -- inputs are fine. */
+  .field.is-verified select{
+    outline:1.25px solid rgba(74,201,126,0.55); outline-offset:-1px;
+  }
+  .field.has-broken-verify select{
+    outline:1.25px solid rgba(242,169,59,0.75); outline-offset:-1px;
+  }
   .field.has-broken-verify input, .field.has-broken-verify textarea, .field.has-broken-verify select,
   .field.has-broken-verify .yn{
     box-shadow:0 0 0 1.25px rgba(242,169,59,0.65); border-radius:5px;
@@ -1021,7 +1025,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T21:10:10Z';
+const BUILD_VERSION = '2026-08-17T21:18:24Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
