@@ -349,6 +349,21 @@
     border-color:var(--hairline);
     padding-left:10px;
   }
+  /* A DROPDOWN IS A BUILDING CONTROL: it presents a list and asks you to choose.
+     This band REPORTS what the document said, so the select's native chevron and
+     affordance are hidden until the value is actually tapped. The real <select>
+     is still underneath and still does all the work - we only remove the visual
+     invitation to author. */
+  .info-band .select-wrap{ position:relative; }
+  .info-band .select-wrap select{
+    -webkit-appearance:none; appearance:none;
+    background-image:none;
+  }
+  /* Empty reads as EMPTY - no dash, no "none", no placeholder text. A dash would
+     be Beacon asserting something the document never said. The label above it is
+     enough to tell you which seat is unfilled. */
+  .info-band .select-wrap select.is-empty{ color:transparent; }
+  .info-band .select-wrap select.is-empty:focus{ color:var(--paper-050); }
   .section-title{
     font-family:system-ui,'Inter',sans-serif; font-size:12px; letter-spacing:1.5px; text-transform:uppercase;
     font-weight:600; color:var(--amber-500); margin-bottom:12px; display:flex; align-items:center; gap:10px;
@@ -1133,7 +1148,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T15:11:10Z';
+const BUILD_VERSION = '2026-08-18T15:18:56Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3188,9 +3203,13 @@ function crewBlockHTML(leg){
   const c = (leg && leg.crew) ? leg.crew : {};
   const rows = [];
 
-  // PIC is required, so an empty one gets the amber treatment the rest of the
-  // app uses for "needed but not yet supplied".
-  rows.push(crewSingleRowHTML('PIC', 'pic', c.pic || '', leg, !c.pic));
+  // AMBER REMOVED. Beacon is a trip VIEWER, not a trip builder: the trip already
+  // exists and the document already named the crew. Amber means "a human still
+  // has to answer this", so demanding a PIC here was the app asking the pilot to
+  // AUTHOR something rather than reporting what the document said. If a trip
+  // sheet names no PIC, that is a fact about the document worth flagging AT
+  // IMPORT - not a permanent nag on every leg.
+  rows.push(crewSingleRowHTML('PIC', 'pic', c.pic || '', leg, false));
   rows.push(crewSingleRowHTML('SIC', 'sic', c.sic || '', leg, false));
   rows.push(crewListRowHTML('ACM', 'acm', c.acm || [], leg));
   rows.push(crewListRowHTML('FA', 'fa', c.fa || [], leg));
@@ -3979,6 +3998,18 @@ async function loadRoster(){
 //
 // Only the crew selects depend on rosterCache, so only they are touched. Each
 // picker's own selected value is preserved.
+// Mark every empty control in the info band so CSS can render it as truly blank
+// rather than showing a "Select PIC" style invitation. Runs after render and on
+// every change, because a seat can be emptied as well as filled.
+function syncInfoBandEmptyState(){
+  document.querySelectorAll('.info-band .select-wrap select').forEach(function(sel){
+    sel.classList.toggle('is-empty', !sel.value);
+  });
+}
+document.addEventListener('change', function(e){
+  if(e.target && e.target.closest && e.target.closest('.info-band')) syncInfoBandEmptyState();
+});
+
 function refreshCrewPickerOptions(){
   const leg = state.legs ? state.legs.find(l => l.id === state.activeId) : null;
   if(!leg) return;
@@ -4013,6 +4044,8 @@ function refreshCrewPickerOptions(){
     const items = document.querySelectorAll('.crew-list-item[data-crew-slot="' + slot + '"] select');
     items.forEach((sel, i) => repaint(sel, slot, i === items.length - 1));
   });
+  // Rebuilding options resets the class, so re-apply the blank rendering.
+  syncInfoBandEmptyState();
 }
 
 function rosterRowHTML(p){
@@ -6339,6 +6372,7 @@ function renderMain(){
   }
 
   wireCrewPickers(leg);
+  syncInfoBandEmptyState();
   wireLegNotes(leg.id);
   hydrateLegNotes(leg.id);
   wireLegAttachments(leg);
