@@ -776,27 +776,20 @@
      FULL WIDTH inside Overview, outside the .grid. Overview is pinned to two
      columns at phone width deliberately, and a crew name needs the whole row
      to stay legible. */
-  /* ONE ROW for all four slots, wrapping as the screen narrows. Because each
-     slot is itself a flex row that must keep its own seats together, the block
-     wraps at the SLOT boundary: two ACMs stay adjacent rather than one of them
-     being orphaned onto the next line. */
-  .crew-block{ display:flex; flex-direction:row; flex-wrap:wrap; align-items:flex-end;
-    gap:10px; margin-top:14px; }
-  /* Grow to share the row, shrink willingly, and never demand more than a
-     readable name needs. */
-  .crew-row{ display:flex; flex-direction:row; align-items:flex-end; gap:8px;
-    flex:1 1 150px; min-width:0; }
+  /* ONE ROW for all four slots, using THE SAME GRID as the fields above so the
+     crew pickers line up with Trip number / Leg / City pair / Tail number. A
+     flex row divided the space evenly and drifted out of alignment with the
+     grid's columns -- visibly wrong on a wide screen. Matching grid definition,
+     matching gap, matching column count. */
+  .crew-block{ display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr));
+    gap:14px; margin-top:14px; }
+  /* Each slot is one grid cell. A list slot keeps its seats inside its own cell
+     so two ACMs stay adjacent rather than one being orphaned into the next
+     column. */
+  .crew-row{ display:flex; flex-direction:row; align-items:flex-end; gap:8px; min-width:0; }
   .crew-row .field{ flex:1 1 auto; min-width:0; }
-  /* A list slot holding two or more seats earns proportionally more of the row. */
-  .crew-row-list{ flex-wrap:nowrap; }
   .crew-list-item{ display:flex; align-items:flex-end; flex:1 1 220px; min-width:0; }
   .crew-list-item .field{ flex:1 1 auto; min-width:0; }
-  /* The add affordance: deliberately small and quiet, sized to sit beside the
-     pickers on the crew row without competing with them. */
-  .crew-add-btn{ flex:0 0 auto; align-self:flex-end; background:transparent; border:none;
-    color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; font-size:12px;
-    padding:0 2px 10px; cursor:pointer; white-space:nowrap; }
-  .crew-add-btn:active{ color:var(--amber-500); }
   /* PIC is required: amber until filled, matching the app's "needed but not yet
      supplied" language rather than inventing a new signal. */
   .crew-row.is-required .select-wrap{ box-shadow:0 0 0 1.25px rgba(242,169,59,0.65); border-radius:8px; }
@@ -1086,7 +1079,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T02:28:19Z';
+const BUILD_VERSION = '2026-08-18T02:43:15Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3059,6 +3052,15 @@ function wireCrewPickers(leg){
         if(idx < 0) return;
         leg.crew = leg.crew || { pic:'', sic:'', acm:[], fa:[] };
         if(!Array.isArray(leg.crew[slot])) leg.crew[slot] = [];
+        // "Add another" is an action, not a person. Restore the select to the
+        // name it was showing so the sentinel never reads as a crew member, then
+        // open a spare seat.
+        if(sel.value === CREW_ADD_SENTINEL){
+          sel.value = leg.crew[slot][idx] || '';
+          crewPendingSlot = slot;
+          renderMain();
+          return;
+        }
         // The always-present empty seat has index 0 with nothing behind it, so a
         // first pick is an append, not a replace.
         if(sel.value){
@@ -3072,20 +3074,6 @@ function wireCrewPickers(leg){
         autoSaveIfEditing();
         renderMain();
       });
-    });
-  });
-
-  // "+ ACM" / "+ FA": appends an empty seat and re-renders. The new picker is
-  // left for the user to fill rather than guessing at a name.
-  root.querySelectorAll('[data-crew-add]').forEach(btn => {
-    btn.addEventListener('click', function(){
-      const slot = btn.getAttribute('data-crew-add');
-      leg.crew = leg.crew || { pic:'', sic:'', acm:[], fa:[] };
-      if(!Array.isArray(leg.crew[slot])) leg.crew[slot] = [];
-      // Guard against a stack of empty seats from repeated taps.
-      if(crewPendingSlot === slot) return;
-      crewPendingSlot = slot;
-      renderMain();
     });
   });
 }
@@ -3130,7 +3118,8 @@ function collectCrewFromEditor(leg){
   CREW_LIST_SLOTS.forEach(slot => {
     const out = [];
     document.querySelectorAll('.crew-list-item[data-crew-slot="' + slot + '"] select').forEach(sel => {
-      if(sel.value) out.push(sel.value);
+      // Never persist the add-another sentinel as a crew member.
+      if(sel.value && sel.value !== CREW_ADD_SENTINEL) out.push(sel.value);
     });
     crew[slot] = out;
   });
@@ -3188,22 +3177,18 @@ function crewListRowHTML(label, slot, values, leg){
     // No separate remove button: the picker's own blank option does it, and it
     // is worded for the state the seat is actually in.
     const ph = v ? ('\u2014 Remove ' + label + n) : ('Select ' + label + n);
+    // Only the LAST seat offers "add another": offering it on every seat in a
+    // list would imply it inserts at that position, which it does not.
+    const withAdd = choices.slice();
+    if(v && i === seats.length - 1){
+      withAdd.push({ value: CREW_ADD_SENTINEL, label: '+ Add another ' + label });
+    }
     parts.push(
       '<div class="crew-list-item" data-crew-slot="' + slot + '" data-crew-index="' + i + '">' +
-        selectField(label + n, id, v, choices, { placeholder: ph }) +
+        selectField(label + n, id, v, withAdd, { placeholder: ph }) +
       '</div>'
     );
   });
-  // The add affordance is a small link, NOT another picker: a spare picker per
-  // list slot competed with the real seats for width on the single crew row.
-  // It only appears once the slot has someone in it -- there is nothing to add
-  // a second of until there is a first.
-  if(clean.length){
-    parts.push(
-      '<button type="button" class="crew-add-btn" data-crew-add="' + slot + '" ' +
-        'aria-label="Add another ' + label + '">+ ' + escapeHtml(label) + '</button>'
-    );
-  }
   return '<div class="crew-row crew-row-list" data-crew-slot="' + slot + '">' + parts.join('') + '</div>';
 }
 
@@ -3235,6 +3220,15 @@ const CREW_LIST_SLOTS = ['acm', 'fa'];
 // intention, not trip data, and persisting it would save half-finished crew.
 // Cleared whenever the editor renders a different leg or the seat gets filled.
 let crewPendingSlot = null;
+// A sentinel option value, not a user id. Carried in the picker's own option
+// list so that adding a second ACM or FA costs NOTHING on the crew row -- the
+// "+ ACM" links that used to sit there were stealing width from the very
+// pickers they belonged to, and threw the row out of alignment with the fields
+// above it. Rare action, so it lives where you are already looking when you
+// think about crew rather than on the row full time.
+// [BACKLOG] A fuller crew editor in the slide-out is the better long-term home
+// for multi-crew legs; Kyle likes that idea. This is the functional version.
+const CREW_ADD_SENTINEL = '__add__';
 
 // Roster entries eligible for a slot. Mirrors tailChoicesForLeg's guard: the
 // editor can render before the roster fetch resolves, and a miss just means the
