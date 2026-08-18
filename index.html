@@ -1091,7 +1091,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T05:02:21Z';
+const BUILD_VERSION = '2026-08-18T05:22:21Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4615,9 +4615,17 @@ function renderImportPreviewView(){
   const main = document.getElementById('mainPanel');
   if(!state.importPhase) resetImportState();
 
-  const header = '<div class="view-header">' +
-      '<div><div class="view-title">Import Trip Documents</div><div class="view-subtitle">Upload a trip sheet from dispatch or handling notes from ITPS. Nothing is saved to your board until you confirm.</div></div>' +
-    '</div>';
+  // Import used to render its own inline .view-header while never calling
+  // setPageHeader, so the fixed page header kept the PREVIOUS page's title and
+  // floated over this view's title during extraction. Use the real header like
+  // every other view does, and drop the inline one.
+  setPageHeader({
+    title: 'Import Trip Documents',
+    sub: 'Nothing is saved to your board until you confirm.',
+    backLabel: 'Active Trips',
+    backTo: 'dashboard'
+  });
+  const header = '';
 
   if(state.importPhase === 'upload'){
     main.innerHTML = header +
