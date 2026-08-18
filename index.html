@@ -383,6 +383,15 @@
   }
   /* Widths sit AFTER the base rule: the cascade is decided by POSITION, and
      these must win over width:auto above. */
+  .info-cell[data-w="leg-nav"] .info-cell-label{ text-align:center; }
+  .info-cell[data-w="leg-nav"] .leg-nav-strip{ display:flex; align-items:center; gap:6px; justify-content:center; }
+  .leg-nav-strip-btn{
+    background:none; border:none; padding:0 4px; cursor:pointer;
+    color:var(--paper-050); font-size:18px; line-height:1; opacity:0.9;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .leg-nav-strip-btn:disabled{ opacity:0.25; cursor:default; }
+  .leg-nav-strip-count{ font-size:16px; color:var(--paper-050); font-family:inherit; white-space:nowrap; }
   .info-cell[data-w="trip"] .info-cell-input{ width:7ch; }
   .info-cell[data-w="tail"] .info-cell-input{ width:7ch; }
   .info-cell[data-w="crew"] .info-cell-input{ width:5ch; }
@@ -1190,7 +1199,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T16:40:19Z';
+const BUILD_VERSION = '2026-08-18T17:00:57Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3289,6 +3298,31 @@ function stripOptions(choices, value){
 // FIRST seat only: additional crew belong on the trip-level review grid, not
 // squeezed into a one-line strip. A count suffix flags the extras so they are
 // never silently hidden.
+function legNavStripCellHTML(leg, stripLegs){
+  // LEG NAVIGATOR CELL: left chevron · "N of T" · right chevron.
+  // Chevrons dim at the boundaries so the visual makes the range obvious.
+  const sorted = (stripLegs || []).slice().sort(function(a,b){
+    return (Number(a.legNumber)||0) - (Number(b.legNumber)||0);
+  });
+  const idx = sorted.findIndex(function(l){ return l.id === leg.id; });
+  const total = sorted.length;
+  const n = idx >= 0 ? idx + 1 : (Number(leg.legNumber) || 1);
+  const prevId = idx > 0 ? sorted[idx-1].id : null;
+  const nextId = idx >= 0 && idx < total-1 ? sorted[idx+1].id : null;
+  return '<div class="info-cell" data-w="leg-nav">' +
+    '<div class="info-cell-label">LEG</div>' +
+    '<div class="leg-nav-strip">' +
+      '<button type="button" class="leg-nav-strip-btn" id="legNavStripPrev"' +
+        (prevId ? ' data-leg-id="' + escapeHtml(prevId) + '"' : ' disabled') +
+        ' aria-label="Previous leg">‹</button>' +
+      '<span class="leg-nav-strip-count">' + n + ' of ' + total + '</span>' +
+      '<button type="button" class="leg-nav-strip-btn" id="legNavStripNext"' +
+        (nextId ? ' data-leg-id="' + escapeHtml(nextId) + '"' : ' disabled') +
+        ' aria-label="Next leg">›</button>' +
+    '</div>' +
+  '</div>';
+}
+
 function crewStripCells(leg){
   const c = (leg && leg.crew) ? leg.crew : {};
   const cells = [];
@@ -3296,7 +3330,15 @@ function crewStripCells(leg){
   cells.push(infoStripSelect('SIC', 'crew_sic', c.sic || '', crewChoicesForSlot('sic', leg, c.sic || ''), 'crew'));
   CREW_LIST_SLOTS.forEach(function(slot){
     const list = (c[slot] || []).filter(function(v){ return v; });
-    const first = list.length ? list[0] : '';
+    // *** EMPTY LIST SLOTS ARE NOT RENDERED AT ALL. *** An ACM or a second FA is
+    // rare - better than ninety percent of legs have neither - and an empty slot
+    // says nothing: if the trip carried one, the trip sheet named it. Beacon is a
+    // viewer, so silence in the document is not a question to put to the pilot.
+    // The strip therefore tightens to what the leg actually has.
+    // SAFE because collectCrewFromEditor() preserves the existing array when the
+    // control is absent from the DOM; a hidden slot cannot lose its people.
+    if(!list.length) return;
+    const first = list[0];
     const label = slot.toUpperCase() + (list.length > 1 ? (' +' + (list.length - 1)) : '');
     cells.push('' +
       '<div class="info-cell" data-w="crew" data-crew-slot="' + slot + '" data-crew-index="0">' +
@@ -5488,6 +5530,7 @@ function renderMain(){
     '<div class="info-strip">' +
       '<div class="info-strip-row">' +
         infoStripField('Trip', 'tripNumber', leg.tripNumber, 'trip') +
+        legNavStripCellHTML(leg, stripLegs) +
         infoStripSelect('Tail', 'tailNumber', leg.tailNumber, tailChoicesForLeg(leg), 'tail') +
         crewStripCells(leg) +
       '</div>' +
@@ -6339,6 +6382,17 @@ function renderMain(){
         return;
       }
       const targetId = dot.getAttribute('data-leg-id');
+      if(targetId && targetId !== leg.id) openLegEditor(targetId);
+    });
+  });
+  // Strip chevrons: same navigation path as the bottom-bar dots. openLegEditor
+  // calls autoSaveIfEditing() itself, so nothing in the current leg is lost.
+  ['legNavStripPrev','legNavStripNext'].forEach(function(btnId){
+    const b = document.getElementById(btnId);
+    if(!b || b.disabled) return;
+    b.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      const targetId = b.getAttribute('data-leg-id');
       if(targetId && targetId !== leg.id) openLegEditor(targetId);
     });
   });
