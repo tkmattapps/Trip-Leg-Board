@@ -644,6 +644,63 @@
   .dash-card-add{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
     background:transparent; border:1px dashed var(--fog-500); color:var(--fog-300);
     min-height:120px; font-family:system-ui,'Inter',sans-serif; }
+  /* ---- TRIP CARD QUICK ACTIONS ------------------------------------------
+     Crew and tail are the two things a trip sheet always carries and the two
+     a human most often has to correct across a whole trip at once. They sit on
+     the tile so that correcting them does not cost a trip open plus eight leg
+     opens. They stopPropagation: the tile itself still opens the trip. */
+  .trip-quick-row{ display:flex; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--hairline); }
+  .trip-quick-btn{
+    font-family:system-ui,'Inter',sans-serif; font-size:12px; font-weight:500;
+    padding:7px 12px; border-radius:3px; cursor:pointer;
+    border:1px solid var(--hairline); background:transparent; color:var(--fog-300);
+    transition:border-color 0.15s ease, color 0.15s ease;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .trip-quick-btn:hover{ border-color:var(--amber-500); color:var(--amber-500); }
+  .trip-quick-btn:active{ background:var(--panel-700); }
+
+  /* ---- BOTTOM SHEET -----------------------------------------------------
+     Thumb-reachable on a phone and it keeps the trip list visible behind it,
+     so you do not lose your place. Reuses the drawer's backdrop treatment. */
+  .sheet-backdrop{ position:fixed; inset:0; z-index:64; background:rgba(6,12,22,0.55); opacity:0; pointer-events:none; transition:opacity 0.18s ease; }
+  .sheet-backdrop.open{ opacity:1; pointer-events:auto; }
+  .sheet{
+    position:fixed; left:0; right:0; bottom:0; z-index:65;
+    background:var(--ink-900); border-top:1px solid var(--hairline);
+    border-radius:10px 10px 0 0;
+    transform:translateY(100%); transition:transform 0.22s ease;
+    max-height:88vh; display:flex; flex-direction:column;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .sheet.open{ transform:translateY(0); }
+  @media (min-width:821px){
+    .sheet{ left:50%; right:auto; transform:translate(-50%, 100%); width:520px; }
+    .sheet.open{ transform:translate(-50%, 0); }
+  }
+  .sheet-head{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px 12px; border-bottom:1px solid var(--hairline); }
+  .sheet-title{ font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:22px; color:var(--paper-050); }
+  .sheet-sub{ font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--fog-500); margin-top:2px; }
+  .sheet-close{ background:none; border:none; color:var(--fog-500); font-size:24px; line-height:1; cursor:pointer; padding:0 4px; }
+  .sheet-close:hover{ color:var(--paper-050); }
+  .sheet-body{ flex:1; overflow-y:auto; overscroll-behavior-y:contain; padding:16px 20px; }
+  .sheet-foot{ padding:12px 20px 16px; border-top:1px solid var(--hairline); display:flex; gap:10px; justify-content:flex-end; }
+  .sheet-slot{ margin-bottom:16px; }
+  .sheet-slot-label{ font-family:system-ui,'Inter',sans-serif; font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:var(--fog-500); margin-bottom:6px; }
+  .sheet-slot select{
+    width:100%; font-family:system-ui,'Inter',sans-serif; font-size:15px;
+    background:var(--panel-800); color:var(--paper-050);
+    border:1px solid var(--hairline); border-radius:4px; padding:10px 12px;
+  }
+  /* The preview line. This is the whole point of the warning: a blanket write
+     across a trip like 410303 would flatten a genuine crew change, so the
+     numbers are shown BEFORE the write, not reported after it. */
+  .sheet-preview{ font-family:system-ui,'Inter',sans-serif; font-size:12px; margin-top:6px; line-height:1.5; }
+  .sheet-preview-replace{ color:var(--amber-500); }
+  .sheet-preview-fill{ color:var(--fog-300); }
+  .sheet-preview-skip{ color:var(--fog-500); }
+  .sheet-preview-none{ color:var(--fog-500); font-style:italic; }
+  .sheet-note{ font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--fog-500); line-height:1.5; margin-top:4px; }
   .dash-card-add:hover{ border-color:var(--amber-500); color:var(--amber-500); }
   .dash-card-add-plus{ font-size:32px; font-weight:300; line-height:1; }
   .dash-card-add-label{ font-size:14px; font-weight:600; letter-spacing:0.5px; }
@@ -1101,6 +1158,22 @@
   </div>
 </div>
 
+<div class="sheet-backdrop" id="tripQuickBackdrop"></div>
+<div class="sheet" id="tripQuickSheet" role="dialog" aria-label="Trip quick action" aria-hidden="true">
+  <div class="sheet-head">
+    <div>
+      <div class="sheet-title" id="tripQuickTitle">Add crew</div>
+      <div class="sheet-sub" id="tripQuickSub"></div>
+    </div>
+    <button type="button" class="sheet-close" id="tripQuickCloseBtn" aria-label="Close">&times;</button>
+  </div>
+  <div class="sheet-body" id="tripQuickBody"></div>
+  <div class="sheet-foot">
+    <button type="button" class="btn" id="tripQuickCancelBtn">Cancel</button>
+    <button type="button" class="btn btn-primary" id="tripQuickApplyBtn">Apply to trip</button>
+  </div>
+</div>
+
 <div class="feedback-overlay" id="legendOverlay">
   <div class="feedback-modal">
     <div class="feedback-modal-head">
@@ -1199,7 +1272,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T17:00:57Z';
+const BUILD_VERSION = '2026-08-18T17:18:29Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3501,6 +3574,228 @@ function crewDisplayName(userId){
   return 'Unknown crew';
 }
 
+// ---- TRIP-LEVEL QUICK ACTIONS ---------------------------------------------
+// "Add crew" / "Add aircraft" from the trip tile, applied across the whole trip
+// in one write.
+//
+// THREE RULES, all decided deliberately:
+//  1. FLOWN LEGS ARE NEVER TOUCHED. Flown is a sealed record; if someone has
+//     already called the leg flown, it is done.
+//  2. A HUMAN OVERRIDE OUTRANKS EXTRACTED TEXT. The document is authoritative
+//     until a person decides otherwise, and then the person is. So this WILL
+//     overwrite crew that came out of a trip sheet, on planning and ready legs.
+//  3. BUT NEVER BLIND. A trip legitimately can carry two different PICs --
+//     410303 does, and it also carries two SICs on three legs -- so a blanket
+//     write can flatten a real crew change. The counts are therefore shown
+//     BEFORE the write, not reported after it.
+// A blank selection means NO CHANGE. It does not clear the slot: clearing crew
+// across a trip is not something you would ever want to happen by leaving a
+// picker alone.
+let tripQuickState = { tripKey:null, mode:'crew', sel:{} };
+
+const TRIP_QUICK_CREW_SLOTS = [
+  { slot:'pic', label:'PIC' },
+  { slot:'sic', label:'SIC' },
+  { slot:'acm', label:'ACM' },
+  { slot:'fa',  label:'FA'  }
+];
+
+function tripQuickTrip(){
+  if(!tripQuickState.tripKey) return null;
+  return groupIntoTrips(state.legs).find(t => t.key === tripQuickState.tripKey) || null;
+}
+
+// What a slot currently holds on one leg, flattened to a single comparable
+// value. List slots report seat 0, which is the seat this action writes.
+function tripQuickCurrentValue(leg, slot){
+  if(slot === '__tail__') return (leg.tailNumber || '').trim();
+  const c = (leg && leg.crew) ? leg.crew : {};
+  if(CREW_LIST_SLOTS.indexOf(slot) !== -1){
+    const list = (c[slot] || []).filter(v => v);
+    return list.length ? list[0] : '';
+  }
+  return c[slot] || '';
+}
+
+// Counts, computed against the CURRENT legs, for the preview line.
+function tripQuickPlan(legs, slot, value){
+  const plan = { replace:0, fill:0, same:0, skipped:0 };
+  legs.forEach(leg => {
+    if(leg.status === 'flown'){ plan.skipped++; return; }
+    const cur = tripQuickCurrentValue(leg, slot);
+    if(cur === value) plan.same++;
+    else if(!cur) plan.fill++;
+    else plan.replace++;
+  });
+  return plan;
+}
+
+function tripQuickPlanHTML(plan){
+  const parts = [];
+  if(plan.replace) parts.push('<span class="sheet-preview-replace">Replaces on ' + plan.replace + ' leg' + (plan.replace === 1 ? '' : 's') + '</span>');
+  if(plan.fill) parts.push('<span class="sheet-preview-fill">fills ' + plan.fill + '</span>');
+  if(plan.same) parts.push('<span class="sheet-preview-skip">' + plan.same + ' already set</span>');
+  if(plan.skipped) parts.push('<span class="sheet-preview-skip">skips ' + plan.skipped + ' flown</span>');
+  if(!parts.length) return '';
+  return '<div class="sheet-preview">' + parts.join(' \u00b7 ') + '</div>';
+}
+
+// Roster choices for a trip-level slot. Unlike the leg picker there is no
+// per-leg "already taken" filter to apply -- the legs differ from each other --
+// so the only exclusion is a person already chosen in ANOTHER slot of this same
+// sheet, which would be an obvious double-seating.
+function tripQuickCrewChoices(slot){
+  let people = [];
+  try { people = rosterCache || []; } catch(e){ people = []; }
+  const titles = CREW_SLOT_TITLES[slot] || [];
+  const chosenElsewhere = Object.keys(tripQuickState.sel)
+    .filter(k => k !== slot)
+    .map(k => tripQuickState.sel[k])
+    .filter(v => v);
+  return people
+    .filter(p => titles.indexOf(p.title) !== -1)
+    .filter(p => chosenElsewhere.indexOf(p.id) === -1)
+    .map(p => ({ value:p.id, label:p.abbrev || p.name || p.email }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function tripQuickBodyHTML(){
+  const trip = tripQuickTrip();
+  if(!trip) return '<div class="sheet-note">Trip not found.</div>';
+  const legs = trip.legs;
+  const live = legs.filter(l => l.status !== 'flown');
+  if(!live.length){
+    return '<div class="sheet-note">Every leg on this trip is flown. Flown legs are a sealed record and are never overwritten, so there is nothing to change here.</div>';
+  }
+  const rows = [];
+  if(tripQuickState.mode === 'aircraft'){
+    const cur = tripQuickState.sel['__tail__'] || '';
+    const choices = tailChoicesForLeg({ tailNumber:'' });
+    rows.push(
+      '<div class="sheet-slot">' +
+        '<div class="sheet-slot-label">Tail number</div>' +
+        '<select id="tq___tail__" data-tq-slot="__tail__">' +
+          '<option value="">\u2014 no change \u2014</option>' +
+          choices.map(c => '<option value="' + escapeHtml(c.value) + '"' + (c.value === cur ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>').join('') +
+        '</select>' +
+        (cur ? tripQuickPlanHTML(tripQuickPlan(legs, '__tail__', cur)) : '') +
+      '</div>'
+    );
+    if(!choices.length){
+      rows.push('<div class="sheet-note">No aircraft on file for this department. Add them under Settings before assigning a tail.</div>');
+    }
+  } else {
+    TRIP_QUICK_CREW_SLOTS.forEach(s => {
+      const cur = tripQuickState.sel[s.slot] || '';
+      const choices = tripQuickCrewChoices(s.slot);
+      rows.push(
+        '<div class="sheet-slot">' +
+          '<div class="sheet-slot-label">' + escapeHtml(s.label) + '</div>' +
+          '<select id="tq_' + s.slot + '" data-tq-slot="' + s.slot + '">' +
+            '<option value="">\u2014 no change \u2014</option>' +
+            choices.map(c => '<option value="' + escapeHtml(c.value) + '"' + (c.value === cur ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>').join('') +
+          '</select>' +
+          (cur ? tripQuickPlanHTML(tripQuickPlan(legs, s.slot, cur)) : '') +
+        '</div>'
+      );
+    });
+  }
+  rows.push('<div class="sheet-note">Flown legs are never changed. Anything left on \u201cno change\u201d is left alone.</div>');
+  return rows.join('');
+}
+
+function renderTripQuickBody(){
+  const body = document.getElementById('tripQuickBody');
+  if(!body) return;
+  body.innerHTML = tripQuickBodyHTML();
+  body.querySelectorAll('select[data-tq-slot]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      tripQuickState.sel[sel.dataset.tqSlot] = sel.value;
+      renderTripQuickBody();
+    });
+  });
+  const applyBtn = document.getElementById('tripQuickApplyBtn');
+  if(applyBtn){
+    const any = Object.keys(tripQuickState.sel).some(k => tripQuickState.sel[k]);
+    applyBtn.disabled = !any;
+    applyBtn.style.opacity = any ? '1' : '0.4';
+  }
+}
+
+function openTripQuickSheet(tripKey, mode){
+  tripQuickState = { tripKey:tripKey, mode:(mode === 'aircraft' ? 'aircraft' : 'crew'), sel:{} };
+  const trip = tripQuickTrip();
+  const titleEl = document.getElementById('tripQuickTitle');
+  const subEl = document.getElementById('tripQuickSub');
+  if(titleEl) titleEl.textContent = (tripQuickState.mode === 'aircraft') ? 'Add aircraft' : 'Add crew';
+  if(subEl){
+    const n = trip ? trip.legs.length : 0;
+    subEl.textContent = (trip ? ('Trip ' + (trip.tripNumber || 'untitled')) : '') + ' \u00b7 ' + n + ' leg' + (n === 1 ? '' : 's');
+  }
+  renderTripQuickBody();
+  const s = document.getElementById('tripQuickSheet');
+  const b = document.getElementById('tripQuickBackdrop');
+  if(s){ s.classList.add('open'); s.setAttribute('aria-hidden','false'); }
+  if(b) b.classList.add('open');
+}
+
+function closeTripQuickSheet(){
+  const s = document.getElementById('tripQuickSheet');
+  const b = document.getElementById('tripQuickBackdrop');
+  if(s){ s.classList.remove('open'); s.setAttribute('aria-hidden','true'); }
+  if(b) b.classList.remove('open');
+  tripQuickState = { tripKey:null, mode:'crew', sel:{} };
+}
+
+async function applyTripQuick(){
+  const trip = tripQuickTrip();
+  if(!trip) return;
+  const sel = tripQuickState.sel;
+  const chosen = Object.keys(sel).filter(k => sel[k]);
+  if(!chosen.length) return;
+  const touched = [];
+  trip.legs.forEach(leg => {
+    // RULE 1: flown is sealed.
+    if(leg.status === 'flown') return;
+    let changed = false;
+    chosen.forEach(slot => {
+      const v = sel[slot];
+      if(slot === '__tail__'){
+        if((leg.tailNumber || '') !== v){ leg.tailNumber = v; changed = true; }
+        return;
+      }
+      if(!leg.crew || typeof leg.crew !== 'object') leg.crew = { pic:'', sic:'', acm:[], fa:[] };
+      const c = leg.crew;
+      if(!Array.isArray(c.acm)) c.acm = [];
+      if(!Array.isArray(c.fa)) c.fa = [];
+      // One person cannot hold two seats on the same leg, so lift them out of
+      // wherever else they sit before seating them here.
+      if(c.pic === v){ c.pic = ''; changed = true; }
+      if(c.sic === v){ c.sic = ''; changed = true; }
+      CREW_LIST_SLOTS.forEach(k => {
+        const before = c[k].length;
+        c[k] = c[k].filter(x => x !== v);
+        if(c[k].length !== before) changed = true;
+      });
+      if(CREW_LIST_SLOTS.indexOf(slot) !== -1){
+        if(c[slot].length) c[slot][0] = v; else c[slot].unshift(v);
+        changed = true;
+      } else {
+        if(c[slot] !== v){ c[slot] = v; changed = true; }
+      }
+    });
+    if(changed) touched.push(leg);
+  });
+  closeTripQuickSheet();
+  for(const leg of touched){
+    await saveLeg(leg);
+  }
+  renderMain();
+  showToast(touched.length
+    ? ('Applied to ' + touched.length + ' leg' + (touched.length === 1 ? '' : 's'))
+    : 'Nothing to change');
+}
+
 function tailChoicesForLeg(leg){
   // Guarded rather than reading aircraftCache directly: the editor can render
   // before boot's fleet fetch resolves, and `let aircraftCache` is declared
@@ -3731,10 +4026,22 @@ function tripCardHTML(trip){
     '<div class="leg-status-strip"><span class="leg-status-dots">' + legStatusDots + '</span></div>' +
     '<div class="dash-card-legsum">' + legCount + ' leg' + (legCount === 1 ? '' : 's') + ' \u2022 ' + escapeHtml(statusSummary) + '</div>' +
     '<div class="dash-card-date">' + escapeHtml(dateLabel) + '</div>' +
+    '<div class="trip-quick-row">' +
+      '<button type="button" class="trip-quick-btn" data-quick="crew" data-trip-key="' + escapeHtml(trip.key) + '">Crew</button>' +
+      '<button type="button" class="trip-quick-btn" data-quick="aircraft" data-trip-key="' + escapeHtml(trip.key) + '">Aircraft</button>' +
+    '</div>' +
   '</div>';
 }
 
 function wireCardClicks(originView){
+  // Must run BEFORE the .dash-card handler binds, and must stop propagation, or
+  // tapping a quick action would also open the trip behind the sheet.
+  document.querySelectorAll('.trip-quick-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTripQuickSheet(btn.dataset.tripKey, btn.dataset.quick);
+    });
+  });
   document.querySelectorAll('.leg-status-dot-clickable').forEach(dot => {
     dot.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -7594,6 +7901,19 @@ function openInstallOverlay(){
   if(ov) ov.classList.add('open');
   if(window.renderInstallQr) window.renderInstallQr();
 }
+// Sheet chrome is wired once at load; the BODY re-renders per open because its
+// choices depend on the roster and on what is already selected.
+(function wireTripQuickSheet(){
+  const cb = document.getElementById('tripQuickCloseBtn');
+  if(cb) cb.addEventListener('click', closeTripQuickSheet);
+  const cn = document.getElementById('tripQuickCancelBtn');
+  if(cn) cn.addEventListener('click', closeTripQuickSheet);
+  const bd = document.getElementById('tripQuickBackdrop');
+  if(bd) bd.addEventListener('click', closeTripQuickSheet);
+  const ap = document.getElementById('tripQuickApplyBtn');
+  if(ap) ap.addEventListener('click', function(){ applyTripQuick(); });
+})();
+
 (function wireDrawer(){
   const mb = document.getElementById('menuBtn');
   if(mb) mb.addEventListener('click', openDrawer);
