@@ -679,7 +679,18 @@
   .import-actions{ display:flex; gap:10px; justify-content:flex-end; }
   .import-upload-box{ background:var(--panel-800); border:1px dashed var(--hairline); border-radius:6px; padding:32px 20px; text-align:center; margin-bottom:24px; }
   .import-unmatched-select{ background:var(--panel-900, #0f1115); color:var(--paper-050); border:1px solid var(--hairline); border-radius:4px; padding:8px; font-size:13px; }
-  .dash-card{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; cursor:pointer; transition:border-color 0.15s ease; }
+  /* Flex column so the quick-action row sits at the BOTTOM of every card.
+     .dash-grid stretches its items, so the cards in a row are already the
+     same height -- without this the buttons floated up under whatever
+     content each card happened to carry and landed at four different
+     heights across one row. */
+  .dash-card{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; cursor:pointer; transition:border-color 0.15s ease; display:flex; flex-direction:column; }
+  /* The status pill is a direct child and must keep hugging its text --
+     a flex item would otherwise stretch the full card width. */
+  .dash-card > .dash-card-status-pill{ align-self:flex-start; }
+  /* Absorbs the slack above the action row. min-height guarantees a real
+     gap on the TALLEST card in a row, where there is no slack to absorb. */
+  .dash-card-spacer{ flex:1 1 auto; min-height:12px; }
   .dash-card:hover{ border-color:var(--amber-500); }
   .dash-card-add{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
     background:transparent; border:1px dashed var(--fog-500); color:var(--fog-300);
@@ -689,7 +700,7 @@
      a human most often has to correct across a whole trip at once. They sit on
      the tile so that correcting them does not cost a trip open plus eight leg
      opens. They stopPropagation: the tile itself still opens the trip. */
-  .trip-quick-row{ display:flex; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--hairline); }
+  .trip-quick-row{ display:flex; gap:8px; margin-top:0; padding-top:12px; border-top:1px solid var(--hairline); flex:0 0 auto; }
   .trip-quick-btn{
     font-family:system-ui,'Inter',sans-serif; font-size:12px; font-weight:500;
     padding:7px 12px; border-radius:3px; cursor:pointer;
@@ -1323,7 +1334,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T18:48:37Z';
+const BUILD_VERSION = '2026-08-18T18:55:24Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4299,6 +4310,7 @@ function tripBriefLegCardHTML(leg){
     '<div class="dash-card-date">' + escapeHtml(formatISODateDisplay(leg.date) || 'No date') + '</div>' +
     (completeness.complete ? '' : '<div class="dash-card-pending">' + completeness.pending.length + ' item' + (completeness.pending.length === 1 ? '' : 's') + ' pending</div>') +
     (lastEditedCompact(leg) ? '<div class="dash-card-edited">' + escapeHtml(lastEditedCompact(leg)) + '</div>' : '') +
+    '<div class="dash-card-spacer"></div>' +
     '<div class="trip-quick-row">' +
       '<button type="button" class="trip-quick-btn" data-leg-quick="crew" data-leg-id="' + escapeHtml(leg.id) + '">Crew</button>' +
       '<button type="button" class="trip-quick-btn" data-leg-quick="aircraft" data-leg-id="' + escapeHtml(leg.id) + '">Aircraft</button>' +
@@ -4352,6 +4364,7 @@ function tripCardHTML(trip){
     '<div class="leg-status-strip"><span class="leg-status-dots">' + legStatusDots + '</span></div>' +
     '<div class="dash-card-legsum">' + legCount + ' leg' + (legCount === 1 ? '' : 's') + ' \u2022 ' + escapeHtml(statusSummary) + '</div>' +
     '<div class="dash-card-date">' + escapeHtml(dateLabel) + '</div>' +
+    '<div class="dash-card-spacer"></div>' +
     '<div class="trip-quick-row">' +
       '<button type="button" class="trip-quick-btn" data-quick="crew" data-trip-key="' + escapeHtml(trip.key) + '">Crew</button>' +
       '<button type="button" class="trip-quick-btn" data-quick="aircraft" data-trip-key="' + escapeHtml(trip.key) + '">Aircraft</button>' +
