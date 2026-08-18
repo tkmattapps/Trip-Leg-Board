@@ -741,6 +741,17 @@
   .sheet-preview-skip{ color:var(--fog-500); }
   .sheet-preview-none{ color:var(--fog-500); font-style:italic; }
   .sheet-note{ font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--fog-500); line-height:1.5; margin-top:4px; }
+  /* Appears only once the slot above it holds someone: you cannot add a SECOND
+     ACM before there is a first. */
+  .sheet-add-btn{
+    margin-top:8px; font-family:system-ui,'Inter',sans-serif; font-size:12px; font-weight:500;
+    padding:7px 12px; border-radius:3px; cursor:pointer;
+    border:1px solid var(--hairline); background:transparent; color:var(--fog-300);
+    transition:border-color 0.15s ease, color 0.15s ease;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .sheet-add-btn:hover{ border-color:var(--amber-500); color:var(--amber-500); }
+  .sheet-add-btn:active{ background:var(--panel-700); }
   .dash-card-add:hover{ border-color:var(--amber-500); color:var(--amber-500); }
   .dash-card-add-plus{ font-size:32px; font-weight:300; line-height:1; }
   .dash-card-add-label{ font-size:14px; font-weight:600; letter-spacing:0.5px; }
@@ -1312,7 +1323,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T18:19:57Z';
+const BUILD_VERSION = '2026-08-18T18:28:27Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3750,9 +3761,6 @@ function tripQuickPlanHTML(plan){
 // 'acm__add' / 'fa__add' are pseudo-slots: they APPEND a seat rather than
 // writing seat 0. Everything about eligibility follows the base slot.
 const TRIP_QUICK_ADD_SUFFIX = '__add';
-// A sentinel option value, not a user id -- mirrors CREW_ADD_SENTINEL in the
-// leg editor.
-const TRIP_QUICK_ADD_SENTINEL = '__addseat__';
 function tripQuickBaseSlot(slot){
   return slot.endsWith(TRIP_QUICK_ADD_SUFFIX)
     ? slot.slice(0, -TRIP_QUICK_ADD_SUFFIX.length)
@@ -3816,12 +3824,15 @@ function tripQuickBodyHTML(){
           '<select id="tq_' + s.slot + '" data-tq-slot="' + s.slot + '">' +
             '<option value="">\u2014 no change \u2014</option>' +
             choices.map(c => '<option value="' + escapeHtml(c.value) + '"' + (c.value === cur ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>').join('') +
-            // AUGMENTED CREW IS REAL: 410303 carries two SICs on three legs and
-            // two cabin attendants on another. Picking a name above REPLACES the
-            // first seat; this option opens a second picker that ADDS one.
-            (isList ? '<option value="' + TRIP_QUICK_ADD_SENTINEL + '">+ Add another ' + escapeHtml(s.label) + '</option>' : '') +
           '</select>' +
           (cur ? tripQuickPlanHTML(tripQuickPlan(legs, s.slot, cur)) : '') +
+          // AUGMENTED CREW IS REAL: 410303 carries two SICs on three legs and
+          // two cabin attendants on another. The seat above is a REPLACE; this
+          // button opens a second picker that ADDS. It appears only once the
+          // slot holds someone, because there is no second ACM without a first.
+          ((isList && cur && !tripQuickState.addOpen[s.slot])
+            ? '<div><button type="button" class="sheet-add-btn" data-tq-add="' + s.slot + '">+ Add additional ' + escapeHtml(s.label) + '</button></div>'
+            : '') +
         '</div>'
       );
       // The append picker, once the user has asked for it.
@@ -3870,14 +3881,19 @@ function renderTripQuickBody(){
   body.querySelectorAll('select[data-tq-slot]').forEach(sel => {
     sel.addEventListener('change', () => {
       const slot = sel.dataset.tqSlot;
-      // The sentinel is an instruction, not a person: open the append picker
-      // and leave the replace picker on "no change".
-      if(sel.value === TRIP_QUICK_ADD_SENTINEL){
-        tripQuickState.addOpen[slot] = true;
-        tripQuickState.sel[slot] = '';
-      } else {
-        tripQuickState.sel[slot] = sel.value;
+      tripQuickState.sel[slot] = sel.value;
+      // Clearing the first seat retracts the append picker with it: an
+      // additional ACM is meaningless once there is no ACM.
+      if(!sel.value && tripQuickState.addOpen[slot]){
+        tripQuickState.addOpen[slot] = false;
+        tripQuickState.sel[slot + TRIP_QUICK_ADD_SUFFIX] = '';
       }
+      renderTripQuickBody();
+    });
+  });
+  body.querySelectorAll('button[data-tq-add]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      tripQuickState.addOpen[btn.dataset.tqAdd] = true;
       renderTripQuickBody();
     });
   });
