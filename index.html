@@ -718,6 +718,12 @@
   .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
   .import-leg-date{ font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--fog-500); }
   .import-leg-body{ display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--fog-300); line-height:1.5; }
+  .import-crew-list{ display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:4px; }
+  .import-crew-person{ display:flex; align-items:baseline; gap:6px; }
+  .import-crew-role{ font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color:var(--fog-500); min-width:34px; }
+  .import-crew-role.is-unset{ font-style:italic; text-transform:none; letter-spacing:0; }
+  .import-crew-role.is-unresolved{ color:var(--amber-500); }
+  .import-crew-name{ color:var(--paper-050); }
   .import-actions{ display:flex; gap:10px; justify-content:flex-end; }
   .import-upload-box{ background:var(--panel-800); border:1px dashed var(--hairline); border-radius:6px; padding:32px 20px; text-align:center; margin-bottom:24px; }
   .import-unmatched-select{ background:var(--panel-900, #0f1115); color:var(--paper-050); border:1px solid var(--hairline); border-radius:4px; padding:8px; font-size:13px; }
@@ -1402,7 +1408,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T22:04:46Z';
+const BUILD_VERSION = '2026-08-18T22:22:22Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2317,6 +2323,15 @@ const state = { legs: [], activeId: null, filter: '', view: 'home', historyFilte
 function uid(){ return 'leg_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
 
+// The role vocabulary the extractor is allowed to normalise TO. Anything
+// outside this list is treated as unstated rather than guessed at -- a role
+// Beacon does not recognise is not a role it may invent a meaning for.
+const CREW_RAW_ROLES = ['PIC', 'SIC', 'ACM', 'FA', 'FE', 'CKA', 'MX'];
+const CREW_RAW_ROLE_LABELS = {
+  PIC: 'PIC', SIC: 'SIC', ACM: 'ACM', FA: 'FA',
+  FE: 'Flight engineer', CKA: 'Check airman', MX: 'Maintenance'
+};
+
 function normalizeLeg(leg){
   // Legs saved before the baseline was made runtime-only may still carry one.
   if(leg && leg._fieldValueBaseline) delete leg._fieldValueBaseline;
@@ -2331,6 +2346,19 @@ function normalizeLeg(leg){
   if(!Array.isArray(leg.crew.fa)) leg.crew.fa = [];
   leg.crew.pic = leg.crew.pic || '';
   leg.crew.sic = leg.crew.sic || '';
+  // Every leg saved before extraction carried crew has no crewRaw at all.
+  // Coerce to a list of well-shaped entries; drop anything nameless, since a
+  // person with no name is not a record of anybody.
+  if(!Array.isArray(leg.crewRaw)) leg.crewRaw = [];
+  leg.crewRaw = leg.crewRaw
+    .filter(x => x && typeof x === 'object')
+    .map(x => ({
+      name: String(x.name || '').trim(),
+      roleRaw: String(x.roleRaw || '').trim(),
+      role: CREW_RAW_ROLES.includes(String(x.role || '').trim().toUpperCase())
+        ? String(x.role).trim().toUpperCase() : ''
+    }))
+    .filter(x => x.name);
   if(leg.tailNumber === undefined) leg.tailNumber = '';
   if(leg.windDirection === undefined) leg.windDirection = '';
   if(leg.windComponent === undefined) leg.windComponent = '';
@@ -2352,6 +2380,12 @@ function blankLeg(){
     tripNumber: '', legNumber: '', date: '', cityPair: '', tailNumber: '',
     // pic/sic hold a single user id; acm/fa are ARRAYS of user ids.
     crew: { pic:'', sic:'', acm:[], fa:[] },
+    // crewRaw is what the DOCUMENT said, kept verbatim and never rewritten:
+    // [{ name, roleRaw, role }] with one entry per person on this leg. It is a
+    // separate field from crew (which holds account ids) on purpose --
+    // Beacon cannot overrule a document, so the printed record survives
+    // alongside whatever a human later decided it meant.
+    crewRaw: [],
     eapisRequired: '',
     compliance: { eapisReqd:'', eapisNotes:'', overflightReqd:'', overflightPermits:[], customsReqd:'', customsNotes:'' },
     dep: { airportId:'', tz:'', etdLocal:'', etdZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', notes:'' },
@@ -5940,6 +5974,9 @@ function buildLegFromExtraction(extracted){
   leg.enrouteNotes = extracted.enrouteNotes || '';
   leg.windDirection = extracted.windDirection || '';
   leg.windComponent = extracted.windComponent || '';
+  // Carried across verbatim. normalizeLeg does the shape-coercion; this only
+  // has to avoid throwing on a malformed array.
+  leg.crewRaw = Array.isArray(extracted.crewRaw) ? extracted.crewRaw : [];
   const ec = extracted.compliance || {};
   Object.assign(leg.compliance, {
     eapisReqd: ec.eapisReqd || '', eapisNotes: ec.eapisNotes || '',
@@ -6086,9 +6123,42 @@ function importEndLineHTML(labelText, end){
   return '<div><strong>' + labelText + ':</strong> ' + line + '</div>';
 }
 
+// Crew exactly as the document printed it. Names are NOT translated into crew
+// abbreviations here, and are NOT matched to accounts -- that is a separate,
+// later step that produces a suggestion for a human to confirm. What this shows
+// is the source record, so that what you are importing is legible before it
+// becomes real.
+//
+// A role of "" is a NORMAL outcome, not a failure: some packages list who is
+// aboard without stating any roles. Where the document printed something the
+// extractor would not normalise -- "CA", which means CAPTAIN to some operators
+// and CABIN ATTENDANT to others -- the printed text is shown as-is rather than
+// resolved, because a cabin attendant placed in the captain's seat is the worst
+// error this system can make.
+function importCrewLineHTML(leg){
+  const list = Array.isArray(leg.crewRaw) ? leg.crewRaw : [];
+  if(!list.length) return '';
+  const people = list.map(person => {
+    const name = escapeHtml(person.name);
+    let role;
+    if(person.role){
+      role = '<span class="import-crew-role">' + escapeHtml(CREW_RAW_ROLE_LABELS[person.role] || person.role) + '</span>';
+    } else if(person.roleRaw){
+      // Printed, but not resolvable to a known role. Show it, flag it.
+      role = '<span class="import-crew-role is-unresolved">' + escapeHtml(person.roleRaw) + '?</span>';
+    } else {
+      role = '<span class="import-crew-role is-unset">no role stated</span>';
+    }
+    return '<div class="import-crew-person">' + role + '<span class="import-crew-name">' + name + '</span></div>';
+  }).join('');
+  return '<div><strong>Crew as printed:</strong><div class="import-crew-list">' + people + '</div></div>';
+}
+
 function importLegCardHTML(leg, index){
   const dep = leg.dep || {}, arr = leg.arr || {}, comp = leg.compliance || {};
   const rows = [];
+  const crewLine = importCrewLineHTML(leg);
+  if(crewLine) rows.push(crewLine);
   rows.push(importEndLineHTML('Departure', dep));
   rows.push(importEndLineHTML('Arrival', arr));
   const enrouteBits = [];
