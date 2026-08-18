@@ -112,6 +112,11 @@
   /* Read-only counterpart to .set-status: same right-hand slot, no affordance. */
   .set-jobtitle{ font-family:system-ui,'Inter',sans-serif; font-size:13px; color:var(--fog-300); text-align:right; white-space:nowrap; }
   .set-jobtitle.is-unset{ color:var(--fog-500); font-style:italic; }
+  /* The crew abbreviation is what every leg, picker and strip actually shows,
+     so a missing one is a real gap in the record -- it renders amber rather
+     than grey so it reads as something to fix, not something optional. */
+  .set-abbrev{ font-family:system-ui,'Inter',sans-serif; font-size:13px; font-weight:600; letter-spacing:0.10em; color:var(--paper-050); flex:0 0 auto; white-space:nowrap; }
+  .set-abbrev.is-unset{ color:var(--amber-500); font-weight:500; letter-spacing:0; font-style:italic; }
   .set-row-sub{ font-size:12px; color:var(--fog-500); margin-top:2px; }
   .set-status{ -webkit-appearance:none; appearance:none; font-family:inherit; cursor:pointer; flex:0 0 auto; font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; padding:4px 9px; border-radius:999px; border:1px solid transparent; white-space:nowrap; }
   .set-status.st-home{ color:#3DBE6B; border-color:rgba(61,190,107,0.45); background:rgba(61,190,107,0.10); }
@@ -776,6 +781,19 @@
     background:var(--panel-800); color:var(--paper-050);
     border:1px solid var(--hairline); border-radius:4px; padding:10px 12px;
   }
+  /* 16px, not the 15px used by the selects above: iOS zooms the viewport on
+     focus for anything smaller, and a text field is focusable in a way a
+     picker is not. */
+  .sheet-slot input{
+    width:100%; font-family:system-ui,'Inter',sans-serif; font-size:16px;
+    background:var(--panel-800); color:var(--paper-050);
+    border:1px solid var(--hairline); border-radius:4px; padding:10px 12px;
+    -webkit-appearance:none; appearance:none;
+  }
+  .sheet-slot input::placeholder{ color:var(--fog-500); letter-spacing:0; }
+  .sheet-slot input.is-abbrev{ text-transform:uppercase; letter-spacing:0.14em; font-weight:600; }
+  .sheet-readonly{ font-family:system-ui,'Inter',sans-serif; font-size:15px; color:var(--fog-300); padding:9px 0 2px; }
+  .sheet-err{ font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--alert-600); line-height:1.5; margin-top:10px; }
   /* The preview line. This is the whole point of the warning: a blanket write
      across a trip like 410303 would flatten a genuine crew change, so the
      numbers are shown BEFORE the write, not reported after it. */
@@ -1251,6 +1269,22 @@
   </div>
 </div>
 
+<div class="sheet-backdrop" id="personEditBackdrop"></div>
+<div class="sheet" id="personEditSheet" role="dialog" aria-label="Edit person" aria-hidden="true">
+  <div class="sheet-head">
+    <div>
+      <div class="sheet-title" id="personEditTitle">Edit person</div>
+      <div class="sheet-sub" id="personEditSub"></div>
+    </div>
+    <button type="button" class="sheet-close" id="personEditCloseBtn" aria-label="Close">&times;</button>
+  </div>
+  <div class="sheet-body" id="personEditBody"></div>
+  <div class="sheet-foot">
+    <button type="button" class="btn" id="personEditCancelBtn">Cancel</button>
+    <button type="button" class="btn btn-primary" id="personEditSaveBtn">Save</button>
+  </div>
+</div>
+
 <div class="feedback-overlay" id="legendOverlay">
   <div class="feedback-modal">
     <div class="feedback-modal-head">
@@ -1349,7 +1383,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T19:48:14Z';
+const BUILD_VERSION = '2026-08-18T20:17:50Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4877,7 +4911,10 @@ function renderSettingsView(){
     '<div class="set-section">' +
       '<div class="set-section-head"><div class="set-section-title">People</div></div>' +
       '<p class="set-section-note">Job titles decide who appears in each crew slot. ' +
-        'Pilots fill PIC, SIC and ACM; flight attendants fill FA. Titles are set in Supabase.</p>' +
+        'Pilots fill PIC, SIC and ACM; flight attendants fill FA. Titles are set in Supabase.' +
+        (rosterViewerIsAdmin()
+          ? ' As an admin you can edit names and crew abbreviations here.'
+          : '') + '</p>' +
       rosterHTML +
       '<p class="set-section-note">New accounts are still created in Supabase for now.</p>' +
     '</div>';
@@ -4896,6 +4933,12 @@ function renderSettingsView(){
   });
   main.querySelectorAll('[data-ac-toggle]').forEach(btn => {
     btn.addEventListener('click', function(){ handleToggleAircraftActive(btn.getAttribute('data-ac-toggle')); });
+  });
+  // Only rendered for admins, but the handler re-checks anyway: a rule attached
+  // to a control is not a rule. openPersonEditSheet guards, savePersonEdit
+  // relies on the RLS policy, and the database column grant is the last word.
+  main.querySelectorAll('[data-person-edit]').forEach(btn => {
+    btn.addEventListener('click', function(){ openPersonEditSheet(btn.getAttribute('data-person-edit')); });
   });
 }
 
@@ -4926,7 +4969,7 @@ async function loadRoster(){
     // a department. Joining from users would rely on the legacy
     // users.flight_department_id column, which is slated to be dropped.
     const { data, error } = await sb.from('memberships')
-      .select('user_id, membership_role, is_admin, users(id, email, display_name, role, crew_abbrev)')
+      .select('user_id, membership_role, is_admin, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname)')
       .eq('flight_department_id', deptId);
     if(error) throw error;
     rosterCache = (data || [])
@@ -4939,6 +4982,11 @@ async function loadRoster(){
         // The four-character identifier the flight department CHOSE. Not
         // derived - see migration 5. Everything crew-facing displays this.
         abbrev: m.users.crew_abbrev || '',
+        // Legal names are the RECONCILIATION KEY: they are the only value that
+        // appears both on an incoming trip document and on a user record. The
+        // roster is where they get filled in.
+        given: m.users.legal_given_name || '',
+        surname: m.users.legal_surname || '',
         membershipRole: m.membership_role || 'member',
         isAdmin: !!m.is_admin
       }))
@@ -5004,11 +5052,30 @@ function refreshCrewPickerOptions(){
   });
 }
 
+// Is the person looking at this screen an admin of this department? Derived
+// from the roster we already loaded rather than a second query -- memberships
+// carries is_admin and the current user is necessarily one of the rows.
+// Returns false while the roster is still loading, which is the safe default:
+// the edit controls simply are not drawn yet.
+function rosterViewerIsAdmin(){
+  if(!rosterCache || !currentUserProfile) return false;
+  const me = rosterCache.find(x => x.id === currentUserProfile.id);
+  return !!(me && me.isAdmin);
+}
+
+// Exactly four characters, A-Z and 0-9, upper case. Mirrors the database
+// constraint users_crew_abbrev_format so the client's check and the server's
+// check cannot drift apart.
+function normalizeAbbrev(s){
+  return String(s || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
 function rosterRowHTML(p){
-  // JOB TITLES ARE READ-ONLY HERE, BY DECISION. public.users has no update
-  // policy and is not getting one -- that absence is load-bearing security from
-  // Stage 1, not an oversight. A dropdown that silently fails to save is worse
-  // than plain text, so this renders a label. Titles are changed in Supabase.
+  // JOB TITLES REMAIN READ-ONLY HERE, BY DECISION. Migration 6 opened a narrow
+  // UPDATE path on public.users, but users.role is deliberately NOT in it: the
+  // crew pickers filter on that value, so changing a title silently removes
+  // someone from every slot they belong in. Titles are still changed in
+  // Supabase, on purpose.
   const t = JOB_TITLES.includes(p.title) ? p.title : '';
   const titleLabel = t ? JOB_TITLE_LABELS[t] : 'Not set';
   // Fall back to the email when no display name is set: an account with a blank
@@ -5018,15 +5085,232 @@ function rosterRowHTML(p){
   if(p.name && p.email) sub.push(escapeHtml(p.email));
   if(p.isAdmin) sub.push('Admin');
   if(p.membershipRole === 'contractor') sub.push('Contractor');
+  const abb = (p.abbrev || '').toUpperCase();
   return '' +
     '<div class="set-row" data-person-id="' + escapeHtml(p.id) + '">' +
       '<div class="set-row-main">' +
         '<div class="set-person">' + escapeHtml(primary) + '</div>' +
         (sub.length ? '<div class="set-row-sub">' + sub.join(' \u00b7 ') + '</div>' : '') +
       '</div>' +
+      '<div class="set-abbrev' + (abb ? '' : ' is-unset') + '">' +
+        (abb ? escapeHtml(abb) : 'No abbreviation') + '</div>' +
       '<div class="set-jobtitle' + (t ? '' : ' is-unset') + '">' + escapeHtml(titleLabel) + '</div>' +
+      (rosterViewerIsAdmin()
+        ? '<div class="set-row-actions">' +
+            '<button type="button" class="set-mini-btn" data-person-edit="' + escapeHtml(p.id) + '">Edit</button>' +
+          '</div>'
+        : '') +
     '</div>';
 }
+
+/* ---- Person edit sheet ------------------------------------------------
+   Admin-only editing of the four columns migration 6 made writable:
+   display_name, legal_given_name, legal_surname, crew_abbrev. Everything
+   else on the row is shown as plain text.
+
+   WHY LEGAL NAMES MATTER HERE: three layers of this app speak different
+   names for the same person. A trip document prints "Mattison, Terrence K";
+   the roster holds "Kyle"; the UI shows "KMAT". The legal name is the only
+   value present in BOTH a document and a user record, so it is the join key
+   for reconciling extracted crew against real accounts. A null legal given
+   name is a person the extractor cannot match.
+
+   THE ABBREVIATION IS A LABEL, NOT IDENTITY -- unlike a tail number. Legs
+   store the user id, so renaming an abbreviation renames the display on every
+   leg without fragmenting the record. The trade accepted deliberately: an
+   archived trip shows today's abbreviation, not the one in use at the time.
+   For an exact historical match, the legal name is the durable value.
+------------------------------------------------------------------------- */
+let personEditState = null;   // { id, saving } or null
+
+function personEditPerson(){
+  if(!personEditState) return null;
+  return (rosterCache || []).find(x => x.id === personEditState.id) || null;
+}
+
+function personEditBodyHTML(p){
+  const t = JOB_TITLES.includes(p.title) ? p.title : '';
+  const titleLabel = t ? JOB_TITLE_LABELS[t] : 'Not set';
+  return '' +
+    '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Display name</div>' +
+      '<input id="peName" type="text" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="60" ' +
+        'placeholder="Kyle" value="' + escapeHtml(p.name || '') + '" />' +
+      '<div class="sheet-note">What crew see in lists and comments.</div>' +
+    '</div>' +
+    '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Crew abbreviation</div>' +
+      '<input id="peAbbrev" class="is-abbrev" type="text" autocomplete="off" autocorrect="off" spellcheck="false" ' +
+        'autocapitalize="characters" maxlength="4" placeholder="KMAT" value="' + escapeHtml((p.abbrev || '').toUpperCase()) + '" />' +
+      '<div class="sheet-note">Exactly four letters or numbers, unique in this department. ' +
+        'Chosen by the flight department \u2014 it is not derived from the name.</div>' +
+    '</div>' +
+    '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Legal given name</div>' +
+      '<input id="peGiven" type="text" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="60" ' +
+        'placeholder="Terrence" value="' + escapeHtml(p.given || '') + '" />' +
+    '</div>' +
+    '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Legal surname</div>' +
+      '<input id="peSurname" type="text" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="60" ' +
+        'placeholder="Mattison" value="' + escapeHtml(p.surname || '') + '" />' +
+      '<div class="sheet-note">As printed on trip documents. This is how extracted crew are matched to accounts.</div>' +
+    '</div>' +
+    '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Job title</div>' +
+      '<div class="sheet-readonly">' + escapeHtml(titleLabel) + '</div>' +
+      '<div class="sheet-note">Read-only. Titles decide who appears in each crew slot, so they are changed in Supabase.</div>' +
+    '</div>' +
+    '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Email</div>' +
+      '<div class="sheet-readonly">' + escapeHtml(p.email || '\u2014') + '</div>' +
+    '</div>' +
+    '<div class="sheet-err" id="peErr" hidden></div>';
+}
+
+function setPersonEditError(msg){
+  const el = document.getElementById('peErr');
+  if(!el) return;
+  if(!msg){ el.hidden = true; el.textContent = ''; return; }
+  el.hidden = false;
+  el.textContent = msg;
+}
+
+function openPersonEditSheet(id){
+  if(!rosterViewerIsAdmin()) return;
+  const p = (rosterCache || []).find(x => x.id === id);
+  if(!p) return;
+  personEditState = { id: id, saving: false };
+  const title = document.getElementById('personEditTitle');
+  const sub = document.getElementById('personEditSub');
+  const body = document.getElementById('personEditBody');
+  if(title) title.textContent = p.name || p.email || 'Edit person';
+  if(sub) sub.textContent = 'Department roster';
+  if(body) body.innerHTML = personEditBodyHTML(p);
+  const save = document.getElementById('personEditSaveBtn');
+  if(save){ save.disabled = false; save.textContent = 'Save'; }
+  const bd = document.getElementById('personEditBackdrop');
+  const sh = document.getElementById('personEditSheet');
+  if(bd) bd.classList.add('open');
+  if(sh){ sh.classList.add('open'); sh.setAttribute('aria-hidden', 'false'); }
+}
+
+function closePersonEditSheet(){
+  personEditState = null;
+  const bd = document.getElementById('personEditBackdrop');
+  const sh = document.getElementById('personEditSheet');
+  if(bd) bd.classList.remove('open');
+  if(sh){ sh.classList.remove('open'); sh.setAttribute('aria-hidden', 'true'); }
+}
+
+async function savePersonEdit(){
+  if(!personEditState || personEditState.saving) return;
+  const p = personEditPerson();
+  if(!p){ closePersonEditSheet(); return; }
+
+  const nameEl = document.getElementById('peName');
+  const abbEl = document.getElementById('peAbbrev');
+  const givEl = document.getElementById('peGiven');
+  const surEl = document.getElementById('peSurname');
+  if(!nameEl || !abbEl || !givEl || !surEl) return;
+
+  const name = String(nameEl.value || '').trim();
+  const abbrev = normalizeAbbrev(abbEl.value);
+  const given = String(givEl.value || '').trim();
+  const surname = String(surEl.value || '').trim();
+
+  // Blank is allowed: crew_abbrev is deliberately NOT NULL-free for now,
+  // because the invite flow that would enforce it does not exist yet. But a
+  // PARTIAL abbreviation is always a mistake, so three characters is refused
+  // rather than saved.
+  if(abbrev && abbrev.length !== 4){
+    setPersonEditError('Crew abbreviation must be exactly four letters or numbers.');
+    abbEl.focus();
+    return;
+  }
+  if(abbrev){
+    const clash = (rosterCache || []).find(x => x.id !== p.id && (x.abbrev || '').toUpperCase() === abbrev);
+    if(clash){
+      setPersonEditError(abbrev + ' is already used by ' + (clash.name || clash.email || 'someone else') + '.');
+      abbEl.focus();
+      return;
+    }
+  }
+
+  setPersonEditError('');
+  personEditState.saving = true;
+  const saveBtn = document.getElementById('personEditSaveBtn');
+  if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Saving\u2026'; }
+
+  try {
+    // .select() is LOAD-BEARING, not decoration. An UPDATE that the row-level
+    // policy refuses does not error -- it matches zero rows and returns success
+    // with an empty array. Without reading the result back, a write that RLS
+    // blocked would report "Saved." and the person would believe it took.
+    const { data, error } = await sb.from('users')
+      .update({
+        display_name: name || null,
+        crew_abbrev: abbrev || null,
+        legal_given_name: given || null,
+        legal_surname: surname || null
+      })
+      .eq('id', p.id)
+      .select('id');
+
+    if(error){
+      // 23505 = unique violation. The department-scoped unique index on
+      // crew_abbrev is the real guard; the check above is only a courtesy so
+      // the common case never reaches the database.
+      if(String(error.code) === '23505'){
+        setPersonEditError(abbrev + ' is already used by someone in this department.');
+      } else if(String(error.code) === '23514'){
+        setPersonEditError('Crew abbreviation must be exactly four letters or numbers.');
+      } else {
+        setPersonEditError('Could not save. ' + (error.message || 'Please try again.'));
+      }
+      return;
+    }
+    if(!data || !data.length){
+      setPersonEditError('Saved nothing \u2014 you do not have permission to edit this person.');
+      return;
+    }
+  } catch(e){
+    setPersonEditError('Could not save. Please try again.');
+    return;
+  } finally {
+    if(personEditState) personEditState.saving = false;
+    if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+  }
+
+  closePersonEditSheet();
+  showToast('Saved.');
+  // Refreshes the roster AND, through loadRoster's own callback, any crew
+  // picker on screen -- a renamed abbreviation must not linger in a dropdown.
+  await loadRoster();
+}
+
+// Chrome is wired ONCE at load; the body is re-rendered on every open. Same
+// pattern as the trip quick sheet.
+(function wirePersonEditSheet(){
+  const bd = document.getElementById('personEditBackdrop');
+  const closeBtn = document.getElementById('personEditCloseBtn');
+  const cancelBtn = document.getElementById('personEditCancelBtn');
+  const saveBtn = document.getElementById('personEditSaveBtn');
+  if(bd) bd.addEventListener('click', closePersonEditSheet);
+  if(closeBtn) closeBtn.addEventListener('click', closePersonEditSheet);
+  if(cancelBtn) cancelBtn.addEventListener('click', closePersonEditSheet);
+  if(saveBtn) saveBtn.addEventListener('click', savePersonEdit);
+  const body = document.getElementById('personEditBody');
+  if(body){
+    body.addEventListener('keydown', function(e){
+      if(e.key === 'Enter'){ e.preventDefault(); savePersonEdit(); }
+    });
+    // Clearing the error the moment they start fixing it: leaving a stale
+    // complaint on screen while the field already reads correctly is its own
+    // small lie.
+    body.addEventListener('input', function(){ setPersonEditError(''); });
+  }
+})();
 
 // Tails are stored and compared upper-case. The database has a case-insensitive
 // unique index, so normalising here keeps the client's duplicate check honest
