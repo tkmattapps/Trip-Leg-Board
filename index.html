@@ -1334,7 +1334,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T19:00:21Z';
+const BUILD_VERSION = '2026-08-18T19:04:40Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4353,8 +4353,14 @@ function tripCardHTML(trip){
   const statusCounts = {};
   legs.forEach(l => { statusCounts[l.status] = (statusCounts[l.status] || 0) + 1; });
   const statusSummary = Object.keys(statusCounts).map(s => statusCounts[s] + ' ' + statusLabel(s).toLowerCase()).join(', ');
+  // *** STATUS ONLY -- DELIBERATELY NOT A JUMP TARGET. ***
+  // These used to open the leg checklist directly. Removed because on a phone
+  // they are a small target sitting inside a much larger one: reaching for the
+  // trip tile would land on a dot and drop you into a leg you never asked for.
+  // The flow is now always trips -> trip -> leg. Note the bottom-bar navigator
+  // still uses .leg-status-dot-clickable, where jumping IS the point.
   const legStatusDots = legs.map(l =>
-    '<span class="leg-status-dot leg-status-' + escapeHtml(l.status) + ' leg-status-dot-clickable" data-leg-id="' + escapeHtml(l.id) + '">' + escapeHtml(l.legNumber || '?') + '</span>'
+    '<span class="leg-status-dot leg-status-' + escapeHtml(l.status) + '">' + escapeHtml(l.legNumber || '?') + '</span>'
   ).join('');
   return '<div class="dash-card" data-trip-key="' + escapeHtml(trip.key) + '">' +
     '<div class="dash-card-top">' +
@@ -4384,7 +4390,10 @@ function wireCardClicks(originView){
       openTripQuickSheet(btn.dataset.tripKey, btn.dataset.quick);
     });
   });
-  document.querySelectorAll('.leg-status-dot-clickable').forEach(dot => {
+  // Scoped to leg tiles only. Trip-tile dots are status indicators and carry
+  // no data-leg-id at all now; the selector is narrowed so a future dot cannot
+  // silently inherit jump-to behaviour again.
+  document.querySelectorAll('.dash-card[data-id] .leg-status-dot-clickable[data-leg-id]').forEach(dot => {
     dot.addEventListener('click', (e) => {
       e.stopPropagation();
       openLegEditor(dot.dataset.legId);
