@@ -307,6 +307,23 @@
   .status-select.status-flown{ background:#12233d; border-color:#4A9DE0; color:#4A9DE0; }
 
   .section{ margin-bottom:26px; }
+  /* ---- INFO BAND (the dissolved Overview) ---- */
+  /* Trip identity, not a check. It gets NO section title, so without a container
+     of its own the fields would float unanchored on the page background - worse
+     than either keeping the old title or stripping everything. So it gets a
+     deliberately QUIETER card than .subpanel: flatter background, no accent, a
+     dashed hairline that reads as "reference", never as "awaiting sign-off".
+     Amber is reserved for things a human still has to answer; nothing in here
+     may borrow it. */
+  .info-band{
+    background:rgba(29,51,80,0.35);
+    border:1px dashed var(--hairline);
+    border-radius:6px;
+    padding:14px 16px 16px;
+    margin-bottom:26px;
+  }
+  /* Labels sit quieter still - this band is read at a glance, not filled in. */
+  .info-band .field label{ font-size:10px; letter-spacing:0.4px; text-transform:uppercase; color:var(--fog-500); }
   .section-title{
     font-family:system-ui,'Inter',sans-serif; font-size:12px; letter-spacing:1.5px; text-transform:uppercase;
     font-weight:600; color:var(--amber-500); margin-bottom:12px; display:flex; align-items:center; gap:10px;
@@ -1091,7 +1108,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T05:22:21Z';
+const BUILD_VERSION = '2026-08-18T15:02:36Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2932,7 +2949,9 @@ function sectionTouchLine(leg, key){
 // The button label IS the challenge: it shows the section's own name until
 // someone answers it with 'Checked'. These are the canonical names.
 const SECTION_LABELS = {
-  overview:'Overview', departure:'Departure', arrival:'Arrival', performance:'Performance',
+  // No 'overview' key: it is an information band with no verify button, so
+  // nothing can ever look it up here.
+  departure:'Departure', arrival:'Arrival', performance:'Performance',
   enroute:'Enroute', permits:'Permits', dispatch:'Dispatch',
   pax:'Pax', crew:'Crew', nextLeg:'Next pax leg'
 };
@@ -4948,7 +4967,7 @@ function renderTripDetailView(){
 }
 
 function currentLegAllSectionsComplete(){
-  const SECTION_KEYS = ['overview','departure','arrival','performance','enroute','permits','dispatch','pax','crew','nextLeg'];
+  const SECTION_KEYS = ['departure','arrival','performance','enroute','permits','dispatch','pax','crew','nextLeg']; // 'overview' removed - info band, not verified
   const lg = (typeof state !== 'undefined' && state.legs) ? state.legs.find(l => l.id === state.activeId) : null;
   if(!lg || !lg.sectionComplete) return false;
   return SECTION_KEYS.every(k => !!lg.sectionComplete[k]);
@@ -5242,9 +5261,18 @@ function renderMain(){
     backLabel = 'Flown Trips';
   }
 
+  // Leg number moved into the header subtext when Overview stopped being a
+  // section. Kyle's re-orientation test: come back to this screen cold and you
+  // must know WHERE YOU ARE in about three seconds. The header is also the part
+  // that survives scrolling down into the far sections.
+  const _legNo = (leg.legNumber || '').trim();
+  const _cityPair = (leg.cityPair || '').trim();
+  const _headerSub = _legNo
+    ? ('Leg ' + _legNo + (_cityPair ? ': ' + _cityPair : ''))
+    : _cityPair;
   setPageHeader({
     title:'Leg Checklist',
-    sub: (leg.cityPair || '').trim(),
+    sub: _headerSub,
     actionsHTML: '<button type="button" class="verify-progress" id="verifyProgress"></button>',
     backLabel: backLabel,
     backTo: (state.previousView === 'tripDetail' && state.previousTripKey) ? 'tripDetail' : (state.previousView === 'history' ? 'history' : 'dashboard')
@@ -5288,8 +5316,16 @@ function renderMain(){
   if(_barDocEl) _barDocEl.innerHTML = legBarDocHTML;
 
   main.innerHTML =
-    '<div class="section">' +
-      '' + sectionTitleHTML('Overview', 'overview', leg) + '' +
+    // OVERVIEW IS NOT A SECTION. It carries trip IDENTITY - trip number, leg,
+    // city pair, tail, crew - none of which is a CHECK. The test for anything in
+    // the leg checklist is: could it be wrong, and must a human confirm it? This
+    // is context, so it is furniture, and furniture does not get verified.
+    // Deliberately NO sectionTitleHTML: no title, no verify button, no ring,
+    // nothing that trains the eye to expect a tick. Each VALUE carries its own
+    // label instead, which is what distinguishes this from a section.
+    // Still fully EDITABLE - information-only means unverified, not read-only.
+    // Tail and crew genuinely change and there is nowhere else to set them.
+    '<div class="section info-band">' +
       '<div class="grid">' +
         field('Trip number', 'tripNumber', leg.tripNumber, {placeholder:'4521'}) +
         field('Leg', 'legNumber', leg.legNumber, {placeholder:'1'}) +
@@ -5476,7 +5512,11 @@ function renderMain(){
   }
   applyStatusColor();
 
-  const ALL_SECTION_KEYS = ['overview','departure','arrival','performance','enroute','permits','dispatch','pax','crew','nextLeg'];
+  // 'overview' REMOVED: it is an information band now, not a verifiable section.
+  // READY therefore gates on NINE human verifications, not ten. Any stored
+  // sectionVerified['overview'] is an abandoned orphan key and harmless - safe
+  // only because no live trips existed when this changed.
+  const ALL_SECTION_KEYS = ['departure','arrival','performance','enroute','permits','dispatch','pax','crew','nextLeg'];
   function checkAllSectionsComplete(){
     // READY is gated on human VERIFICATION, not auto-ticked completeness:
     // a machine filling boxes must never be able to declare a leg ready.
