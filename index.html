@@ -118,6 +118,12 @@
   .set-abbrev{ font-family:system-ui,'Inter',sans-serif; font-size:13px; font-weight:600; letter-spacing:0.10em; color:var(--paper-050); flex:0 0 auto; white-space:nowrap; }
   .set-abbrev.is-unset{ color:var(--amber-500); font-weight:500; letter-spacing:0; font-style:italic; }
   .set-account{ align-items:flex-end; }
+  .pw-reveal{ padding:4px 2px 2px; }
+  .pw-value{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:22px; letter-spacing:1px; color:var(--paper-050); background:var(--panel-800); border:1px solid var(--hairline,#24384f); border-radius:10px; padding:14px 16px; text-align:center; user-select:all; -webkit-user-select:all; word-break:break-all; }
+  .pw-actions{ display:flex; gap:8px; margin-top:10px; }
+  .pw-actions .set-btn{ flex:1 1 auto; }
+  .pw-warn{ margin-top:12px; font-family:system-ui,'Inter',sans-serif; font-size:13px; line-height:1.5; color:var(--amber-500); }
+  .pw-who{ font-family:system-ui,'Inter',sans-serif; font-size:13px; color:var(--fog-300); margin-bottom:10px; }
   .set-slot-label{ font-family:system-ui,'Inter',sans-serif; font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:var(--fog-500); margin-bottom:6px; }
   /* 16px, not 14px: iOS zooms the viewport on focus for anything smaller. */
   .set-account input{ width:100%; font:inherit; font-size:16px; padding:9px 11px; border-radius:8px; background:var(--panel-800); border:1px solid var(--hairline,#24384f); color:var(--paper-050); -webkit-appearance:none; appearance:none; }
@@ -1393,7 +1399,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T20:42:35Z';
+const BUILD_VERSION = '2026-08-18T21:48:41Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4931,14 +4937,17 @@ function renderSettingsView(){
       '</div>' +
     '</div>' +
     '<div class="set-section">' +
-      '<div class="set-section-head"><div class="set-section-title">People</div></div>' +
+      '<div class="set-section-head"><div class="set-section-title">People</div>' +
+        (rosterViewerIsAdmin()
+          ? '<button type="button" class="set-btn" id="personAddBtn">Add person</button>'
+          : '') +
+      '</div>' +
       '<p class="set-section-note">Job titles decide who appears in each crew slot. ' +
         'Pilots fill PIC, SIC and ACM; flight attendants fill FA. Titles are set in Supabase.' +
         (rosterViewerIsAdmin()
-          ? ' As an admin you can edit names and crew abbreviations here.'
+          ? ' As an admin you can add people, edit names and crew abbreviations, and reset passwords here.'
           : '') + '</p>' +
       rosterHTML +
-      '<p class="set-section-note">New accounts are still created in Supabase for now.</p>' +
     '</div>';
 
   const acctName = document.getElementById('acctName');
@@ -4978,6 +4987,13 @@ function renderSettingsView(){
   // Only rendered for admins, but the handler re-checks anyway: a rule attached
   // to a control is not a rule. openPersonEditSheet guards, savePersonEdit
   // relies on the RLS policy, and the database column grant is the last word.
+  const addPersonBtn = document.getElementById('personAddBtn');
+  if(addPersonBtn) addPersonBtn.addEventListener('click', openPersonCreateSheet);
+
+  main.querySelectorAll('[data-person-reset]').forEach(btn => {
+    btn.addEventListener('click', function(){ resetPersonPassword(btn.getAttribute('data-person-reset')); });
+  });
+
   main.querySelectorAll('[data-person-edit]').forEach(btn => {
     btn.addEventListener('click', function(){ openPersonEditSheet(btn.getAttribute('data-person-edit')); });
   });
@@ -5244,9 +5260,248 @@ function rosterRowHTML(p){
       (rosterViewerIsAdmin()
         ? '<div class="set-row-actions">' +
             '<button type="button" class="set-mini-btn" data-person-edit="' + escapeHtml(p.id) + '">Edit</button>' +
+            '<button type="button" class="set-mini-btn" data-person-reset="' + escapeHtml(p.id) + '">Reset password</button>' +
           '</div>'
         : '') +
     '</div>';
+}
+
+/* ---- Creating accounts and resetting passwords -------------------------
+   These are the only two operations in Beacon that cannot be done from the
+   browser at all. Creating an Auth account needs the SERVICE ROLE KEY, which
+   bypasses RLS entirely and can therefore never ship in this file. Both go
+   through the manage-department-user edge function, which verifies the caller
+   is an admin of the named department before doing anything.
+
+   *** THE PASSWORD IS SHOWN ONCE AND IS THEN UNRECOVERABLE. ***
+   Supabase stores only a hash, so nobody -- not the admin, not the service
+   role key -- can read it back. That is the property we want. The answer to a
+   lost password is RESET, never a list of passwords kept by an admin. A
+   spreadsheet of colleagues' live passwords would be the single worst
+   artifact this app could produce.
+------------------------------------------------------------------------- */
+const MANAGE_USER_FN = 'manage-department-user';
+
+// functions.invoke wraps ANY non-2xx in a generic FunctionsHttpError and
+// THROWS AWAY THE RESPONSE BODY. The real message -- which check refused, and
+// why -- is only reachable through error.context. Without this the UI can only
+// ever say "something went wrong", which is the same failure as reading a 403
+// off the network tab instead of error.code.
+async function invokeManageUser(payload){
+  try {
+    const { data, error } = await sb.functions.invoke(MANAGE_USER_FN, { body: payload });
+    if(error){
+      let msg = '';
+      try {
+        const raw = await error.context.text();
+        const parsed = JSON.parse(raw);
+        msg = parsed && parsed.error ? parsed.error : raw;
+      } catch(e){ msg = ''; }
+      return { ok: false, message: msg || 'Could not reach the server. Please try again.' };
+    }
+    if(!data || data.ok !== true){
+      return { ok: false, message: (data && data.error) || 'Unexpected response.' };
+    }
+    return { ok: true, data: data };
+  } catch(e){
+    return { ok: false, message: 'Could not reach the server. Please try again.' };
+  }
+}
+
+function personCreateBodyHTML(){
+  const opts = JOB_TITLES.map(t =>
+    '<option value="' + escapeHtml(t) + '">' + escapeHtml(JOB_TITLE_LABELS[t]) + '</option>'
+  ).join('');
+  return '' +
+    '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Email</div>' +
+      '<input id="pcEmail" type="email" autocomplete="off" autocorrect="off" spellcheck="false" ' +
+        'autocapitalize="none" maxlength="160" placeholder="name@bbflightops.com" />' +
+      '<div class="sheet-note">This is how they sign in. It cannot be changed here afterwards.</div>' +
+    '</div>' +
+    '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Display name</div>' +
+      '<input id="pcName" type="text" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="60" placeholder="Kyle" />' +
+      '<div class="sheet-note">What crew see in lists and comments. They can change this themselves.</div>' +
+    '</div>' +
+    '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Job title</div>' +
+      '<select id="pcRole">' + opts + '</select>' +
+      '<div class="sheet-note">Decides which crew slots they appear in. Changed in Supabase afterwards, not here.</div>' +
+    '</div>' +
+    '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Crew abbreviation</div>' +
+      '<input id="pcAbbrev" class="is-abbrev" type="text" autocomplete="off" autocorrect="off" spellcheck="false" ' +
+        'autocapitalize="characters" maxlength="4" placeholder="KMAT" />' +
+      '<div class="sheet-note">Exactly four letters or numbers, unique in this department. ' +
+        'Required \u2014 chosen by the flight department, not derived from the name.</div>' +
+    '</div>' +
+    '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Legal given name</div>' +
+      '<input id="pcGiven" type="text" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="60" placeholder="Terrence" />' +
+    '</div>' +
+    '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Legal surname</div>' +
+      '<input id="pcSurname" type="text" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="60" placeholder="Mattison" />' +
+      '<div class="sheet-note">As printed on trip documents. Both legal names are required: they are the key ' +
+        'that matches extracted crew to real accounts, and a missing one fails silently.</div>' +
+    '</div>' +
+    '<div class="sheet-err" id="peErr" hidden></div>';
+}
+
+// Shown after a create or a reset. Replaces the form entirely -- there is
+// nothing left to edit at that point, and leaving the form visible invites a
+// second submission.
+function passwordRevealHTML(who, password, isNew){
+  return '' +
+    '<div class="pw-reveal">' +
+      '<div class="pw-who">' + (isNew ? 'Account created for ' : 'New password for ') + escapeHtml(who) + '</div>' +
+      '<div class="pw-value" id="pwValue">' + escapeHtml(password) + '</div>' +
+      '<div class="pw-actions">' +
+        '<button type="button" class="set-btn" id="pwCopyBtn">Copy</button>' +
+      '</div>' +
+      '<div class="pw-warn">Write this down or send it now. It is shown once and cannot be ' +
+        'recovered \u2014 not by you, not by anyone. If it is lost, reset it again.</div>' +
+    '</div>';
+}
+
+function showPasswordReveal(who, password, isNew){
+  const title = document.getElementById('personEditTitle');
+  const sub = document.getElementById('personEditSub');
+  const body = document.getElementById('personEditBody');
+  const save = document.getElementById('personEditSaveBtn');
+  const cancel = document.getElementById('personEditCancelBtn');
+  if(title) title.textContent = isNew ? 'Account created' : 'Password reset';
+  if(sub) sub.textContent = 'Shown once';
+  if(body) body.innerHTML = passwordRevealHTML(who, password, isNew);
+  if(save){ save.hidden = true; }
+  if(cancel){ cancel.textContent = 'Done'; }
+  personEditState = { mode: 'password', saving: false };
+  const copy = document.getElementById('pwCopyBtn');
+  if(copy){
+    copy.addEventListener('click', async function(){
+      try {
+        await navigator.clipboard.writeText(password);
+        copy.textContent = 'Copied';
+        setTimeout(function(){ if(copy) copy.textContent = 'Copy'; }, 1600);
+      } catch(e){
+        // Clipboard is blocked in some contexts. The value is selectable, so
+        // this is a convenience failing, not the operation failing.
+        copy.textContent = 'Select it above';
+      }
+    });
+  }
+}
+
+function openPersonCreateSheet(){
+  if(!rosterViewerIsAdmin()) return;
+  personEditState = { mode: 'create', saving: false };
+  const title = document.getElementById('personEditTitle');
+  const sub = document.getElementById('personEditSub');
+  const body = document.getElementById('personEditBody');
+  const save = document.getElementById('personEditSaveBtn');
+  const cancel = document.getElementById('personEditCancelBtn');
+  if(title) title.textContent = 'Add person';
+  if(sub) sub.textContent = 'New account in this department';
+  if(body) body.innerHTML = personCreateBodyHTML();
+  if(save){ save.hidden = false; save.disabled = false; save.textContent = 'Create account'; }
+  if(cancel) cancel.textContent = 'Cancel';
+  const bd = document.getElementById('personEditBackdrop');
+  const sh = document.getElementById('personEditSheet');
+  if(bd) bd.classList.add('open');
+  if(sh){ sh.classList.add('open'); sh.setAttribute('aria-hidden', 'false'); }
+}
+
+async function createPerson(){
+  if(!personEditState || personEditState.saving) return;
+  const email = String((document.getElementById('pcEmail') || {}).value || '').trim().toLowerCase();
+  const name = String((document.getElementById('pcName') || {}).value || '').trim();
+  const role = String((document.getElementById('pcRole') || {}).value || '');
+  const abbrev = normalizeAbbrev((document.getElementById('pcAbbrev') || {}).value);
+  const given = String((document.getElementById('pcGiven') || {}).value || '').trim();
+  const surname = String((document.getElementById('pcSurname') || {}).value || '').trim();
+
+  // Client-side checks are a courtesy so the common mistakes never cost a
+  // round trip. The edge function repeats every one of them -- it has to,
+  // because a browser check is not a rule.
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ setPersonEditError('Enter a valid email address.'); return; }
+  if(!name){ setPersonEditError('Enter a display name.'); return; }
+  if(!JOB_TITLES.includes(role)){ setPersonEditError('Choose a job title.'); return; }
+  if(abbrev.length !== 4){ setPersonEditError('Crew abbreviation must be exactly four letters or numbers.'); return; }
+  const clash = (rosterCache || []).find(x => (x.abbrev || '').toUpperCase() === abbrev);
+  if(clash){
+    setPersonEditError(abbrev + ' is already used by ' + (clash.name || clash.email || 'someone else') + '.');
+    return;
+  }
+  if(!given || !surname){ setPersonEditError('Both legal names are required.'); return; }
+
+  setPersonEditError('');
+  personEditState.saving = true;
+  const save = document.getElementById('personEditSaveBtn');
+  if(save){ save.disabled = true; save.textContent = 'Creating\u2026'; }
+
+  const res = await invokeManageUser({
+    action: 'create',
+    flight_department_id: getFlightDepartmentId(),
+    email: email,
+    display_name: name,
+    role: role,
+    crew_abbrev: abbrev,
+    legal_given_name: given,
+    legal_surname: surname
+  });
+
+  personEditState.saving = false;
+  if(!res.ok){
+    setPersonEditError(res.message);
+    if(save){ save.disabled = false; save.textContent = 'Create account'; }
+    return;
+  }
+  await loadRoster();
+  showPasswordReveal(name, res.data.password, true);
+}
+
+async function resetPersonPassword(id){
+  if(!rosterViewerIsAdmin()) return;
+  const p = (rosterCache || []).find(x => x.id === id);
+  if(!p) return;
+  const who = p.name || p.email || 'this person';
+  const go = await showConfirm(
+    'Generate a new password for ' + who + '? Their current password stops working immediately, ' +
+    'and the new one is shown once.',
+    { title: 'Reset password', okLabel: 'Reset password', cancelLabel: 'Cancel' }
+  );
+  if(!go) return;
+
+  // Open the sheet in a neutral state so there is something on screen while
+  // the round trip happens.
+  personEditState = { mode: 'password', saving: true };
+  const title = document.getElementById('personEditTitle');
+  const sub = document.getElementById('personEditSub');
+  const body = document.getElementById('personEditBody');
+  const save = document.getElementById('personEditSaveBtn');
+  const cancel = document.getElementById('personEditCancelBtn');
+  if(title) title.textContent = 'Resetting\u2026';
+  if(sub) sub.textContent = who;
+  if(body) body.innerHTML = '<div class="set-empty">Generating a new password\u2026</div>';
+  if(save) save.hidden = true;
+  if(cancel) cancel.textContent = 'Cancel';
+  const bd = document.getElementById('personEditBackdrop');
+  const sh = document.getElementById('personEditSheet');
+  if(bd) bd.classList.add('open');
+  if(sh){ sh.classList.add('open'); sh.setAttribute('aria-hidden', 'false'); }
+
+  const res = await invokeManageUser({
+    action: 'reset_password',
+    flight_department_id: getFlightDepartmentId(),
+    user_id: id
+  });
+  if(!res.ok){
+    if(title) title.textContent = 'Could not reset';
+    if(body) body.innerHTML = '<div class="sheet-err">' + escapeHtml(res.message) + '</div>';
+    return;
+  }
+  showPasswordReveal(who, res.data.password, false);
 }
 
 /* ---- Person edit sheet ------------------------------------------------
@@ -5326,7 +5581,7 @@ function openPersonEditSheet(id){
   if(!rosterViewerIsAdmin()) return;
   const p = (rosterCache || []).find(x => x.id === id);
   if(!p) return;
-  personEditState = { id: id, saving: false };
+  personEditState = { id: id, saving: false, mode: 'edit' };
   const title = document.getElementById('personEditTitle');
   const sub = document.getElementById('personEditSub');
   const body = document.getElementById('personEditBody');
@@ -5334,7 +5589,13 @@ function openPersonEditSheet(id){
   if(sub) sub.textContent = 'Department roster';
   if(body) body.innerHTML = personEditBodyHTML(p);
   const save = document.getElementById('personEditSaveBtn');
-  if(save){ save.disabled = false; save.textContent = 'Save'; }
+  // The sheet is shared by three modes, and the password reveal HIDES Save and
+  // renames Cancel to Done. Every entry point must restore the chrome it wants
+  // rather than assume it -- otherwise the sheet inherits whatever the last
+  // mode left behind.
+  if(save){ save.hidden = false; save.disabled = false; save.textContent = 'Save'; }
+  const cancel = document.getElementById('personEditCancelBtn');
+  if(cancel) cancel.textContent = 'Cancel';
   const bd = document.getElementById('personEditBackdrop');
   const sh = document.getElementById('personEditSheet');
   if(bd) bd.classList.add('open');
@@ -5351,6 +5612,9 @@ function closePersonEditSheet(){
 
 async function savePersonEdit(){
   if(!personEditState || personEditState.saving) return;
+  // One Save button, three modes. The password reveal has nothing to save.
+  if(personEditState.mode === 'create') return createPerson();
+  if(personEditState.mode === 'password') return;
   const p = personEditPerson();
   if(!p){ closePersonEditSheet(); return; }
 
