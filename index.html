@@ -1054,7 +1054,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-17T23:52:49Z';
+const BUILD_VERSION = '2026-08-18T00:07:37Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3604,7 +3604,7 @@ async function loadRoster(){
     // a department. Joining from users would rely on the legacy
     // users.flight_department_id column, which is slated to be dropped.
     const { data, error } = await sb.from('memberships')
-      .select('user_id, membership_role, is_admin, users(id, email, name, role)')
+      .select('user_id, membership_role, is_admin, users(id, email, display_name, role)')
       .eq('flight_department_id', deptId);
     if(error) throw error;
     rosterCache = (data || [])
@@ -3612,7 +3612,7 @@ async function loadRoster(){
       .map(m => ({
         id: m.users.id,
         email: m.users.email || '',
-        name: m.users.name || '',
+        name: m.users.display_name || '',
         title: m.users.role || '',
         membershipRole: m.membership_role || 'member',
         isAdmin: !!m.is_admin
