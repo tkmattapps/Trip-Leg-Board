@@ -153,8 +153,14 @@
      NOT done with position:absolute on purpose: the header's height is measured
      by syncPageHeaderHeight() to set --page-header-h, and taking the sub out of
      flow would make that measurement short and let content slide underneath. */
-    .page-header-subrow{ max-width:1800px; margin:0 auto; padding:0 36px 10px; }
-  .page-header-sub{ text-align:center; }
+    .page-header-subrow{ max-width:1800px; margin:0 auto; padding:2px 36px 10px; }
+  /* LEFT-JUSTIFIED, tucked under the page title. Kept in white (--paper-050)
+     and kept on .page-header-subrow rather than moved back inside
+     .page-header-inner: the subrow exists because the verify-progress pill is a
+     right-hand flex item, and sharing a row with it shifts the subtext off the
+     title's left edge. It also stays IN FLOW so syncPageHeaderHeight() keeps
+     measuring it -- see the note above the subrow rule. */
+  .page-header-sub{ text-align:left; }
   .page-header-actions{ display:flex; align-items:center; gap:8px; flex:0 0 auto; margin-top:18px; }
   body:not(.authed) .page-header{ display:none; }
   body.view-home .page-header{ display:none; }
@@ -731,7 +737,8 @@
     font-family:system-ui,'Inter',sans-serif; font-size:15px; text-align:left;
   }
   .sheet-status-row.is-current{ border-color:var(--amber-500); }
-  .sheet-status-row.is-blocked{ opacity:0.4; cursor:default; }
+  /* Muted, but still a live control -- the tap explains the rule. */
+  .sheet-status-row.is-blocked{ opacity:0.45; }
   .sheet-status-dot{ width:14px; height:14px; border-radius:50%; flex:0 0 auto; }
   .sheet-status-cur{ margin-left:auto; font-size:11px; color:var(--fog-500); letter-spacing:0.4px; text-transform:uppercase; }
   .trip-quick-btn{
@@ -1367,7 +1374,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T19:30:36Z';
+const BUILD_VERSION = '2026-08-18T19:42:21Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3944,11 +3951,17 @@ function tripQuickBodyHTML(){
             const blocked = (st.v === 'planning' && complete) ||
                             (st.v === 'ready' && !complete) ||
                             (st.v === 'flown' && !complete && leg && leg.status !== 'flown');
+            // *** BLOCKED ROWS STAY TAPPABLE ON PURPOSE. ***
+            // Previously these were `disabled`, so the only explanation was a
+            // note at the bottom of the sheet -- a dead grey row with no reply
+            // reads as broken software rather than as a rule. The tap now lands
+            // and says WHY, and points at the checklist, which is the only
+            // place the situation can actually be resolved.
             return '<button type="button" class="sheet-status-row' +
               (st.v === cur ? ' is-current' : '') +
-              (blocked ? ' is-blocked"' : '"') +
-              (blocked ? ' disabled' : '') +
-              ' data-tq-status="' + st.v + '">' +
+              (blocked ? ' is-blocked' : '') + '"' +
+              ' data-tq-status="' + st.v + '"' +
+              (blocked ? ' data-tq-blocked="' + st.v + '"' : '') + '>' +
               '<span class="sheet-status-dot" style="background:' + st.color + ';"></span>' +
               '<span>' + st.label + '</span>' +
               (st.v === cur ? '<span class="sheet-status-cur">Current</span>' : '') +
@@ -3956,8 +3969,8 @@ function tripQuickBodyHTML(){
           }).join('') +
         '</div>' +
         (complete
-          ? '<div class="sheet-note">This leg is fully complete, so it stays Ready. To move it back to Planning, uncheck the section you want to work on and the status will update automatically.</div>'
-          : '<div class="sheet-note">All sections must be verified before this leg can be set to Ready or Flown. Open the leg checklist to work through them.</div>') +
+          ? '<div class="sheet-note">Status follows verification. To move this leg back to Planning, reopen the section you need to work on.</div>'
+          : '<div class="sheet-note">Ready and Flown unlock once all nine sections are verified.</div>') +
         (tripQuickState.sel['__status__'] === 'flown' && leg && leg.status !== 'flown'
           ? '<div class="sheet-preview sheet-preview-replace">Marks this leg flown. Crew and aircraft can no longer be changed by a quick action.</div>'
           : '') +
@@ -4057,7 +4070,30 @@ function renderTripQuickBody(){
   // Status rows are buttons, not a select: one tap to choose, and the guard
   // note stays visible alongside the options.
   body.querySelectorAll('button[data-tq-status]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
+      // A gated row explains itself rather than sitting there dead, and offers
+      // the one route that can actually resolve it. Deliberately NOT automated:
+      // demoting by unchecking everything would destroy up to nine human
+      // sign-offs to fix one field, so the person chooses which section reopens.
+      const blocked = btn.dataset.tqBlocked;
+      if(blocked){
+        const legNow = tripQuickLegs()[0];
+        const msg = (blocked === 'planning')
+          ? 'This leg is fully verified, so its status follows the checklist. To move it back to Planning, reopen the one section you need to work on -- unchecking everything would throw away sign-offs that are still good.'
+          : 'All nine sections must be verified before this leg can be set to ' +
+            (blocked === 'ready' ? 'Ready' : 'Flown') + '.';
+        const go = await showConfirm(msg, {
+          title: 'Not available yet',
+          okLabel: 'Open checklist',
+          cancelLabel: 'Stay here',
+          danger: false
+        });
+        if(go && legNow){
+          closeTripQuickSheet();
+          openLegEditor(legNow.id);
+        }
+        return;
+      }
       tripQuickState.sel['__status__'] = btn.dataset.tqStatus;
       renderTripQuickBody();
       const applyBtn = document.getElementById('tripQuickApplyBtn');
