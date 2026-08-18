@@ -823,6 +823,15 @@
   .sheet-slot input.is-abbrev{ text-transform:uppercase; letter-spacing:0.14em; font-weight:600; }
   .sheet-readonly{ font-family:system-ui,'Inter',sans-serif; font-size:15px; color:var(--fog-300); padding:9px 0 2px; }
   .sheet-err{ font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--alert-600); line-height:1.5; margin-top:10px; }
+  /* Removal is separated from the editable fields by a rule, not by colour
+     alone: the fields above are routine, these two are not. */
+  .sheet-danger{ margin-top:22px; padding-top:16px; border-top:1px solid var(--hairline); }
+  .sheet-danger-head{ font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600;
+    letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); margin-bottom:10px; }
+  .sheet-danger-btn{ display:block; width:100%; font-family:system-ui,'Inter',sans-serif; font-size:15px;
+    text-align:left; background:transparent; color:var(--paper-050); border:1px solid var(--hairline);
+    border-radius:4px; padding:11px 12px; margin-top:12px; cursor:pointer; -webkit-appearance:none; appearance:none; }
+  .sheet-danger-btn:first-of-type{ margin-top:0; }
   /* The preview line. This is the whole point of the warning: a blanket write
      across a trip like 410303 would flatten a genuine crew change, so the
      numbers are shown BEFORE the write, not reported after it. */
@@ -1412,7 +1421,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T22:42:23Z';
+const BUILD_VERSION = '2026-08-18T23:52:05Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -5660,7 +5669,27 @@ function personEditBodyHTML(p){
       '<div class="sheet-slot-label">Email</div>' +
       '<div class="sheet-readonly">' + escapeHtml(p.email || '\u2014') + '</div>' +
     '</div>' +
+    (personEditCanRemove(p)
+      ? '<div class="sheet-danger">' +
+          '<div class="sheet-danger-head">Removing this person</div>' +
+          '<button type="button" class="sheet-danger-btn" data-person-remove="' + escapeHtml(p.id) + '">' +
+            'Remove from flight department</button>' +
+          '<div class="sheet-note">Keeps their login. The account is theirs, so it survives leaving ' +
+            'the department \u2014 but they will see an empty app until someone adds them again. ' +
+            'Crew already recorded on past legs is not affected.</div>' +
+          '<div class="sheet-note">Only the account holder can delete the account itself.</div>' +
+        '</div>'
+      : '') +
     '<div class="sheet-err" id="peErr" hidden></div>';
+}
+
+// You never see removal controls for your own row. The edge function enforces
+// the real rule (the LAST admin cannot go, by either route); this just avoids
+// offering a button that exists only to refuse.
+function personEditCanRemove(p){
+  if(!rosterViewerIsAdmin()) return false;
+  if(!currentUserProfile || p.id === currentUserProfile.id) return false;
+  return true;
 }
 
 function setPersonEditError(msg){
@@ -5793,6 +5822,61 @@ async function savePersonEdit(){
   await loadRoster();
 }
 
+// ---- REMOVING PEOPLE -------------------------------------------------------
+// ONE operation only, and the boundary is about OWNERSHIP:
+//
+//   The DEPARTMENT controls MEMBERSHIP  -- "Remove from flight department"
+//     deletes the membership row. The account survives and the person keeps a
+//     login they own. Correct for a colleague who leaves.
+//   The PERSON controls their ACCOUNT   -- deleting a login is not available to
+//     an admin at any tier. Crew may be paying for their own account, so an
+//     admin must never be able to destroy one. That lives on Your account.
+//
+// Refused by the edge function for the LAST admin of a department: a department
+// with nobody who can create accounts cannot recover from inside the app.
+async function removePersonFromDepartment(id){
+  if(!rosterViewerIsAdmin()) return;
+  const p = (rosterCache || []).find(x => x.id === id);
+  if(!p) return;
+  const who = p.name || p.email || 'this person';
+  const go = await showConfirm(
+    'Remove ' + who + ' from this flight department? Their login keeps working and the account stays ' +
+    'theirs, but they will see an empty app until someone adds them back. Crew already recorded on ' +
+    'past legs is not affected.',
+    { title: 'Remove from department', okLabel: 'Remove', cancelLabel: 'Cancel', danger: true }
+  );
+  if(!go) return;
+  await runPersonRemoval(id, 'remove_from_department', who + ' removed from the department.');
+}
+
+async function runPersonRemoval(id, action, successMsg){
+  const saveBtn = document.getElementById('personEditSaveBtn');
+  if(saveBtn) saveBtn.disabled = true;
+  setPersonEditError('');
+  let deptId = '';
+  try {
+    // ASYNC. Passing the Promise through is what broke account creation once
+    // already, and it serialises to "{}" rather than failing loudly.
+    deptId = await getFlightDepartmentId();
+  } catch(e){ deptId = ''; }
+  if(!deptId){
+    if(saveBtn) saveBtn.disabled = false;
+    setPersonEditError('Could not determine your flight department.');
+    return;
+  }
+  const res = await invokeManageUser({ action: action, flight_department_id: deptId, user_id: id });
+  if(saveBtn) saveBtn.disabled = false;
+  if(!res.ok){
+    setPersonEditError(res.error || 'Could not complete that.');
+    return;
+  }
+  closePersonEditSheet();
+  showToast(successMsg);
+  // The roster is the only picture of who is in the department, so it must not
+  // be allowed to show a person who is no longer there.
+  await loadRoster();
+}
+
 // Chrome is wired ONCE at load; the body is re-rendered on every open. Same
 // pattern as the trip quick sheet.
 (function wirePersonEditSheet(){
@@ -5813,6 +5897,12 @@ async function savePersonEdit(){
     // complaint on screen while the field already reads correctly is its own
     // small lie.
     body.addEventListener('input', function(){ setPersonEditError(''); });
+    // Removal lives in the sheet body, which is rebuilt on every open, so it is
+    // delegated from the container that persists.
+    body.addEventListener('click', function(e){
+      const rm = e.target.closest && e.target.closest('[data-person-remove]');
+      if(rm){ removePersonFromDepartment(rm.getAttribute('data-person-remove')); return; }
+    });
   }
 })();
 
