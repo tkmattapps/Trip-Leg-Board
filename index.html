@@ -384,14 +384,21 @@
   /* Widths sit AFTER the base rule: the cascade is decided by POSITION, and
      these must win over width:auto above. */
   .info-cell[data-w="leg-nav"] .info-cell-label{ text-align:center; }
-  .info-cell[data-w="leg-nav"] .leg-nav-strip{ display:flex; align-items:center; gap:6px; justify-content:center; }
-  .leg-nav-strip-btn{
+  /* NAME COLLISION HAZARD: the BOTTOM BAR already owns .leg-nav-strip, and its
+     mobile rule sets flex-direction:column. These classes are deliberately
+     named strip-legnav* so the two navigators never touch each other. */
+  .info-cell[data-w="leg-nav"] .strip-legnav{
+    display:flex; align-items:center; gap:6px; justify-content:center;
+    flex-wrap:nowrap; white-space:nowrap;
+  }
+  .strip-legnav-btn{
     background:none; border:none; padding:0 4px; cursor:pointer;
     color:var(--paper-050); font-size:18px; line-height:1; opacity:0.9;
+    flex:0 0 auto;
     -webkit-tap-highlight-color:transparent;
   }
-  .leg-nav-strip-btn:disabled{ opacity:0.25; cursor:default; }
-  .leg-nav-strip-count{ font-size:16px; color:var(--paper-050); font-family:inherit; white-space:nowrap; }
+  .strip-legnav-btn:disabled{ opacity:0.25; cursor:default; }
+  .strip-legnav-count{ font-size:16px; color:var(--paper-050); font-family:inherit; white-space:nowrap; flex:0 0 auto; }
   .info-cell[data-w="trip"] .info-cell-input{ width:7ch; }
   .info-cell[data-w="tail"] .info-cell-input{ width:7ch; }
   .info-cell[data-w="crew"] .info-cell-input{ width:5ch; }
@@ -406,15 +413,15 @@
        The input font stays at 16px -- any smaller and iOS zooms the viewport
        on focus, which is why the app-wide mobile override exists.
        Everything else is fair game: smaller gap, tighter label, narrower cells. */
-    .info-strip-row{ gap:10px; }
+    .info-strip-row{ gap:8px; }
     .info-cell-label{ font-size:9px; }
     .info-cell-input{ font-size:16px; }
-    .info-cell[data-w="trip"] .info-cell-input{ width:6ch; }
-    .info-cell[data-w="tail"] .info-cell-input{ width:6ch; }
-    .info-cell[data-w="crew"] .info-cell-input{ width:4ch; }
-    .leg-nav-strip-count{ font-size:14px; }
-    .leg-nav-strip-btn{ font-size:16px; padding:0 2px; }
-    .leg-nav-strip{ gap:3px; }
+    .info-cell[data-w="trip"] .info-cell-input{ width:7ch; }
+    .info-cell[data-w="tail"] .info-cell-input{ width:7ch; }
+    .info-cell[data-w="crew"] .info-cell-input{ width:5ch; }
+    .strip-legnav-count{ font-size:15px; }
+    .strip-legnav-btn{ font-size:16px; padding:0 1px; }
+    .info-cell[data-w="leg-nav"] .strip-legnav{ gap:2px; }
   }
     .section-title{
     font-family:system-ui,'Inter',sans-serif; font-size:12px; letter-spacing:1.5px; text-transform:uppercase;
@@ -1281,7 +1288,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T17:30:08Z';
+const BUILD_VERSION = '2026-08-18T17:37:08Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3393,12 +3400,12 @@ function legNavStripCellHTML(leg, stripLegs){
   const nextId = idx >= 0 && idx < total-1 ? sorted[idx+1].id : null;
   return '<div class="info-cell" data-w="leg-nav">' +
     '<div class="info-cell-label">LEG</div>' +
-    '<div class="leg-nav-strip">' +
-      '<button type="button" class="leg-nav-strip-btn" id="legNavStripPrev"' +
+    '<div class="strip-legnav">' +
+      '<button type="button" class="strip-legnav-btn" id="legNavStripPrev"' +
         (prevId ? ' data-leg-id="' + escapeHtml(prevId) + '"' : ' disabled') +
         ' aria-label="Previous leg">‹</button>' +
-      '<span class="leg-nav-strip-count">' + n + '</span>' +
-      '<button type="button" class="leg-nav-strip-btn" id="legNavStripNext"' +
+      '<span class="strip-legnav-count">' + n + '</span>' +
+      '<button type="button" class="strip-legnav-btn" id="legNavStripNext"' +
         (nextId ? ' data-leg-id="' + escapeHtml(nextId) + '"' : ' disabled') +
         ' aria-label="Next leg">›</button>' +
     '</div>' +
