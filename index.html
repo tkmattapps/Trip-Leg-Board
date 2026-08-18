@@ -113,6 +113,9 @@
   .set-tail{ font-size:15px; font-weight:600; letter-spacing:0.04em; color:var(--paper-050); }
   /* Slightly lighter than a tail number: a person's name is not an identifier. */
   .set-person{ font-family:system-ui,'Inter',sans-serif; font-size:14px; color:var(--paper-050); }
+  /* Read-only counterpart to .set-status: same right-hand slot, no affordance. */
+  .set-jobtitle{ font-family:system-ui,'Inter',sans-serif; font-size:13px; color:var(--fog-300); text-align:right; white-space:nowrap; }
+  .set-jobtitle.is-unset{ color:var(--fog-500); font-style:italic; }
   .set-row-sub{ font-size:12px; color:var(--fog-500); margin-top:2px; }
   .set-status{ -webkit-appearance:none; appearance:none; font-family:inherit; cursor:pointer; flex:0 0 auto; font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; padding:4px 9px; border-radius:999px; border:1px solid transparent; white-space:nowrap; }
   .set-status.st-home{ color:#3DBE6B; border-color:rgba(61,190,107,0.45); background:rgba(61,190,107,0.10); }
@@ -1054,7 +1057,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T00:07:37Z';
+const BUILD_VERSION = '2026-08-18T00:55:26Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3550,7 +3553,7 @@ function renderSettingsView(){
     '<div class="set-section">' +
       '<div class="set-section-head"><div class="set-section-title">People</div></div>' +
       '<p class="set-section-note">Job titles decide who appears in each crew slot. ' +
-        'Pilots fill PIC, SIC and ACM; flight attendants fill FA.</p>' +
+        'Pilots fill PIC, SIC and ACM; flight attendants fill FA. Titles are set in Supabase.</p>' +
       rosterHTML +
       '<p class="set-section-note">New accounts are still created in Supabase for now.</p>' +
     '</div>';
@@ -3569,11 +3572,6 @@ function renderSettingsView(){
   });
   main.querySelectorAll('[data-ac-toggle]').forEach(btn => {
     btn.addEventListener('click', function(){ handleToggleAircraftActive(btn.getAttribute('data-ac-toggle')); });
-  });
-  main.querySelectorAll('[data-person-title]').forEach(sel => {
-    sel.addEventListener('change', function(){
-      handlePersonTitleChange(sel.getAttribute('data-person-title'), sel.value);
-    });
   });
 }
 
@@ -3626,12 +3624,12 @@ async function loadRoster(){
 }
 
 function rosterRowHTML(p){
+  // JOB TITLES ARE READ-ONLY HERE, BY DECISION. public.users has no update
+  // policy and is not getting one -- that absence is load-bearing security from
+  // Stage 1, not an oversight. A dropdown that silently fails to save is worse
+  // than plain text, so this renders a label. Titles are changed in Supabase.
   const t = JOB_TITLES.includes(p.title) ? p.title : '';
-  const opts =
-    (t ? '' : '<option value="" selected>Not set</option>') +
-    JOB_TITLES.map(s =>
-      '<option value="' + s + '"' + (s === t ? ' selected' : '') + '>' +
-      JOB_TITLE_LABELS[s] + '</option>').join('');
+  const titleLabel = t ? JOB_TITLE_LABELS[t] : 'Not set';
   // Fall back to the email when no display name is set: an account with a blank
   // name would otherwise render as an anonymous row.
   const primary = p.name || p.email;
@@ -3645,26 +3643,8 @@ function rosterRowHTML(p){
         '<div class="set-person">' + escapeHtml(primary) + '</div>' +
         (sub.length ? '<div class="set-row-sub">' + sub.join(' \u00b7 ') + '</div>' : '') +
       '</div>' +
-      '<select class="set-status" data-person-title="' + escapeHtml(p.id) + '">' + opts + '</select>' +
+      '<div class="set-jobtitle' + (t ? '' : ' is-unset') + '">' + escapeHtml(titleLabel) + '</div>' +
     '</div>';
-}
-
-async function handlePersonTitleChange(userId, newTitle){
-  const person = (rosterCache || []).find(p => p.id === userId);
-  const prev = person ? person.title : '';
-  if(person) person.title = newTitle;
-  try {
-    const { error } = await sb.from('users').update({ role: newTitle }).eq('id', userId);
-    if(error) throw error;
-    showToast('Job title updated');
-  } catch(e){
-    // users has NO update policy by design, so this is the expected failure
-    // until one is added. Roll the local value back rather than showing a title
-    // that was never actually saved.
-    if(person) person.title = prev;
-    showToast('Could not update job title.');
-    if(state.view === 'settings') renderSettingsView();
-  }
 }
 
 // Tails are stored and compared upper-case. The database has a case-insensitive
