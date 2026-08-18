@@ -1323,7 +1323,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T18:28:27Z';
+const BUILD_VERSION = '2026-08-18T18:36:02Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3744,6 +3744,26 @@ function tripQuickAddPlanHTML(plan, label){
   return '<div class="sheet-preview">' + parts.join(' \u00b7 ') + '</div>';
 }
 
+// Clearing a seat: it either holds someone (and gets emptied) or it does not.
+function tripQuickRemovePlan(legs, slot){
+  const plan = { removed:0, already:0, skipped:0 };
+  legs.forEach(leg => {
+    if(leg.status === 'flown'){ plan.skipped++; return; }
+    if(tripQuickCurrentValue(leg, slot)) plan.removed++;
+    else plan.already++;
+  });
+  return plan;
+}
+
+function tripQuickRemovePlanHTML(plan, label){
+  const parts = [];
+  if(plan.removed) parts.push('<span class="sheet-preview-replace">Removes ' + escapeHtml(label) + ' on ' + plan.removed + ' leg' + (plan.removed === 1 ? '' : 's') + '</span>');
+  if(plan.already) parts.push('<span class="sheet-preview-skip">' + plan.already + ' already empty</span>');
+  if(plan.skipped) parts.push('<span class="sheet-preview-skip">skips ' + plan.skipped + ' flown</span>');
+  if(!parts.length) return '';
+  return '<div class="sheet-preview">' + parts.join(' \u00b7 ') + '</div>';
+}
+
 function tripQuickPlanHTML(plan){
   const parts = [];
   if(plan.replace) parts.push('<span class="sheet-preview-replace">Replaces on ' + plan.replace + ' leg' + (plan.replace === 1 ? '' : 's') + '</span>');
@@ -3761,6 +3781,10 @@ function tripQuickPlanHTML(plan){
 // 'acm__add' / 'fa__add' are pseudo-slots: they APPEND a seat rather than
 // writing seat 0. Everything about eligibility follows the base slot.
 const TRIP_QUICK_ADD_SUFFIX = '__add';
+// An instruction, not a user id. Clearing a seat has to be something you PICK,
+// never something you get by leaving a control alone -- that ambiguity is
+// exactly what the old blank "no change" option carried.
+const TRIP_QUICK_REMOVE = '__remove__';
 function tripQuickBaseSlot(slot){
   return slot.endsWith(TRIP_QUICK_ADD_SUFFIX)
     ? slot.slice(0, -TRIP_QUICK_ADD_SUFFIX.length)
@@ -3775,7 +3799,7 @@ function tripQuickCrewChoices(slot){
   const chosenElsewhere = Object.keys(tripQuickState.sel)
     .filter(k => k !== slot)
     .map(k => tripQuickState.sel[k])
-    .filter(v => v);
+    .filter(v => v && v !== TRIP_QUICK_REMOVE);
   return people
     .filter(p => titles.indexOf(p.title) !== -1)
     .filter(p => chosenElsewhere.indexOf(p.id) === -1)
@@ -3800,14 +3824,30 @@ function tripQuickBodyHTML(){
   if(tripQuickState.mode === 'aircraft'){
     const cur = tripQuickState.sel['__tail__'] || '';
     const choices = tailChoicesForLeg({ tailNumber:'' });
+    const tailIsRemove = (cur === TRIP_QUICK_REMOVE);
+    // Same rule as crew: Remove is offered only when a live leg in scope
+    // actually carries a tail.
+    const tailOccupied = live.some(l => tripQuickCurrentValue(l, '__tail__'));
+    const tailShowBlank = !cur || tailIsRemove;
     rows.push(
       '<div class="sheet-slot">' +
         '<div class="sheet-slot-label">Tail number</div>' +
         '<select id="tq___tail__" data-tq-slot="__tail__">' +
-          '<option value="">\u2014 no change \u2014</option>' +
+          // The blank option reports a STATE, not an instruction, so it only
+          // appears when the slot is actually empty (or the legs disagree).
+          (tailShowBlank
+            ? '<option value=""' + (tailIsRemove ? '' : ' selected') + '>' +
+                (tripQuickCommonValue(legs, '__tail__') === null ? 'Mixed' : 'Empty') +
+              '</option>'
+            : '') +
           choices.map(c => '<option value="' + escapeHtml(c.value) + '"' + (c.value === cur ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>').join('') +
+          (tailOccupied
+            ? '<option value="' + TRIP_QUICK_REMOVE + '"' + (tailIsRemove ? ' selected' : '') + '>Remove aircraft</option>'
+            : '') +
         '</select>' +
-        (cur ? tripQuickPlanHTML(tripQuickPlan(legs, '__tail__', cur)) : '') +
+        (tailIsRemove
+          ? tripQuickRemovePlanHTML(tripQuickRemovePlan(legs, '__tail__'), 'the tail')
+          : (cur ? tripQuickPlanHTML(tripQuickPlan(legs, '__tail__', cur)) : '')) +
       '</div>'
     );
     if(!choices.length){
@@ -3818,19 +3858,35 @@ function tripQuickBodyHTML(){
       const cur = tripQuickState.sel[s.slot] || '';
       const choices = tripQuickCrewChoices(s.slot);
       const isList = CREW_LIST_SLOTS.indexOf(s.slot) !== -1;
+      const isRemove = (cur === TRIP_QUICK_REMOVE);
+      // Does any live leg in scope actually hold someone here? That, not the
+      // picker's own value, is what makes "Remove" meaningful.
+      const occupied = live.some(l => tripQuickCurrentValue(l, s.slot));
+      const showBlank = !cur || isRemove;
       rows.push(
         '<div class="sheet-slot">' +
           '<div class="sheet-slot-label">' + escapeHtml(s.label) + '</div>' +
           '<select id="tq_' + s.slot + '" data-tq-slot="' + s.slot + '">' +
-            '<option value="">\u2014 no change \u2014</option>' +
+            // Blank reports the STATE of the seat. It is never an instruction:
+            // emptying a seat is done by picking Remove, deliberately.
+            (showBlank
+              ? '<option value=""' + (isRemove ? '' : ' selected') + '>' +
+                  (tripQuickCommonValue(legs, s.slot) === null ? 'Mixed' : 'Empty') +
+                '</option>'
+              : '') +
             choices.map(c => '<option value="' + escapeHtml(c.value) + '"' + (c.value === cur ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>').join('') +
+            (occupied
+              ? '<option value="' + TRIP_QUICK_REMOVE + '"' + (isRemove ? ' selected' : '') + '>Remove ' + escapeHtml(s.label) + '</option>'
+              : '') +
           '</select>' +
-          (cur ? tripQuickPlanHTML(tripQuickPlan(legs, s.slot, cur)) : '') +
+          (isRemove
+            ? tripQuickRemovePlanHTML(tripQuickRemovePlan(legs, s.slot), s.label)
+            : (cur ? tripQuickPlanHTML(tripQuickPlan(legs, s.slot, cur)) : '')) +
           // AUGMENTED CREW IS REAL: 410303 carries two SICs on three legs and
           // two cabin attendants on another. The seat above is a REPLACE; this
           // button opens a second picker that ADDS. It appears only once the
           // slot holds someone, because there is no second ACM without a first.
-          ((isList && cur && !tripQuickState.addOpen[s.slot])
+          ((isList && cur && !isRemove && !tripQuickState.addOpen[s.slot])
             ? '<div><button type="button" class="sheet-add-btn" data-tq-add="' + s.slot + '">+ Add additional ' + escapeHtml(s.label) + '</button></div>'
             : '') +
         '</div>'
@@ -3844,7 +3900,7 @@ function tripQuickBodyHTML(){
           '<div class="sheet-slot">' +
             '<div class="sheet-slot-label">Additional ' + escapeHtml(s.label) + '</div>' +
             '<select id="tq_' + addKey + '" data-tq-slot="' + addKey + '">' +
-              '<option value="">\u2014 no change \u2014</option>' +
+              '<option value="">Empty</option>' +
               addChoices.map(c => '<option value="' + escapeHtml(c.value) + '"' + (c.value === addCur ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>').join('') +
             '</select>' +
             (addCur ? tripQuickAddPlanHTML(tripQuickAddPlan(legs, addKey, addCur), 'a second ' + s.label) : '') +
@@ -3855,7 +3911,7 @@ function tripQuickBodyHTML(){
   }
   rows.push('<div class="sheet-note">' +
     (tripQuickIsLegScope() ? 'A flown leg is never changed. ' : 'Flown legs are never changed. ') +
-    'Anything left on \u201cno change\u201d is left alone.</div>');
+    'A seat you do not touch is left as it is.</div>');
   return rows.join('');
 }
 
@@ -3868,6 +3924,7 @@ function tripQuickWouldChange(){
   return Object.keys(sel).some(slot => {
     const v = sel[slot];
     if(!v) return false;
+    if(v === TRIP_QUICK_REMOVE) return tripQuickRemovePlan(legs, slot).removed > 0;
     if(tripQuickIsAddSlot(slot)) return tripQuickAddPlan(legs, slot, v).added > 0;
     const p = tripQuickPlan(legs, slot, v);
     return (p.replace + p.fill) > 0;
@@ -3882,9 +3939,9 @@ function renderTripQuickBody(){
     sel.addEventListener('change', () => {
       const slot = sel.dataset.tqSlot;
       tripQuickState.sel[slot] = sel.value;
-      // Clearing the first seat retracts the append picker with it: an
-      // additional ACM is meaningless once there is no ACM.
-      if(!sel.value && tripQuickState.addOpen[slot]){
+      // Clearing or removing the first seat retracts the append picker with it:
+      // an additional ACM is meaningless once there is no ACM.
+      if((!sel.value || sel.value === TRIP_QUICK_REMOVE) && tripQuickState.addOpen[slot]){
         tripQuickState.addOpen[slot] = false;
         tripQuickState.sel[slot + TRIP_QUICK_ADD_SUFFIX] = '';
       }
@@ -3919,7 +3976,7 @@ function openTripQuickSheet(tripKey, mode, legId){
   };
   // Seed the pickers with what the legs currently hold, so the sheet opens
   // showing the state rather than a blank instruction. Where the legs disagree
-  // the slot stays on "no change" -- asserting one of two real values would be
+  // the slot stays blank -- asserting one of two real values would be
   // Beacon deciding something the trip never said.
   (function seedFromCurrent(){
     const legs = tripQuickLegs();
@@ -3978,13 +4035,28 @@ async function applyTripQuick(){
     chosen.forEach(slot => {
       const v = sel[slot];
       if(slot === '__tail__'){
-        if((leg.tailNumber || '') !== v){ leg.tailNumber = v; changed = true; }
+        if(v === TRIP_QUICK_REMOVE){
+          if(leg.tailNumber){ leg.tailNumber = ''; changed = true; }
+        } else if((leg.tailNumber || '') !== v){
+          leg.tailNumber = v; changed = true;
+        }
         return;
       }
       if(!leg.crew || typeof leg.crew !== 'object') leg.crew = { pic:'', sic:'', acm:[], fa:[] };
       const c = leg.crew;
       if(!Array.isArray(c.acm)) c.acm = [];
       if(!Array.isArray(c.fa)) c.fa = [];
+      // REMOVE: empties the seat. On a list slot that is seat 0, so whoever was
+      // second moves up -- matching what the strip shows happening.
+      if(v === TRIP_QUICK_REMOVE){
+        if(CREW_LIST_SLOTS.indexOf(slot) !== -1){
+          if(c[slot].length){ c[slot].shift(); changed = true; }
+        } else if(c[slot]){
+          c[slot] = '';
+          changed = true;
+        }
+        return;
+      }
       const isAdd = tripQuickIsAddSlot(slot);
       const base = tripQuickBaseSlot(slot);
       // Appending someone who is already in that slot is a no-op, not a move to
