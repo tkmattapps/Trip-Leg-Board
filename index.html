@@ -1323,7 +1323,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T18:36:02Z';
+const BUILD_VERSION = '2026-08-18T18:40:32Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3836,13 +3836,15 @@ function tripQuickBodyHTML(){
           // The blank option reports a STATE, not an instruction, so it only
           // appears when the slot is actually empty (or the legs disagree).
           (tailShowBlank
-            ? '<option value=""' + (tailIsRemove ? '' : ' selected') + '>' +
-                (tripQuickCommonValue(legs, '__tail__') === null ? 'Mixed' : 'Empty') +
+            ? '<option value="" selected>' +
+                (tailIsRemove
+                  ? 'Empty'
+                  : (tripQuickCommonValue(legs, '__tail__') === null ? 'Mixed' : 'Empty')) +
               '</option>'
             : '') +
           choices.map(c => '<option value="' + escapeHtml(c.value) + '"' + (c.value === cur ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>').join('') +
-          (tailOccupied
-            ? '<option value="' + TRIP_QUICK_REMOVE + '"' + (tailIsRemove ? ' selected' : '') + '>Remove aircraft</option>'
+          (tailOccupied && !tailIsRemove
+            ? '<option value="' + TRIP_QUICK_REMOVE + '">Remove aircraft</option>'
             : '') +
         '</select>' +
         (tailIsRemove
@@ -3870,13 +3872,18 @@ function tripQuickBodyHTML(){
             // Blank reports the STATE of the seat. It is never an instruction:
             // emptying a seat is done by picking Remove, deliberately.
             (showBlank
-              ? '<option value=""' + (isRemove ? '' : ' selected') + '>' +
-                  (tripQuickCommonValue(legs, s.slot) === null ? 'Mixed' : 'Empty') +
+              ? '<option value="" selected>' +
+                  // Once Remove is staged the seat IS empty as far as the reader
+                  // is concerned, so it reads Empty rather than restating the
+                  // instruction. The preview below carries the pending write.
+                  (isRemove
+                    ? 'Empty'
+                    : (tripQuickCommonValue(legs, s.slot) === null ? 'Mixed' : 'Empty')) +
                 '</option>'
               : '') +
             choices.map(c => '<option value="' + escapeHtml(c.value) + '"' + (c.value === cur ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>').join('') +
-            (occupied
-              ? '<option value="' + TRIP_QUICK_REMOVE + '"' + (isRemove ? ' selected' : '') + '>Remove ' + escapeHtml(s.label) + '</option>'
+            (occupied && !isRemove
+              ? '<option value="' + TRIP_QUICK_REMOVE + '">Remove ' + escapeHtml(s.label) + '</option>'
               : '') +
           '</select>' +
           (isRemove
@@ -3938,6 +3945,10 @@ function renderTripQuickBody(){
   body.querySelectorAll('select[data-tq-slot]').forEach(sel => {
     sel.addEventListener('change', () => {
       const slot = sel.dataset.tqSlot;
+      // A staged Remove renders as a selected blank option, so the select's own
+      // value is '' while the intent is '__remove__'. Picking anything else
+      // therefore overwrites the intent normally; there is no way to land back
+      // on blank without cancelling, which is what we want.
       tripQuickState.sel[slot] = sel.value;
       // Clearing or removing the first seat retracts the append picker with it:
       // an additional ACM is meaningless once there is no ACM.
