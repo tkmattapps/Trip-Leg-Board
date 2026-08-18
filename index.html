@@ -315,15 +315,40 @@
      dashed hairline that reads as "reference", never as "awaiting sign-off".
      Amber is reserved for things a human still has to answer; nothing in here
      may borrow it. */
+  /* RECESSED, not raised. Sections and subpanels sit LIGHTER than the page,
+     which reads as "come and work on me". This goes DARKER, which reads as a
+     reference strip the page is resting on. */
   .info-band{
-    background:rgba(29,51,80,0.35);
-    border:1px dashed var(--hairline);
-    border-radius:6px;
-    padding:14px 16px 16px;
+    background:rgba(0,0,0,0.28);
+    border:1px solid rgba(184,196,217,0.10);
+    border-radius:8px;
+    padding:16px 18px 18px;
     margin-bottom:26px;
   }
   /* Labels sit quieter still - this band is read at a glance, not filled in. */
   .info-band .field label{ font-size:10px; letter-spacing:0.4px; text-transform:uppercase; color:var(--fog-500); }
+  /* *** THE THING THAT MADE IT READ AS A SECTION *** was the field chrome: the
+     same panel background and border as every other input on the page, so the
+     eye called it a form. Strip the box and the VALUE reads as text. The control
+     stays fully live - the box returns on hover and focus, so nothing is
+     disguised as static and nothing silently fails. */
+  .info-band .field input[type=text],
+  .info-band .field select{
+    background:transparent;
+    border:1px solid transparent;
+    padding-left:0;
+    color:var(--paper-050);
+    font-size:15px;
+    transition:background 120ms ease, border-color 120ms ease, padding-left 120ms ease;
+  }
+  .info-band .field input[type=text]:hover,
+  .info-band .field select:hover,
+  .info-band .field input[type=text]:focus,
+  .info-band .field select:focus{
+    background:var(--panel-800);
+    border-color:var(--hairline);
+    padding-left:10px;
+  }
   .section-title{
     font-family:system-ui,'Inter',sans-serif; font-size:12px; letter-spacing:1.5px; text-transform:uppercase;
     font-weight:600; color:var(--amber-500); margin-bottom:12px; display:flex; align-items:center; gap:10px;
@@ -1108,7 +1133,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T15:02:36Z';
+const BUILD_VERSION = '2026-08-18T15:11:10Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
