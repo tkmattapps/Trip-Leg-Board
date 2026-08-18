@@ -771,6 +771,25 @@
      so it vanishes on iPhone. The wrapper hugs the select, so visually it's
      identical to the rings on the text fields, drawn the same way. */
   .select-wrap{ display:block; border-radius:5px; }
+
+  /* ---- Crew block -------------------------------------------------------
+     FULL WIDTH inside Overview, outside the .grid. Overview is pinned to two
+     columns at phone width deliberately, and a crew name needs the whole row
+     to stay legible. */
+  .crew-block{ display:flex; flex-direction:column; gap:10px; margin-top:14px; }
+  .crew-row{ display:flex; flex-direction:column; gap:6px; }
+  /* A list slot lays its seats out in a row that wraps, so two ACMs sit side by
+     side on a wide screen and stack on a phone. */
+  .crew-row-list{ flex-direction:row; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+  .crew-list-item{ display:flex; align-items:flex-end; gap:6px; flex:1 1 220px; min-width:0; }
+  .crew-list-item .field{ flex:1 1 auto; min-width:0; }
+  .crew-list-add{ flex:1 1 220px; min-width:0; }
+  .crew-remove{ flex:0 0 auto; background:transparent; border:1px solid var(--hairline); color:var(--fog-500);
+    font-family:system-ui,'Inter',sans-serif; font-size:11px; padding:8px 10px; border-radius:8px; cursor:pointer; }
+  .crew-remove:active{ color:var(--alert-600); border-color:var(--alert-600); }
+  /* PIC is required: amber until filled, matching the app's "needed but not yet
+     supplied" language rather than inventing a new signal. */
+  .crew-row.is-required .select-wrap{ box-shadow:0 0 0 1.25px rgba(242,169,59,0.65); border-radius:8px; }
   /* No stray descender gap under the control, or the ring sits low. */
   .select-wrap select{ display:block; width:100%; }
   .field.is-verified select{ box-shadow:none; outline:none; }
@@ -1057,7 +1076,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T00:55:26Z';
+const BUILD_VERSION = '2026-08-18T02:13:11Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -1974,6 +1993,13 @@ function normalizeLeg(leg){
   if(!Array.isArray(leg.compliance.overflightPermits)) leg.compliance.overflightPermits = [];
   leg.dep = Object.assign({ fuelPricePerGallon:'', paxBaggageNotes:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', agentPhone:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'' }, leg.dep || {});
   leg.arr = Object.assign({ date:'', fuelPricePerGallon:'', paxBaggageNotes:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', agentPhone:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'' }, leg.arr || {});
+  // Crew: legs saved before crew existed have no key at all, and a corrupted
+  // list slot must not throw on render. Coerce the shape, never trust it.
+  leg.crew = Object.assign({ pic:'', sic:'', acm:[], fa:[] }, leg.crew || {});
+  if(!Array.isArray(leg.crew.acm)) leg.crew.acm = [];
+  if(!Array.isArray(leg.crew.fa)) leg.crew.fa = [];
+  leg.crew.pic = leg.crew.pic || '';
+  leg.crew.sic = leg.crew.sic || '';
   if(leg.tailNumber === undefined) leg.tailNumber = '';
   if(leg.windDirection === undefined) leg.windDirection = '';
   if(leg.windComponent === undefined) leg.windComponent = '';
@@ -1993,6 +2019,8 @@ function blankLeg(){
     updatedAt: Date.now(),
     status: 'planning',
     tripNumber: '', legNumber: '', date: '', cityPair: '', tailNumber: '',
+    // pic/sic hold a single user id; acm/fa are ARRAYS of user ids.
+    crew: { pic:'', sic:'', acm:[], fa:[] },
     eapisRequired: '',
     compliance: { eapisReqd:'', eapisNotes:'', overflightReqd:'', overflightPermits:[], customsReqd:'', customsNotes:'' },
     dep: { airportId:'', tz:'', etdLocal:'', etdZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', notes:'' },
@@ -2989,6 +3017,237 @@ function carryTailForward(leg, newTail, oldTail){
     changed.push(other.legNumber);
   });
   return changed;
+}
+
+// Wires the crew pickers. Called from the editor render alongside the other
+// field wiring. NOTE: a <select> fires 'change', NOT 'input' -- the same trap
+// that broke the tail picker's verification demote.
+function wireCrewPickers(leg){
+  const root = document.getElementById('mainPanel');
+  if(!root) return;
+
+  ['pic', 'sic'].forEach(slot => {
+    const el = document.getElementById('crew_' + slot);
+    if(!el) return;
+    el.addEventListener('change', function(){
+      const prev = leg.crew ? (leg.crew[slot] || '') : '';
+      leg.crew = leg.crew || { pic:'', sic:'', acm:[], fa:[] };
+      leg.crew[slot] = el.value;
+      carryCrewForward(leg, slot, el.value, prev);
+      autoSaveIfEditing();
+      renderMain();
+    });
+  });
+
+  CREW_LIST_SLOTS.forEach(slot => {
+    const addSel = document.getElementById('crew_' + slot + '_new');
+    if(addSel){
+      addSel.addEventListener('change', function(){
+        if(!addSel.value) return;
+        leg.crew = leg.crew || { pic:'', sic:'', acm:[], fa:[] };
+        if(!Array.isArray(leg.crew[slot])) leg.crew[slot] = [];
+        if(leg.crew[slot].indexOf(addSel.value) === -1) leg.crew[slot].push(addSel.value);
+        autoSaveIfEditing();
+        renderMain();
+      });
+    }
+    root.querySelectorAll('.crew-list-item[data-crew-slot="' + slot + '"] select').forEach(sel => {
+      sel.addEventListener('change', function(){
+        const item = sel.closest('.crew-list-item');
+        const idx = item ? parseInt(item.getAttribute('data-crew-index'), 10) : -1;
+        if(idx < 0 || !leg.crew || !Array.isArray(leg.crew[slot])) return;
+        if(sel.value) leg.crew[slot][idx] = sel.value;
+        else leg.crew[slot].splice(idx, 1);
+        autoSaveIfEditing();
+        renderMain();
+      });
+    });
+  });
+
+  root.querySelectorAll('[data-crew-remove]').forEach(btn => {
+    btn.addEventListener('click', function(){
+      const slot = btn.getAttribute('data-crew-remove');
+      const idx = parseInt(btn.getAttribute('data-crew-index'), 10);
+      if(!leg.crew || !Array.isArray(leg.crew[slot])) return;
+      if(idx < 0 || idx >= leg.crew[slot].length) return;
+      leg.crew[slot].splice(idx, 1);
+      autoSaveIfEditing();
+      renderMain();
+    });
+  });
+}
+
+// Carry-forward, matching carryTailForward's contract: flows to every LATER leg
+// that holds the same old value or nothing, and is VISIBLE, NOT SILENT -- the
+// toast names the slot that moved. Only the single slots carry. ACM and FA lists
+// are deliberately left alone: a jumpseat rider on one leg rarely rides them all.
+function carryCrewForward(leg, slot, newValue, oldValue){
+  if(!newValue) return;
+  const group = state.legs
+    .filter(l => l.groupId === leg.groupId && !l.deleted_at)
+    .sort((a, b) => (parseInt(a.legNumber, 10) || 0) - (parseInt(b.legNumber, 10) || 0));
+  const startIdx = group.findIndex(l => l.id === leg.id);
+  if(startIdx < 0) return;
+  let touched = 0;
+  for(let i = startIdx + 1; i < group.length; i++){
+    const l = group[i];
+    l.crew = Object.assign({ pic:'', sic:'', acm:[], fa:[] }, l.crew || {});
+    const cur = l.crew[slot] || '';
+    if(cur && cur !== oldValue) break;
+    if(cur === newValue) continue;
+    l.crew[slot] = newValue;
+    saveLeg(l);
+    touched++;
+  }
+  if(touched){
+    showToast(slot.toUpperCase() + ' carried forward to ' + touched + ' later leg' + (touched === 1 ? '' : 's'));
+  }
+}
+
+// Reads the crew pickers back into the leg. Only runs when the editor is
+// actually rendered: if the crew block is absent -- another view, or a leg
+// rendered before this build -- the existing crew MUST be left untouched rather
+// than blanked. Reading a missing element as '' is how you silently erase data.
+function collectCrewFromEditor(leg){
+  const picEl = document.getElementById('crew_pic');
+  if(!picEl) return;
+  const crew = { pic:'', sic:'', acm:[], fa:[] };
+  crew.pic = val('crew_pic');
+  crew.sic = val('crew_sic');
+  CREW_LIST_SLOTS.forEach(slot => {
+    const out = [];
+    document.querySelectorAll('.crew-list-item[data-crew-slot="' + slot + '"] select').forEach(sel => {
+      if(sel.value) out.push(sel.value);
+    });
+    // The trailing "add" picker counts too: someone may pick a name and navigate
+    // away without the change handler having re-rendered yet.
+    const addSel = document.getElementById('crew_' + slot + '_new');
+    if(addSel && addSel.value && out.indexOf(addSel.value) === -1) out.push(addSel.value);
+    crew[slot] = out;
+  });
+  leg.crew = crew;
+}
+
+// Renders the four crew rows. FULL WIDTH inside Overview, deliberately NOT in
+// the .grid: Overview is pinned to two columns at phone width on purpose, and a
+// list slot needs the whole row so names are readable.
+function crewBlockHTML(leg){
+  const c = (leg && leg.crew) ? leg.crew : {};
+  const rows = [];
+
+  // PIC is required, so an empty one gets the amber treatment the rest of the
+  // app uses for "needed but not yet supplied".
+  rows.push(crewSingleRowHTML('PIC', 'pic', c.pic || '', leg, !c.pic));
+  rows.push(crewSingleRowHTML('SIC', 'sic', c.sic || '', leg, false));
+  rows.push(crewListRowHTML('ACM', 'acm', c.acm || [], leg));
+  rows.push(crewListRowHTML('FA', 'fa', c.fa || [], leg));
+
+  return '<div class="crew-block">' + rows.join('') + '</div>';
+}
+
+function crewSingleRowHTML(label, slot, value, leg, wantAmber){
+  const id = 'crew_' + slot;
+  const choices = crewChoicesForSlot(slot, leg, value);
+  const sel = selectField(label, id, value, choices, { placeholder: 'Select ' + label });
+  // Tag the row so the change listener knows the slot without parsing the id.
+  return '<div class="crew-row' + (wantAmber ? ' is-required' : '') + '" data-crew-slot="' + slot + '">' + sel + '</div>';
+}
+
+// A list slot shows one picker per chosen person plus a single empty picker to
+// add the next. An unused optional slot therefore costs ONE line, not a whole
+// field -- which is why FA with nobody assigned does not shout at you.
+function crewListRowHTML(label, slot, values, leg){
+  const clean = (values || []).filter(v => v);
+  const parts = [];
+  clean.forEach((v, i) => {
+    const id = 'crew_' + slot + '_' + i;
+    const choices = crewChoicesForSlot(slot, leg, v);
+    // Multiples label themselves ACM 1, ACM 2. A single one is still "ACM 1",
+    // never a bare "ACM" -- Kyle was explicit about this.
+    parts.push(
+      '<div class="crew-list-item" data-crew-slot="' + slot + '" data-crew-index="' + i + '">' +
+        selectField(label + ' ' + (i + 1), id, v, choices, { placeholder: 'Select ' + label }) +
+        '<button type="button" class="crew-remove" data-crew-remove="' + slot + '" data-crew-index="' + i + '" aria-label="Remove ' + label + ' ' + (i + 1) + '">Remove</button>' +
+      '</div>'
+    );
+  });
+  // The add row is a picker with no value: choosing someone appends them.
+  const addId = 'crew_' + slot + '_new';
+  const addChoices = crewChoicesForSlot(slot, leg, '');
+  const addLabel = clean.length ? 'Add ' + label : label + ' 1';
+  parts.push(
+    '<div class="crew-list-add" data-crew-add="' + slot + '">' +
+      selectField(addLabel, addId, '', addChoices, { placeholder: 'Add ' + label }) +
+    '</div>'
+  );
+  return '<div class="crew-row crew-row-list" data-crew-slot="' + slot + '">' + parts.join('') + '</div>';
+}
+
+// ---- Crew on the leg ---------------------------------------------------
+// CREW IS LEG-LEVEL, NEVER TRIP-LEVEL. A Singapore-to-New-York trip carries two
+// full crews inside one trip, so there is no such thing as "the PIC of a trip".
+//
+// Slot rules, from Kyle:
+//   PIC  exactly one, REQUIRED  -- reads amber until filled
+//   SIC  exactly one, optional
+//   ACM  a LIST, additional crew members, ALWAYS PILOTS (never a mechanic
+//        riding along)
+//   FA   a LIST, flight attendants
+// ACM and FA are FULLY INDEPENDENT: an FA with no ACM is valid.
+//
+// Pickers FILTER BY JOB TITLE. Dispatchers and maintenance never appear in any
+// crew picker -- they are in the department for access, not for a seat. They
+// still appear on the roster.
+const CREW_SLOT_TITLES = {
+  pic: ['pilot'],
+  sic: ['pilot'],
+  acm: ['pilot'],
+  fa:  ['flight attendant']
+};
+const CREW_LIST_SLOTS = ['acm', 'fa'];
+
+// Roster entries eligible for a slot. Mirrors tailChoicesForLeg's guard: the
+// editor can render before the roster fetch resolves, and a miss just means the
+// picker shows whoever is already on the leg until loadRoster() re-renders.
+function crewChoicesForSlot(slot, leg, selfValue){
+  let people = [];
+  try { people = rosterCache || []; } catch(e){ people = []; }
+  const titles = CREW_SLOT_TITLES[slot] || [];
+  const taken = crewTakenIds(leg, slot, selfValue);
+  const list = people
+    .filter(p => titles.indexOf(p.title) !== -1)
+    // A person cannot occupy two seats on the SAME leg. Their own current
+    // selection stays in their own picker or it would clear itself on render.
+    .filter(p => p.id === selfValue || taken.indexOf(p.id) === -1)
+    .map(p => ({ value: p.id, label: p.name || p.email }));
+  // A crew member already on the leg who no longer qualifies -- title changed,
+  // or they left the department -- must still render, or opening the leg would
+  // silently drop them.
+  if(selfValue && !list.some(c => c.value === selfValue)){
+    list.push({ value: selfValue, label: crewDisplayName(selfValue) + ' (unavailable)' });
+  }
+  list.sort((a, b) => a.label.localeCompare(b.label));
+  return list;
+}
+
+// Every user id currently occupying a seat on this leg, so one person cannot be
+// booked twice. Excludes the seat being rendered.
+function crewTakenIds(leg, slot, selfValue){
+  const c = (leg && leg.crew) ? leg.crew : {};
+  const ids = [];
+  ['pic', 'sic'].forEach(k => { if(c[k] && !(k === slot && c[k] === selfValue)) ids.push(c[k]); });
+  CREW_LIST_SLOTS.forEach(k => {
+    (c[k] || []).forEach(v => { if(v && v !== selfValue) ids.push(v); });
+  });
+  return ids;
+}
+
+function crewDisplayName(userId){
+  let people = [];
+  try { people = rosterCache || []; } catch(e){ people = []; }
+  const p = people.find(x => x.id === userId);
+  if(p) return p.name || p.email;
+  return 'Unknown crew';
 }
 
 function tailChoicesForLeg(leg){
@@ -4939,6 +5198,7 @@ function renderMain(){
         field('City pair', 'cityPair', leg.cityPair, {placeholder:'New York \u2192 London'}) +
         selectField('Tail number', 'tailNumber', leg.tailNumber, tailChoicesForLeg(leg), {placeholder:'Select aircraft'}) +
       '</div>' +
+      crewBlockHTML(leg) +
     '</div>' +
 
     '<div class="section">' +
@@ -5915,6 +6175,7 @@ function renderMain(){
     updateNextLegDay();
   }
 
+  wireCrewPickers(leg);
   wireLegNotes(leg.id);
   hydrateLegNotes(leg.id);
   wireLegAttachments(leg);
@@ -6584,6 +6845,10 @@ async function collectAndSave(id, opts){
   leg.date = val('date');
   leg.cityPair = val('cityPair');
   leg.tailNumber = val('tailNumber');
+  // Crew is read from the rendered pickers. The list slots are read by walking
+  // the DOM rather than by index arithmetic, so a removed row cannot leave a
+  // hole that shifts everyone up one seat.
+  collectCrewFromEditor(leg);
   leg.compliance = {
     eapisReqd: val('eapisReqd'), eapisNotes: val('eapisNotes'),
     overflightReqd: val('overflightReqd'), overflightPermits: collectOverflightRows(),
@@ -7112,6 +7377,8 @@ async function bootApp(){
   // Load the fleet once at boot so the tail picker is populated the moment any
   // leg opens, rather than flashing empty while a per-leg fetch resolves.
   loadAircraft();
+  // Same for the roster: the crew pickers need names, not ids.
+  loadRoster();
 }
 
 async function handleLogout(){
