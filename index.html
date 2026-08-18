@@ -345,6 +345,11 @@
   .field-row-inline > .field:last-child textarea{ height:60px; min-height:60px; }
   @media (max-width:820px){
     .grid{ grid-template-columns:1fr 1fr; }
+    /* The crew block's auto-fit floor of 200px cannot fit two columns on a
+       phone, so it collapsed to a single stacked column while the fields above
+       it stayed two across. Match .grid exactly -- the whole point of the crew
+       block is that it lines up with the fields above. */
+    .crew-block{ grid-template-columns:1fr 1fr; }
     /* Phone: match the old auto-fit behaviour (three across at a 120px floor),
        not two. Selector matches .subpanel.compact's specificity so it wins
        inside a card. */
@@ -1079,7 +1084,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T02:43:15Z';
+const BUILD_VERSION = '2026-08-18T02:59:17Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3903,7 +3908,61 @@ async function loadRoster(){
     rosterCache = [];
     showToast('Could not load people.');
   }
+  // Re-render whatever is on screen and depends on this data. The settings
+  // roster was the original consumer, but the CREW PICKERS also render from
+  // rosterCache and the boot fetch resolves AFTER the editor has drawn -- so
+  // without this the pickers showed "Unknown crew (unavailable)" for names that
+  // were sitting right there in the leg.
+  // [LESSON] An async cache load must refresh EVERY view that reads it, not
+  // just the one it was written for. Same shape as loadAircraft and the tail
+  // picker; adding a second consumer means revisiting the callback.
   if(state.view === 'settings') renderSettingsView();
+  else if(state.view === 'editor') refreshCrewPickerOptions();
+}
+
+// Repopulates the crew pickers' OPTION LISTS in place, without re-rendering the
+// editor. A full renderMain() here would rebuild every field from leg data and
+// so discard anything typed but not yet saved -- the roster fetch resolves a
+// second or so after boot, which is exactly when someone may be typing into the
+// leg they opened immediately. Same principle as the live-sync decision: never
+// yank text out from under a typing hand.
+//
+// Only the crew selects depend on rosterCache, so only they are touched. Each
+// picker's own selected value is preserved.
+function refreshCrewPickerOptions(){
+  const leg = state.legs ? state.legs.find(l => l.id === state.activeId) : null;
+  if(!leg) return;
+  if(!document.getElementById('crew_pic')) return;   // crew block not rendered
+
+  const repaint = (sel, slot, isLastSeat) => {
+    if(!sel) return;
+    // NEVER touch the control the user is currently interacting with: replacing
+    // options would collapse an open dropdown mid-choice.
+    if(document.activeElement === sel) return;
+    const keep = sel.value === CREW_ADD_SENTINEL ? '' : sel.value;
+    const choices = crewChoicesForSlot(slot, leg, keep);
+    if(isLastSeat && keep){
+      choices.push({ value: CREW_ADD_SENTINEL, label: '+ Add another ' + slot.toUpperCase() });
+    }
+    // Rebuild options, preserving the placeholder that already reads correctly
+    // for this seat's state.
+    const ph = sel.options.length ? sel.options[0].textContent : '\u2014';
+    let html = '<option value="">' + escapeHtml(ph) + '</option>';
+    choices.forEach(c => {
+      html += '<option value="' + escapeHtml(String(c.value)) + '"' +
+        (String(c.value) === keep ? ' selected' : '') + '>' +
+        escapeHtml(c.label == null ? c.value : c.label) + '</option>';
+    });
+    sel.innerHTML = html;
+    sel.value = keep;
+  };
+
+  repaint(document.getElementById('crew_pic'), 'pic', false);
+  repaint(document.getElementById('crew_sic'), 'sic', false);
+  CREW_LIST_SLOTS.forEach(slot => {
+    const items = document.querySelectorAll('.crew-list-item[data-crew-slot="' + slot + '"] select');
+    items.forEach((sel, i) => repaint(sel, slot, i === items.length - 1));
+  });
 }
 
 function rosterRowHTML(p){
