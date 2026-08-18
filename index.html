@@ -61,10 +61,6 @@
   .bar-fixed:empty{ display:none; }
   /* Legs scroll sideways INSIDE this track. The bar never grows or wraps, so the
      paperclip / refresh / menu anchors stay in one place on every trip. */
-  .bar-legs-track{ flex:1 1 auto; min-width:0; overflow-x:auto; overflow-y:hidden;
-    -webkit-overflow-scrolling:touch; scrollbar-width:none; }
-  .bar-legs-track::-webkit-scrollbar{ display:none; }
-  .bar-legs-track .leg-nav-group{ flex-wrap:nowrap !important; width:max-content; }
   .bar-btn{ display:flex; align-items:center; justify-content:center; width:40px; height:34px;
     background:none; border:1px solid var(--hairline); border-radius:3px; color:var(--fog-300);
     font-size:17px; cursor:pointer; flex:0 0 auto; }
@@ -190,11 +186,8 @@
   @media (max-width: 700px){
     /* Mobile: stack the checklist strip - Legs row on top (right-justified), Status row below (left) */
     .leg-nav-strip:not(.leg-nav-strip-end){ flex-direction:column; align-items:stretch; }
-    .leg-nav-strip:not(.leg-nav-strip-end) .leg-nav-group{ order:1; align-self:flex-end; justify-content:flex-end; }
-    .leg-nav-strip:not(.leg-nav-strip-end) > div:not(.leg-nav-group){ order:2; align-self:flex-start; }
     .leg-nav-strip:not(.leg-nav-strip-end) .doc-jump-btn{ order:3; align-self:flex-start; margin-right:0; margin-top:2px; }
     .leg-nav-strip-checklist{ flex-direction:row; align-items:center; flex-wrap:nowrap; }
-    .leg-nav-strip.leg-nav-strip-checklist .leg-nav-group{ order:1; align-self:flex-start; justify-content:flex-start; margin-right:0; }
     .leg-nav-strip-checklist .doc-jump-btn{ order:0; align-self:center; margin-left:0; margin-right:0; margin-top:0; }
 
     /* Overview at phone width: pin to exactly 2 columns so trip number and leg
@@ -820,16 +813,7 @@
   .leg-nav-strip{ display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
   .leg-nav-strip-end{ justify-content:flex-end; }
 .leg-nav-strip-checklist{ justify-content:flex-start; width:100%; align-self:stretch; }
-  .leg-nav-strip-checklist .leg-nav-group{ order:1; margin-right:0; }
   .leg-nav-strip-checklist .doc-jump-btn{ order:2; margin-left:auto; margin-right:0; }
-  .leg-nav-add-btn{
-    background:var(--panel-800); border:1px solid var(--hairline); color:var(--fog-300);
-    font-family:system-ui,'Inter',sans-serif; font-size:12px; font-weight:500;
-    padding:8px 14px; border-radius:3px; cursor:pointer; margin-left:4px;
-    transition:border-color 0.15s ease, color 0.15s ease;
-  }
-  .leg-nav-add-btn:hover{ border-color:var(--amber-500); color:var(--amber-500); }
-  .leg-status-strip-label{ font-size:10px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; text-transform:uppercase; letter-spacing:0.5px; margin-right:3px; }
   .leg-status-dot{
     width:22px; height:22px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center;
     font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:700; color:var(--ink-900);
@@ -840,10 +824,6 @@
   .leg-status-dot.leg-status-planning{ background:#F2A93B; }
   .leg-status-dot.leg-status-ready{ background:#3DBE6B; }
   .leg-status-dot.leg-status-flown{ background:#4A9DE0; }
-  .leg-status-dot-current{ box-shadow:0 0 0 2px var(--paper-050), 0 0 0 4px var(--amber-500); cursor:pointer; }
-  .leg-status-dot-current.leg-status-planning{ box-shadow:0 0 0 2px var(--paper-050), 0 0 0 4px #F2A93B; }
-  .leg-status-dot-current.leg-status-ready{ box-shadow:0 0 0 2px var(--paper-050), 0 0 0 4px #3DBE6B; }
-  .leg-status-dot-current.leg-status-flown{ box-shadow:0 0 0 2px var(--paper-050), 0 0 0 4px #4A9DE0; }
   /* ---- Document attachments ---- */
   .doc-section-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
   .doc-section-head .section-title{ margin:0; }
@@ -883,11 +863,6 @@
   .doc-jump-btn .doc-icon{ width:16px; height:16px; }
   .doc-jump-count{ font-size:12px; font-weight:700; min-width:8px; display:inline-block; text-align:center; }
   .leg-status-hint{ opacity:0.55; font-size:9px; }
-  .status-popover{ position:absolute; z-index:1000; background:var(--panel-800, #16233A); border:1px solid var(--hairline); border-radius:10px; padding:6px; min-width:150px; box-shadow:0 8px 24px rgba(0,0,0,0.4); display:flex; flex-direction:column; gap:2px; }
-  .status-popover-item{ display:flex; align-items:center; gap:10px; background:transparent; border:none; color:var(--fog-300); font-family:system-ui,'Inter',sans-serif; font-size:13px; padding:9px 12px; border-radius:7px; cursor:pointer; text-align:left; width:100%; }
-  .status-popover-item:hover{ background:var(--panel-700, #1E2E48); color:var(--paper-050); }
-  .status-popover-item.is-current{ color:var(--paper-050); font-weight:600; }
-  .status-popover-dot{ width:12px; height:12px; border-radius:50%; flex-shrink:0; }
   .dash-card-route{ font-size:13px; color:var(--fog-500); margin-bottom:8px; }
   .dash-card-date{ font-size:11px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
   .dash-card-legsum{ font-size:11px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; margin-bottom:4px; }
@@ -1374,7 +1349,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T19:42:21Z';
+const BUILD_VERSION = '2026-08-18T19:48:14Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -6038,61 +6013,13 @@ function legAllSectionsVerified(lg){
   return KEYS.every(k => !!lg.sectionVerified[k]);
 }
 
-function openStatusPopover(anchorEl){
-  // Reuse the hidden #statusSelect as source of truth so all existing status
-  // logic (ready-guard, applyStatusColor, collectAndSave) keeps working.
-  const sel = document.getElementById('statusSelect');
-  if(!sel) return;
-  document.querySelectorAll('.status-popover').forEach(p => p.remove());
-  const STATUSES = [
-    { v:'planning', label:'Planning', color:'#F2A93B' },
-    { v:'ready',    label:'Ready',    color:'#3DBE6B' },
-    { v:'flown',    label:'Flown',    color:'#4A9DE0' }
-  ];
-  const pop = document.createElement('div');
-  pop.className = 'status-popover';
-  STATUSES.forEach(st => {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'status-popover-item' + (sel.value === st.v ? ' is-current' : '');
-    item.innerHTML = '<span class="status-popover-dot" style="background:' + st.color + ';"></span>' + st.label;
-    item.addEventListener('click', () => {
-      if(st.v === 'planning' && currentLegAllSectionsComplete()){
-        pop.remove();
-        showConfirm('This leg is fully complete, so it stays Ready. To move it back to Planning, uncheck the section you want to work on and the status will update automatically.', {alertOnly:true});
-        return;
-      }
-      if(sel.value !== st.v){
-        sel.value = st.v;
-        sel.dispatchEvent(new Event('change'));
-      }
-      pop.remove();
-      const lgId = (typeof state !== 'undefined') ? state.activeId : null;
-      if(lgId && typeof collectAndSave === 'function'){
-        collectAndSave(lgId, {silent:true});
-      } else if(typeof renderMain === 'function'){
-        renderMain();
-      }
-    });
-    pop.appendChild(item);
-  });
-  document.body.appendChild(pop);
-  const r = anchorEl.getBoundingClientRect();
-  const top = r.bottom + window.scrollY + 6;
-  let left = r.left + window.scrollX;
-  const pw = pop.offsetWidth || 150;
-  if(left + pw > window.innerWidth - 8){ left = window.innerWidth - pw - 8; }
-  pop.style.top = top + 'px';
-  pop.style.left = Math.max(8, left) + 'px';
-  setTimeout(() => {
-    document.addEventListener('click', function closePop(e){
-      if(!pop.contains(e.target) && e.target !== anchorEl){
-        pop.remove();
-        document.removeEventListener('click', closePop);
-      }
-    });
-  }, 0);
-}
+// openStatusPopover() was REMOVED with the bottom-bar navigator. It drove the
+// hidden #statusSelect, and critically it enforced the status rules in a place
+// no other caller could see. Leg status is now set from the Status button on the
+// leg tile, which gates on legAllSectionsVerified() at write time -- one status
+// path instead of two, so a rule can no longer be enforced in one and missed in
+// the other. (That is exactly how the Ready guard came to be bypassed.)
+
 
 async function handleDeleteTrip(tripKey){
   const allTrips = groupIntoTrips(state.legs);
@@ -6341,14 +6268,20 @@ function renderMain(){
     ? groupIntoTrips(state.legs).find(t => t.key === tripNumForLeg)
     : groupIntoTrips(state.legs).find(t => t.key === '__grp_' + (leg.groupId || ''));
   const stripLegs = (siblingTrip && siblingTrip.legs.length > 0) ? siblingTrip.legs : [leg];
-  const legNavDots = stripLegs.map(l =>
-    '<span class="leg-status-dot leg-status-' + escapeHtml(l.status) + ' leg-status-dot-clickable' + (l.id === leg.id ? ' leg-status-dot-current' : '') + '" data-leg-id="' + escapeHtml(l.id) + '">' + escapeHtml(l.legNumber || '?') + '</span>'
-  ).join('');
-  const legNavGroupHTML =
-    '<div class="leg-nav-group" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
-      '<span class="leg-status-strip-label">Legs:</span>' + legNavDots +
-      '<button type="button" class="leg-nav-add-btn" id="legNavAddBtn">+ Add leg</button>' +
-    '</div>';
+  // *** THE BOTTOM-BAR LEG NAVIGATOR IS GONE. ***
+  // It did three jobs, all now better served elsewhere:
+  //   - jump between legs -> the info strip's chevron navigator, which sits at
+  //     the top of the page and has a proper 44px hit area.
+  //   - set leg status    -> the Status button on each leg tile, which is also
+  //     where crew and aircraft are changed.
+  //   - add a leg         -> the '+ Add leg' tile on the trip page (#addLegTile).
+  // The dots were fiddly to hit and, per Kyle, never carried enough information
+  // to be worth the space.
+  //
+  // NOTE: #statusSelect BELOW IS DELIBERATELY KEPT. It is a hidden control, not
+  // part of the navigator, and ~56 references depend on it -- applyStatusColor,
+  // syncReadyOptionAvailability, the Ready guard and collectAndSave all read or
+  // write it. Removing it with the bar would break status handling in the editor.
 
   const statusGroupHTML =
     '<select class="status-select" id="statusSelect" style="display:none;" aria-hidden="true">' +
@@ -6361,9 +6294,7 @@ function renderMain(){
   const _docCountText = (_cachedDocN === null) ? '' : String(_cachedDocN);
   // Bottom bar: legs scroll horizontally in their own track so the bar keeps ONE
   // height and the fixed anchors (paperclip / refresh / menu) never move.
-  const legBarSlotHTML =
-    statusGroupHTML +
-    '<div class="bar-legs-track">' + legNavGroupHTML + '</div>';
+  const legBarSlotHTML = statusGroupHTML;
   const legBarDocHTML =
     '<button type="button" class="doc-jump-btn" id="docJumpBtn" title="Jump to documents" aria-label="Jump to documents">' + DOC_PAPERCLIP_SVG + '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(leg.id) + '" style="' + _docCountInit + '">' + _docCountText + '</span></button>';
   // The header render already cleared both bar slots; fill them now that the
@@ -6810,13 +6741,10 @@ function renderMain(){
     revalidateSectionComplete(yBtn.closest('.section'));
   }
 
-  function refreshCurrentLegBubble(){
-    const sel = document.getElementById('statusSelect');
-    const dot = document.querySelector('#bottomBar .leg-status-dot-current');
-    if(!sel || !dot) return;
-    dot.classList.remove('leg-status-planning','leg-status-ready','leg-status-flown');
-    dot.classList.add('leg-status-' + sel.value);
-  }
+  // Repainted the current leg's dot in the bottom bar. That dot is gone with the
+  // navigator; kept as a no-op because several call sites fire it during status
+  // changes and the trip tile re-reads status from the leg on render anyway.
+  function refreshCurrentLegBubble(){ /* bottom-bar dot removed */ }
 
   // Set while the editor is painting itself. updateYNColor() reads linked field
   // values straight out of the DOM to decide if a toggle is red, so during the
@@ -7239,19 +7167,10 @@ function renderMain(){
     });
   });
 
-  document.querySelectorAll('#bottomBar .leg-status-dot-clickable').forEach(dot => {
-    dot.addEventListener('click', (ev) => {
-      if(dot.classList.contains('leg-status-dot-current')){
-        ev.stopPropagation();
-        openStatusPopover(dot);
-        return;
-      }
-      const targetId = dot.getAttribute('data-leg-id');
-      if(targetId && targetId !== leg.id) openLegEditor(targetId);
-    });
-  });
-  // Strip chevrons: same navigation path as the bottom-bar dots. openLegEditor
-  // calls autoSaveIfEditing() itself, so nothing in the current leg is lost.
+  // The bottom-bar dot handler lived here. Removed with the navigator; the
+  // status popover it opened is replaced by the Status button on the leg tile.
+  // Strip chevrons: openLegEditor calls autoSaveIfEditing() itself, so nothing
+  // in the current leg is lost on the way out.
   ['legNavStripPrev','legNavStripNext'].forEach(function(btnId){
     const b = document.getElementById(btnId);
     if(!b || b.disabled) return;
@@ -7261,24 +7180,8 @@ function renderMain(){
       if(targetId && targetId !== leg.id) openLegEditor(targetId);
     });
   });
-  const legNavAddBtn = document.getElementById('legNavAddBtn');
-  if(legNavAddBtn){
-    legNavAddBtn.addEventListener('click', () => {
-      autoSaveIfEditing();
-      const newLeg = blankLeg();
-      newLeg.tripNumber = leg.tripNumber;
-      // Inherit the sibling's group so untitled legs stay in the same trip.
-      newLeg.groupId = leg.groupId || newLeg.groupId;
-      const tnKey = (leg.tripNumber || '').trim();
-      const siblingTrip = tnKey
-        ? groupIntoTrips(state.legs).find(t => t.key === tnKey)
-        : groupIntoTrips(state.legs).find(t => t.key === '__grp_' + newLeg.groupId);
-      const maxLegNum = siblingTrip ? Math.max(0, ...siblingTrip.legs.map(l => parseInt(l.legNumber, 10) || 0)) : 0;
-      newLeg.legNumber = String(maxLegNum + 1);
-      state.legs.unshift(newLeg);
-      openLegEditor(newLeg.id);
-    });
-  }
+  // The bar's '+ Add leg' handler lived here. Adding a leg now happens on the
+  // trip page via #addLegTile, which runs the same logic.
   const backBtn = document.getElementById('backToDashboardBtn');
   if(backBtn){
     backBtn.addEventListener('click', () => {
