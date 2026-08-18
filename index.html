@@ -1334,7 +1334,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T18:55:24Z';
+const BUILD_VERSION = '2026-08-18T19:00:21Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4358,7 +4358,10 @@ function tripCardHTML(trip){
   ).join('');
   return '<div class="dash-card" data-trip-key="' + escapeHtml(trip.key) + '">' +
     '<div class="dash-card-top">' +
-      '<span class="dash-card-code">Trip ' + escapeHtml(trip.tripNumber) + '</span>' +
+      // Deliberately the SAME class the leg tiles use, so the two tile types
+      // read as one family. .dash-card-code is left alone because
+      // dashboardCardHTML (single unassigned legs) still shares it.
+      '<span class="dash-card-leg-title">Trip ' + escapeHtml(trip.tripNumber) + '</span>' +
     '</div>' +
     '<div class="dash-card-route">' + escapeHtml(route) + '</div>' +
     '<div class="leg-status-strip"><span class="leg-status-dots">' + legStatusDots + '</span></div>' +
