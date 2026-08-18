@@ -345,11 +345,6 @@
   .field-row-inline > .field:last-child textarea{ height:60px; min-height:60px; }
   @media (max-width:820px){
     .grid{ grid-template-columns:1fr 1fr; }
-    /* The crew block's auto-fit floor of 200px cannot fit two columns on a
-       phone, so it collapsed to a single stacked column while the fields above
-       it stayed two across. Match .grid exactly -- the whole point of the crew
-       block is that it lines up with the fields above. */
-    .crew-block{ grid-template-columns:1fr 1fr; }
     /* Phone: match the old auto-fit behaviour (three across at a 120px floor),
        not two. Selector matches .subpanel.compact's specificity so it wins
        inside a card. */
@@ -786,14 +781,29 @@
      flex row divided the space evenly and drifted out of alignment with the
      grid's columns -- visibly wrong on a wide screen. Matching grid definition,
      matching gap, matching column count. */
-  .crew-block{ display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr));
-    gap:14px; margin-top:14px; }
+  /* [DECISION, Kyle] Overview identity row: seven EQUAL columns holding every
+     fixed-shape value. minmax(0,1fr) rather than a px floor so the columns stay
+     equal and a long name cannot push one wider than its neighbours. */
+  .grid-7{ grid-template-columns:repeat(7, minmax(0, 1fr)); }
+  /* City pair is the one field that needs room, so it owns its row outright. */
+  .overview-citypair{ grid-template-columns:1fr; margin-top:14px; }
+  /* Phone: seven columns is unreadable, so the identity row falls back to the
+     same two-up the rest of Overview uses. Sits AFTER the base rule because
+     same-specificity conflicts are decided by POSITION -- an override placed
+     earlier in the sheet silently loses. */
+  @media (max-width:820px){
+    .grid-7{ grid-template-columns:1fr 1fr; }
+    .overview-citypair{ grid-template-columns:1fr; }
+  }
   /* Each slot is one grid cell. A list slot keeps its seats inside its own cell
      so two ACMs stay adjacent rather than one being orphaned into the next
      column. */
   .crew-row{ display:flex; flex-direction:row; align-items:flex-end; gap:8px; min-width:0; }
   .crew-row .field{ flex:1 1 auto; min-width:0; }
-  .crew-list-item{ display:flex; align-items:flex-end; flex:1 1 220px; min-width:0; }
+  /* 220px basis was sized for the old crew wrapper. As a direct grid child the
+     cell decides the width, so the basis must be 0 or a second ACM forces the
+     cell wider than its neighbours and breaks the equal columns. */
+  .crew-list-item{ display:flex; align-items:flex-end; flex:1 1 0; min-width:0; }
   .crew-list-item .field{ flex:1 1 auto; min-width:0; }
   /* PIC is required: amber until filled, matching the app's "needed but not yet
      supplied" language rather than inventing a new signal. */
@@ -1084,7 +1094,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T02:59:17Z';
+const BUILD_VERSION = '2026-08-18T03:12:34Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3145,7 +3155,10 @@ function crewBlockHTML(leg){
   rows.push(crewListRowHTML('ACM', 'acm', c.acm || [], leg));
   rows.push(crewListRowHTML('FA', 'fa', c.fa || [], leg));
 
-  return '<div class="crew-block">' + rows.join('') + '</div>';
+  // No wrapper element: the four slots are returned bare so they become direct
+  // children of the Overview identity grid and share its columns. A wrapper
+  // would make the block one cell and re-create the alignment problem.
+  return rows.join('');
 }
 
 function crewSingleRowHTML(label, slot, value, leg, wantAmber){
@@ -5275,13 +5288,21 @@ function renderMain(){
   main.innerHTML =
     '<div class="section">' +
       '' + sectionTitleHTML('Overview', 'overview', leg) + '' +
-      '<div class="grid">' +
+      // [DECISION, Kyle] Overview row one holds every fixed-shape value --
+      // trip number, leg, tail and the four crew seats -- in SEVEN EQUAL
+      // columns. Equal rather than content-sized on purpose: it reads tidier
+      // and the row does not reflow as names change length. City pair is the
+      // only field that genuinely needs room to grow, so it gets its own full
+      // width row BELOW.
+      '<div class="grid grid-7 overview-ident">' +
         field('Trip number', 'tripNumber', leg.tripNumber, {placeholder:'4521'}) +
         field('Leg', 'legNumber', leg.legNumber, {placeholder:'1'}) +
-        field('City pair', 'cityPair', leg.cityPair, {placeholder:'New York \u2192 London'}) +
         selectField('Tail number', 'tailNumber', leg.tailNumber, tailChoicesForLeg(leg), {placeholder:'Select aircraft'}) +
+        crewBlockHTML(leg) +
       '</div>' +
-      crewBlockHTML(leg) +
+      '<div class="grid overview-citypair">' +
+        field('City pair', 'cityPair', leg.cityPair, {placeholder:'New York \u2192 London'}) +
+      '</div>' +
     '</div>' +
 
     '<div class="section">' +
