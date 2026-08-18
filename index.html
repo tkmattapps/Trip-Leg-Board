@@ -1323,7 +1323,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T18:40:32Z';
+const BUILD_VERSION = '2026-08-18T18:48:37Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3800,11 +3800,24 @@ function tripQuickCrewChoices(slot){
     .filter(k => k !== slot)
     .map(k => tripQuickState.sel[k])
     .filter(v => v && v !== TRIP_QUICK_REMOVE);
-  return people
+  // *** THIS SLOT'S OWN VALUE IS NEVER EXCLUDED. *** Mirrors the leg editor's
+  // `p.id === selfValue` guard. Without it the sheet had a real bug: seeding
+  // pre-fills PIC and SIC, so if the ACM was one of those same pilots the
+  // dedup dropped them from the ACM list, the select could not render its own
+  // selected value, and the seat read as blank with no Remove option -- even
+  // though the leg plainly had an ACM. FA never showed it because a flight
+  // attendant is never also picked in a pilot slot.
+  const selfValue = tripQuickState.sel[slot] || '';
+  const list = people
     .filter(p => titles.indexOf(p.title) !== -1)
-    .filter(p => chosenElsewhere.indexOf(p.id) === -1)
-    .map(p => ({ value:p.id, label:p.abbrev || p.name || p.email }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+    .filter(p => p.id === selfValue || chosenElsewhere.indexOf(p.id) === -1)
+    .map(p => ({ value:p.id, label:p.abbrev || p.name || p.email }));
+  // A seated crew member who no longer qualifies -- title changed, or they left
+  // the department -- must still render, or the seat would silently read empty.
+  if(selfValue && selfValue !== TRIP_QUICK_REMOVE && !list.some(c => c.value === selfValue)){
+    list.push({ value:selfValue, label:crewDisplayName(selfValue) + ' (unavailable)' });
+  }
+  return list.sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function tripQuickBodyHTML(){
