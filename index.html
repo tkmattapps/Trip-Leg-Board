@@ -718,12 +718,16 @@
   .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
   .import-leg-date{ font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--fog-500); }
   .import-leg-body{ display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--fog-300); line-height:1.5; }
-  .import-crew-list{ display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:4px; }
+  .import-crew-list{ display:flex; flex-direction:column; gap:3px; margin-top:4px; }
   .import-crew-person{ display:flex; align-items:baseline; gap:6px; }
   .import-crew-role{ font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color:var(--fog-500); min-width:34px; }
   .import-crew-role.is-unset{ font-style:italic; text-transform:none; letter-spacing:0; }
   .import-crew-role.is-unresolved{ color:var(--amber-500); }
   .import-crew-name{ color:var(--paper-050); }
+  .import-crew-out{ font-size:12px; }
+  .import-crew-out.is-ok{ color:var(--fog-500); }
+  .import-crew-out.is-moved{ color:var(--amber-500); }
+  .import-crew-out.is-warn{ color:var(--amber-500); }
   .import-actions{ display:flex; gap:10px; justify-content:flex-end; }
   .import-upload-box{ background:var(--panel-800); border:1px dashed var(--hairline); border-radius:6px; padding:32px 20px; text-align:center; margin-bottom:24px; }
   .import-unmatched-select{ background:var(--panel-900, #0f1115); color:var(--paper-050); border:1px solid var(--hairline); border-radius:4px; padding:8px; font-size:13px; }
@@ -1408,7 +1412,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T22:22:22Z';
+const BUILD_VERSION = '2026-08-18T22:42:23Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -5963,6 +5967,166 @@ function legIdentityKey(leg){
   return dep + '|' + arr + '|' + date;
 }
 
+// ---- CREW MATCHING: DOCUMENT NAMES -> ROSTER ACCOUNTS ----------------------
+// The legal name is the ONLY value that appears both on an incoming trip
+// document and on a user record, so it is the join key. Documents print
+// "Mattison, Terrence K"; the roster carries "Kyle"; the UI shows "KMAT".
+//
+// This runs at BUILD time so the import preview can show what matched before
+// anything becomes real, and so the seats arrive already filled -- the human
+// confirmation happens once, on the preview, rather than again on eight legs.
+//
+// Everything here is REPORTED. A name that matched nobody, or matched two
+// people, leaves its seat EMPTY and says so. A silent failure to match is the
+// dangerous outcome, so no result is ever left looking like a clean match.
+
+// Strip case, accents and punctuation so "O'Brien" and "OBrien" meet.
+function crewNameKey(s){
+  return String(s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase().replace(/[^A-Z]/g, '');
+}
+
+// Documents print names in several shapes. Pull a surname and, where offered,
+// a given name. A lone middle initial is kept separately: it can DISAMBIGUATE
+// between two people but is never strong enough to match on by itself.
+function splitDocumentName(raw){
+  const s = String(raw || '').trim();
+  if(!s) return { surname:'', given:'' };
+  if(s.indexOf(',') !== -1){
+    // "Mattison, Terrence K" -- the common trip-sheet form.
+    const parts = s.split(',');
+    const rest = (parts.slice(1).join(' ') || '').trim().split(/\s+/).filter(Boolean);
+    return { surname: parts[0].trim(), given: rest[0] || '' };
+  }
+  const toks = s.split(/\s+/).filter(Boolean);
+  if(toks.length === 1) return { surname: toks[0], given: '' };
+  // "Terrence Mattison" -- assume the last token is the surname.
+  return { surname: toks[toks.length - 1], given: toks[0] };
+}
+
+// Two given names agree if either is a prefix of the other, so that a printed
+// initial "T" meets a roster "Terrence". Absent data never counts as a clash:
+// three accounts still have no legal given name at all, and a blank must not
+// be read as a contradiction.
+function givenNamesAgree(a, b){
+  const x = crewNameKey(a), y = crewNameKey(b);
+  if(!x || !y) return true;
+  return x.indexOf(y) === 0 || y.indexOf(x) === 0;
+}
+
+// Which seat a printed role belongs in. FE, CKA and MX are real roles that
+// Beacon has no seat for -- they are reported as unplaceable rather than
+// squeezed into the nearest slot.
+const CREW_ROLE_TO_SLOT = { PIC:'pic', SIC:'sic', ACM:'acm', FA:'fa' };
+
+function crewMatchOne(person){
+  const parsed = splitDocumentName(person.name);
+  const surnameKey = crewNameKey(parsed.surname);
+  let people = [];
+  try { people = rosterCache || []; } catch(e){ people = []; }
+  if(!surnameKey || !people.length) return { status:'nomatch', candidates:[] };
+  let hits = people.filter(x => crewNameKey(x.surname) === surnameKey);
+  if(!hits.length) return { status:'nomatch', candidates:[] };
+  if(hits.length > 1){
+    // Narrow on the given name only when there is a genuine contest.
+    const narrowed = hits.filter(x => {
+      const g = crewNameKey(x.given);
+      const p = crewNameKey(parsed.given);
+      return g && p && (g.indexOf(p) === 0 || p.indexOf(g) === 0);
+    });
+    if(narrowed.length === 1) hits = narrowed;
+    else return { status:'ambiguous', candidates: hits };
+  }
+  // A single surname hit whose given name actively contradicts the document is
+  // NOT close enough -- that is a different person who happens to share a
+  // surname, and seating them would be worse than seating nobody.
+  if(!givenNamesAgree(hits[0].given, parsed.given)) return { status:'nomatch', candidates: hits };
+  return { status:'matched', person: hits[0], candidates: hits };
+}
+
+// Build the per-leg report AND the seat assignments in one pass, in the order
+// the document printed people, so that "first SIC" means the first one listed.
+function crewMatchReport(leg){
+  const list = Array.isArray(leg.crewRaw) ? leg.crewRaw : [];
+  const crew = { pic:'', sic:'', acm:[], fa:[] };
+  const entries = [];
+  const seated = new Set();
+  list.forEach(person => {
+    const e = { name: person.name, roleRaw: person.roleRaw, role: person.role, status:'', slot:'', userId:'', note:'' };
+    if(!person.role){
+      e.status = 'norole';
+      entries.push(e);
+      return;
+    }
+    const wanted = CREW_ROLE_TO_SLOT[person.role];
+    if(!wanted){
+      // FE / CKA / MX. Named on the document, no seat in the app.
+      e.status = 'unplaceable';
+      entries.push(e);
+      return;
+    }
+    const m = crewMatchOne(person);
+    if(m.status !== 'matched'){
+      e.status = m.status;
+      entries.push(e);
+      return;
+    }
+    const acct = m.person;
+    e.userId = acct.id;
+    if(seated.has(acct.id)){
+      // The same account already has a seat on this leg. Do not double-seat.
+      e.status = 'duplicate';
+      entries.push(e);
+      return;
+    }
+    // The crew pickers filter their options by job title, and a select whose
+    // value is not among its options silently renders the FIRST option
+    // instead. Placing someone in a seat their title does not qualify for
+    // would therefore display as SOMEBODY ELSE. Refuse, and say why.
+    const titles = CREW_SLOT_TITLES[wanted] || [];
+    if(titles.length && titles.indexOf(acct.title) === -1){
+      e.status = 'titlemismatch';
+      e.slot = wanted;
+      entries.push(e);
+      return;
+    }
+    let slot = wanted;
+    if(wanted === 'pic'){
+      if(crew.pic){
+        // Two PICs on one leg. Nowhere to put the second, and promoting or
+        // demoting a pilot is never Beacon's call.
+        e.status = 'nosecondseat';
+        entries.push(e);
+        return;
+      }
+      crew.pic = acct.id;
+    } else if(wanted === 'sic'){
+      if(crew.sic){
+        // An augmented crew with two SICs is legitimate. Beacon has one SIC
+        // seat, so the second sits in ACM -- a decision made HERE, in the app,
+        // and reported as a difference from the document. The extractor is
+        // separately forbidden from making this merge, and still is: crewRaw
+        // keeps the printed "SIC" untouched.
+        slot = 'acm';
+        e.note = 'second SIC seated as ACM';
+      } else {
+        crew.sic = acct.id;
+      }
+    }
+    if(slot === 'acm' || slot === 'fa'){
+      // ACM has a pilot-title requirement of its own; an overflowed SIC always
+      // satisfies it, having already passed the SIC check.
+      crew[slot].push(acct.id);
+    }
+    seated.add(acct.id);
+    e.status = 'placed';
+    e.slot = slot;
+    entries.push(e);
+  });
+  return { entries: entries, crew: crew };
+}
+
 function buildLegFromExtraction(extracted){
   const leg = blankLeg();
   leg.tripNumber = extracted.tripNumber || '';
@@ -5977,6 +6141,10 @@ function buildLegFromExtraction(extracted){
   // Carried across verbatim. normalizeLeg does the shape-coercion; this only
   // has to avoid throwing on a malformed array.
   leg.crewRaw = Array.isArray(extracted.crewRaw) ? extracted.crewRaw : [];
+  // Seat whoever matched. normalizeLeg has not run yet, so coerce crewRaw
+  // first -- the matcher reads the same shape it will read on the preview.
+  normalizeLeg(leg);
+  leg.crew = crewMatchReport(leg).crew;
   const ec = extracted.compliance || {};
   Object.assign(leg.compliance, {
     eapisReqd: ec.eapisReqd || '', eapisNotes: ec.eapisNotes || '',
@@ -6138,18 +6306,44 @@ function importEndLineHTML(labelText, end){
 function importCrewLineHTML(leg){
   const list = Array.isArray(leg.crewRaw) ? leg.crewRaw : [];
   if(!list.length) return '';
-  const people = list.map(person => {
-    const name = escapeHtml(person.name);
+  const report = crewMatchReport(leg);
+  const people = report.entries.map(e => {
+    const name = escapeHtml(e.name);
     let role;
-    if(person.role){
-      role = '<span class="import-crew-role">' + escapeHtml(CREW_RAW_ROLE_LABELS[person.role] || person.role) + '</span>';
-    } else if(person.roleRaw){
+    if(e.role){
+      role = '<span class="import-crew-role">' + escapeHtml(CREW_RAW_ROLE_LABELS[e.role] || e.role) + '</span>';
+    } else if(e.roleRaw){
       // Printed, but not resolvable to a known role. Show it, flag it.
-      role = '<span class="import-crew-role is-unresolved">' + escapeHtml(person.roleRaw) + '?</span>';
+      role = '<span class="import-crew-role is-unresolved">' + escapeHtml(e.roleRaw) + '?</span>';
     } else {
-      role = '<span class="import-crew-role is-unset">no role stated</span>';
+      role = '<span class="import-crew-role is-unset">no role</span>';
     }
-    return '<div class="import-crew-person">' + role + '<span class="import-crew-name">' + name + '</span></div>';
+    // The outcome, always stated. An unmatched name must not be able to pass
+    // for a matched one at a glance.
+    let out = '', cls = '';
+    if(e.status === 'placed'){
+      const who = crewDisplayName(e.userId);
+      out = '\u2192 ' + escapeHtml(who) + (e.note ? ' (' + escapeHtml(e.note) + ')' : '');
+      cls = e.note ? 'is-moved' : 'is-ok';
+    } else if(e.status === 'nomatch'){
+      out = 'no matching person'; cls = 'is-warn';
+    } else if(e.status === 'ambiguous'){
+      out = 'more than one match'; cls = 'is-warn';
+    } else if(e.status === 'titlemismatch'){
+      out = 'job title does not fit this seat'; cls = 'is-warn';
+    } else if(e.status === 'duplicate'){
+      out = 'already seated on this leg'; cls = 'is-warn';
+    } else if(e.status === 'nosecondseat'){
+      out = 'no second PIC seat'; cls = 'is-warn';
+    } else if(e.status === 'unplaceable'){
+      out = 'no seat for this role'; cls = 'is-warn';
+    } else if(e.status === 'norole'){
+      out = 'no role stated'; cls = 'is-warn';
+    }
+    return '<div class="import-crew-person">' + role +
+      '<span class="import-crew-name">' + name + '</span>' +
+      (out ? '<span class="import-crew-out ' + cls + '">' + out + '</span>' : '') +
+    '</div>';
   }).join('');
   return '<div><strong>Crew as printed:</strong><div class="import-crew-list">' + people + '</div></div>';
 }
