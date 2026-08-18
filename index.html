@@ -325,12 +325,15 @@
     align-items:flex-start;
     gap:24px;
     flex-wrap:nowrap;
-    overflow-x:auto;
-    -webkit-overflow-scrolling:touch;
-    scrollbar-width:none;
   }
-  .info-strip-row::-webkit-scrollbar{ display:none; }
+  /* SIZED TO REAL CONTENT, not a generic minimum. Trip numbers are ~6 digits,
+     tails ~6 characters, and crew abbreviations are EXACTLY 4 - so a cell wide
+     enough for a full name is reserving space nothing will ever occupy, which is
+     what pushed the row off the side of a phone. */
   .info-cell{ min-width:0; flex:0 0 auto; }
+  .info-cell[data-w="trip"] .info-cell-input{ width:7ch; }
+  .info-cell[data-w="tail"] .info-cell-input{ width:7ch; }
+  .info-cell[data-w="crew"] .info-cell-input{ width:5ch; }
   .info-cell .select-wrap{ display:block; }
   .info-cell-label{
     font-size:10px;
@@ -347,8 +350,7 @@
   .info-cell-input{
     display:block;
     width:auto;
-    min-width:4ch;
-    max-width:22ch;
+    min-width:0;
     background:transparent;
     border:none;
     border-radius:4px;
@@ -1158,7 +1160,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T15:47:20Z';
+const BUILD_VERSION = '2026-08-18T16:09:13Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3220,18 +3222,18 @@ function collectCrewFromEditor(leg){
 // Label above, value below, no box. The strip REPORTS what the trip is; it is
 // not a form. The controls underneath are real and live, so nothing is disguised
 // as static and nothing silently fails.
-function infoStripField(label, id, value){
+function infoStripField(label, id, value, widthKey){
   return '' +
-    '<div class="info-cell">' +
+    '<div class="info-cell"' + (widthKey ? ' data-w="' + widthKey + '"' : '') + '>' +
       '<div class="info-cell-label">' + escapeHtml(label) + '</div>' +
       '<input type="text" id="' + id + '" class="info-cell-input" value="' +
         escapeHtml(String(value == null ? '' : value)) + '">' +
     '</div>';
 }
 
-function infoStripSelect(label, id, value, choices){
+function infoStripSelect(label, id, value, choices, widthKey){
   return '' +
-    '<div class="info-cell">' +
+    '<div class="info-cell"' + (widthKey ? ' data-w="' + widthKey + '"' : '') + '>' +
       '<div class="info-cell-label">' + escapeHtml(label) + '</div>' +
       '<div class="select-wrap"><select id="' + id + '" class="info-cell-input">' +
         stripOptions(choices, value) +
@@ -3260,14 +3262,14 @@ function stripOptions(choices, value){
 function crewStripCells(leg){
   const c = (leg && leg.crew) ? leg.crew : {};
   const cells = [];
-  cells.push(infoStripSelect('PIC', 'crew_pic', c.pic || '', crewChoicesForSlot('pic', leg, c.pic || '')));
-  cells.push(infoStripSelect('SIC', 'crew_sic', c.sic || '', crewChoicesForSlot('sic', leg, c.sic || '')));
+  cells.push(infoStripSelect('PIC', 'crew_pic', c.pic || '', crewChoicesForSlot('pic', leg, c.pic || ''), 'crew'));
+  cells.push(infoStripSelect('SIC', 'crew_sic', c.sic || '', crewChoicesForSlot('sic', leg, c.sic || ''), 'crew'));
   CREW_LIST_SLOTS.forEach(function(slot){
     const list = (c[slot] || []).filter(function(v){ return v; });
     const first = list.length ? list[0] : '';
     const label = slot.toUpperCase() + (list.length > 1 ? (' +' + (list.length - 1)) : '');
     cells.push('' +
-      '<div class="info-cell" data-crew-slot="' + slot + '" data-crew-index="0">' +
+      '<div class="info-cell" data-w="crew" data-crew-slot="' + slot + '" data-crew-index="0">' +
         '<div class="info-cell-label">' + escapeHtml(label) + '</div>' +
         '<div class="select-wrap"><select id="crew_' + slot + '_0" class="info-cell-input">' +
           stripOptions(crewChoicesForSlot(slot, leg, first), first) +
@@ -3391,7 +3393,12 @@ function crewChoicesForSlot(slot, leg, selfValue){
     // A person cannot occupy two seats on the SAME leg. Their own current
     // selection stays in their own picker or it would clear itself on render.
     .filter(p => p.id === selfValue || taken.indexOf(p.id) === -1)
-    .map(p => ({ value: p.id, label: p.name || p.email }));
+    // ABBREVIATION ONLY, in the cell and in the dropdown alike. The four
+    // characters are what the department chose to identify this person by, and
+    // crew read them fluently. Falls back to the display name only when the
+    // abbreviation is missing, so a half-onboarded account still renders as
+    // something rather than blank.
+    .map(p => ({ value: p.id, label: p.abbrev || p.name || p.email }));
   // A crew member already on the leg who no longer qualifies -- title changed,
   // or they left the department -- must still render, or opening the leg would
   // silently drop them.
@@ -3418,7 +3425,7 @@ function crewDisplayName(userId){
   let people = [];
   try { people = rosterCache || []; } catch(e){ people = []; }
   const p = people.find(x => x.id === userId);
-  if(p) return p.name || p.email;
+  if(p) return p.abbrev || p.name || p.email;
   return 'Unknown crew';
 }
 
@@ -4033,7 +4040,7 @@ async function loadRoster(){
     // a department. Joining from users would rely on the legacy
     // users.flight_department_id column, which is slated to be dropped.
     const { data, error } = await sb.from('memberships')
-      .select('user_id, membership_role, is_admin, users(id, email, display_name, role)')
+      .select('user_id, membership_role, is_admin, users(id, email, display_name, role, crew_abbrev)')
       .eq('flight_department_id', deptId);
     if(error) throw error;
     rosterCache = (data || [])
@@ -4043,6 +4050,9 @@ async function loadRoster(){
         email: m.users.email || '',
         name: m.users.display_name || '',
         title: m.users.role || '',
+        // The four-character identifier the flight department CHOSE. Not
+        // derived - see migration 5. Everything crew-facing displays this.
+        abbrev: m.users.crew_abbrev || '',
         membershipRole: m.membership_role || 'member',
         isAdmin: !!m.is_admin
       }))
@@ -5447,8 +5457,8 @@ function renderMain(){
     // them in the DOM because collectAndSave reads fields by id.
     '<div class="info-strip">' +
       '<div class="info-strip-row">' +
-        infoStripField('Trip', 'tripNumber', leg.tripNumber) +
-        infoStripSelect('Tail', 'tailNumber', leg.tailNumber, tailChoicesForLeg(leg)) +
+        infoStripField('Trip', 'tripNumber', leg.tripNumber, 'trip') +
+        infoStripSelect('Tail', 'tailNumber', leg.tailNumber, tailChoicesForLeg(leg), 'tail') +
         crewStripCells(leg) +
       '</div>' +
     '</div>' +
