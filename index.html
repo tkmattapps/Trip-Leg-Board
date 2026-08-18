@@ -1399,7 +1399,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T21:48:41Z';
+const BUILD_VERSION = '2026-08-18T21:54:59Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -5442,7 +5442,7 @@ async function createPerson(){
 
   const res = await invokeManageUser({
     action: 'create',
-    flight_department_id: getFlightDepartmentId(),
+    flight_department_id: await getFlightDepartmentId(),
     email: email,
     display_name: name,
     role: role,
@@ -5493,7 +5493,7 @@ async function resetPersonPassword(id){
 
   const res = await invokeManageUser({
     action: 'reset_password',
-    flight_department_id: getFlightDepartmentId(),
+    flight_department_id: await getFlightDepartmentId(),
     user_id: id
   });
   if(!res.ok){
