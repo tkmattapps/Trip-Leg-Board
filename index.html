@@ -1312,7 +1312,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T18:14:55Z';
+const BUILD_VERSION = '2026-08-18T18:19:57Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3271,7 +3271,7 @@ function wireCrewPickers(leg){
       const prev = leg.crew ? (leg.crew[slot] || '') : '';
       leg.crew = leg.crew || { pic:'', sic:'', acm:[], fa:[] };
       leg.crew[slot] = el.value;
-      carryCrewForward(leg, slot, el.value, prev);
+      // NO CARRY-FORWARD -- see the tail handler. Leg level writes one leg.
       autoSaveIfEditing();
       renderMain();
     });
@@ -7815,11 +7815,9 @@ function wireFieldBlurAutosave(){
     const newTail = t.value || '';
     if(!newTail || newTail === oldTail) return;
     leg.tailNumber = newTail;
-    const changed = carryTailForward(leg, newTail, oldTail);
-    if(changed.length){
-      const legWord = changed.length === 1 ? 'leg ' : 'legs ';
-      showToast(newTail + ' also applied to ' + legWord + changed.join(', ') + '.');
-    }
+    // NO CARRY-FORWARD. A change made at leg level stays at leg level. Applying
+    // across a trip is the trip tile's job, and it shows the counts before it
+    // writes; this path would have spread the same change silently.
   });
   main.addEventListener('focusout', function(e){
     const t = e.target;
