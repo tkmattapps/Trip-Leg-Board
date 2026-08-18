@@ -1367,7 +1367,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T19:21:34Z';
+const BUILD_VERSION = '2026-08-18T19:30:36Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3915,7 +3915,7 @@ function tripQuickBodyHTML(){
   } else if(tripQuickState.mode === 'status'){
     const leg = legs[0];
     const cur = tripQuickState.sel['__status__'] || (leg ? leg.status : '');
-    const complete = legAllSectionsComplete(leg);
+    const complete = legAllSectionsVerified(leg);
     const STATUSES = [
       { v:'planning', label:'Planning', color:'#F2A93B' },
       { v:'ready',    label:'Ready',    color:'#3DBE6B' },
@@ -3926,11 +3926,24 @@ function tripQuickBodyHTML(){
         '<div class="sheet-slot-label">Leg status</div>' +
         '<div class="sheet-status-list">' +
           STATUSES.map(st => {
-            // *** THE DERIVED-STATUS RULE, CARRIED OVER FROM THE POPOVER. ***
-            // A fully-complete leg cannot be hand-set back to Planning; status
-            // follows section completeness. Disabled rather than hidden so the
-            // reason stays visible instead of the option vanishing.
-            const blocked = (st.v === 'planning' && complete);
+            // *** BOTH STATUS RULES, CARRIED OVER FROM THE CHECKLIST. ***
+            // 1. A fully-complete leg cannot be hand-set back to Planning;
+            //    status follows section completeness.
+            // 2. READY IS EARNED, NOT ASSERTED. Every section must be verified
+            //    first. This guard lived on the #statusSelect change handler,
+            //    so it only ever fired while the checklist was open -- writing
+            //    leg.status directly from here sailed straight past it and
+            //    handed the user an override of their own check and balance.
+            //    The rule belongs to the DATA, not to one control.
+            // Disabled rather than hidden so the reason stays visible instead
+            // of the option simply vanishing.
+            // Flown is gated too. In the editor a leg could only reach flown
+            // by way of Ready, since Ready was the only unlocked step up from
+            // Planning -- so allowing a direct Planning-to-Flown jump here
+            // would be a new hole, and it seals the record on the way through.
+            const blocked = (st.v === 'planning' && complete) ||
+                            (st.v === 'ready' && !complete) ||
+                            (st.v === 'flown' && !complete && leg && leg.status !== 'flown');
             return '<button type="button" class="sheet-status-row' +
               (st.v === cur ? ' is-current' : '') +
               (blocked ? ' is-blocked"' : '"') +
@@ -3944,7 +3957,7 @@ function tripQuickBodyHTML(){
         '</div>' +
         (complete
           ? '<div class="sheet-note">This leg is fully complete, so it stays Ready. To move it back to Planning, uncheck the section you want to work on and the status will update automatically.</div>'
-          : '') +
+          : '<div class="sheet-note">All sections must be verified before this leg can be set to Ready or Flown. Open the leg checklist to work through them.</div>') +
         (tripQuickState.sel['__status__'] === 'flown' && leg && leg.status !== 'flown'
           ? '<div class="sheet-preview sheet-preview-replace">Marks this leg flown. Crew and aircraft can no longer be changed by a quick action.</div>'
           : '') +
@@ -4167,8 +4180,20 @@ async function applyTripQuick(){
     const want = sel['__status__'];
     const leg = scopeLegs[0];
     if(!want || !leg || leg.status === want){ closeTripQuickSheet(); return; }
-    // Re-check the derived-status rule at write time, not just at render time.
-    if(want === 'planning' && legAllSectionsComplete(leg)){ closeTripQuickSheet(); return; }
+    // Re-check BOTH rules at write time, not just at render time. A disabled
+    // button is a UI courtesy; this is the actual gate.
+    const allDone = legAllSectionsVerified(leg);
+    if(want === 'planning' && allDone){ closeTripQuickSheet(); return; }
+    if(want === 'ready' && !allDone){
+      closeTripQuickSheet();
+      showConfirm('All sections must be verified before this leg can be set to Ready.', {alertOnly:true});
+      return;
+    }
+    if(want === 'flown' && !allDone && leg.status !== 'flown'){
+      closeTripQuickSheet();
+      showConfirm('All sections must be verified before this leg can be marked Flown.', {alertOnly:true});
+      return;
+    }
     leg.status = want;
     saveLeg(leg);
     closeTripQuickSheet();
@@ -5959,13 +5984,22 @@ function currentLegAllSectionsComplete(){
   return SECTION_KEYS.every(k => !!lg.sectionComplete[k]);
 }
 
-// Leg-scoped twin of currentLegAllSectionsComplete(). That one reads
-// state.activeId and is only valid while the checklist is open; the status
-// sheet runs from the trip page, where there is no active leg.
-function legAllSectionsComplete(lg){
+// Leg-scoped twin of the editor's checkAllSectionsComplete(). The editor's
+// version closes over `leg` and is only valid while the checklist is open; the
+// status sheet runs from the trip page, where there is no active leg.
+//
+// *** READS sectionVERIFIED, NOT sectionComplete. *** These are two different
+// fields and confusing them is a real hazard:
+//   sectionComplete  -- auto-ticked when a section's fields are populated.
+//   sectionVerified  -- a HUMAN pressed the verify button and signed off.
+// Ready is gated on the second one, because, per the editor's own comment, a
+// machine filling boxes must never be able to declare a leg ready. An earlier
+// cut of this helper read sectionComplete and would have let an auto-filled
+// leg be promoted to Ready with nobody having checked anything.
+function legAllSectionsVerified(lg){
   const KEYS = ['departure','arrival','performance','enroute','permits','dispatch','pax','crew','nextLeg'];
-  if(!lg || !lg.sectionComplete) return false;
-  return KEYS.every(k => !!lg.sectionComplete[k]);
+  if(!lg || !lg.sectionVerified) return false;
+  return KEYS.every(k => !!lg.sectionVerified[k]);
 }
 
 function openStatusPopover(anchorEl){
