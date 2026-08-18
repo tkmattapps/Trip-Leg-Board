@@ -307,63 +307,73 @@
   .status-select.status-flown{ background:#12233d; border-color:#4A9DE0; color:#4A9DE0; }
 
   .section{ margin-bottom:26px; }
-  /* ---- INFO BAND (the dissolved Overview) ---- */
-  /* Trip identity, not a check. It gets NO section title, so without a container
-     of its own the fields would float unanchored on the page background - worse
-     than either keeping the old title or stripping everything. So it gets a
-     deliberately QUIETER card than .subpanel: flatter background, no accent, a
-     dashed hairline that reads as "reference", never as "awaiting sign-off".
-     Amber is reserved for things a human still has to answer; nothing in here
-     may borrow it. */
-  /* RECESSED, not raised. Sections and subpanels sit LIGHTER than the page,
-     which reads as "come and work on me". This goes DARKER, which reads as a
-     reference strip the page is resting on. */
-  .info-band{
-    background:rgba(0,0,0,0.28);
-    border:1px solid rgba(184,196,217,0.10);
-    border-radius:8px;
-    padding:16px 18px 18px;
-    margin-bottom:26px;
+  /* ---- INFO STRIP ----------------------------------------------------------
+     FULL-BLEED, NOT A CARD. Negative margins pull it out to the panel edges so
+     it runs edge to edge; a single hairline underneath is the only separator.
+     This is what stops it reading as a section: every other block on the page is
+     an inset card, so the one thing that is NOT inset is obviously different.
+     Margins MUST track .main's padding (36px desktop / 16px phone) exactly. */
+  .info-strip{
+    margin:0 -36px 22px;
+    padding:12px 36px 14px;
+    border-bottom:1px solid var(--hairline);
   }
-  /* Labels sit quieter still - this band is read at a glance, not filled in. */
-  .info-band .field label{ font-size:10px; letter-spacing:0.4px; text-transform:uppercase; color:var(--fog-500); }
-  /* *** THE THING THAT MADE IT READ AS A SECTION *** was the field chrome: the
-     same panel background and border as every other input on the page, so the
-     eye called it a form. Strip the box and the VALUE reads as text. The control
-     stays fully live - the box returns on hover and focus, so nothing is
-     disguised as static and nothing silently fails. */
-  .info-band .field input[type=text],
-  .info-band .field select{
+  /* ONE ROW that TIGHTENS rather than wrapping, scrolling horizontally only if
+     it genuinely cannot fit. */
+  .info-strip-row{
+    display:flex;
+    align-items:flex-start;
+    gap:24px;
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .info-strip-row::-webkit-scrollbar{ display:none; }
+  .info-cell{ min-width:0; flex:0 0 auto; }
+  .info-cell .select-wrap{ display:block; }
+  .info-cell-label{
+    font-size:10px;
+    letter-spacing:0.5px;
+    text-transform:uppercase;
+    color:var(--fog-500);
+    margin-bottom:2px;
+    white-space:nowrap;
+  }
+  /* NO BOX: the value is text. The native select chevron is suppressed for the
+     same reason - a dropdown arrow is an invitation to author, and this strip
+     reports rather than asks. Focus brings a surface back so editing is obvious
+     once begun. */
+  .info-cell-input{
+    display:block;
+    width:auto;
+    min-width:4ch;
+    max-width:22ch;
     background:transparent;
-    border:1px solid transparent;
-    padding-left:0;
+    border:none;
+    border-radius:4px;
+    padding:1px 2px;
+    margin:0;
     color:var(--paper-050);
-    font-size:15px;
-    transition:background 120ms ease, border-color 120ms ease, padding-left 120ms ease;
-  }
-  .info-band .field input[type=text]:hover,
-  .info-band .field select:hover,
-  .info-band .field input[type=text]:focus,
-  .info-band .field select:focus{
-    background:var(--panel-800);
-    border-color:var(--hairline);
-    padding-left:10px;
-  }
-  /* A DROPDOWN IS A BUILDING CONTROL: it presents a list and asks you to choose.
-     This band REPORTS what the document said, so the select's native chevron and
-     affordance are hidden until the value is actually tapped. The real <select>
-     is still underneath and still does all the work - we only remove the visual
-     invitation to author. */
-  .info-band .select-wrap{ position:relative; }
-  .info-band .select-wrap select{
+    font-size:16px;
+    font-family:inherit;
+    line-height:1.3;
     -webkit-appearance:none; appearance:none;
     background-image:none;
+    text-overflow:ellipsis;
   }
-  /* Empty reads as EMPTY - no dash, no "none", no placeholder text. A dash would
-     be Beacon asserting something the document never said. The label above it is
-     enough to tell you which seat is unfilled. */
-  .info-band .select-wrap select.is-empty{ color:transparent; }
-  .info-band .select-wrap select.is-empty:focus{ color:var(--paper-050); }
+  .info-cell-input:focus{
+    outline:none;
+    background:var(--panel-800);
+    box-shadow:0 0 0 1px var(--hairline);
+  }
+  @media (max-width:820px){
+    .info-strip{ margin:0 -16px 18px; padding:10px 16px 12px; }
+    .info-strip-row{ gap:18px; }
+    /* 16px minimum on the phone: anything smaller and iOS zooms the viewport on
+       focus. Same reason the app-wide mobile override exists. */
+    .info-cell-input{ font-size:16px; }
+  }
   .section-title{
     font-family:system-ui,'Inter',sans-serif; font-size:12px; letter-spacing:1.5px; text-transform:uppercase;
     font-weight:600; color:var(--amber-500); margin-bottom:12px; display:flex; align-items:center; gap:10px;
@@ -1148,7 +1158,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T15:18:56Z';
+const BUILD_VERSION = '2026-08-18T15:47:20Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2989,8 +2999,6 @@ function sectionTouchLine(leg, key){
 // The button label IS the challenge: it shows the section's own name until
 // someone answers it with 'Checked'. These are the canonical names.
 const SECTION_LABELS = {
-  // No 'overview' key: it is an information band with no verify button, so
-  // nothing can ever look it up here.
   departure:'Departure', arrival:'Arrival', performance:'Performance',
   enroute:'Enroute', permits:'Permits', dispatch:'Dispatch',
   pax:'Pax', crew:'Crew', nextLeg:'Next pax leg'
@@ -3115,12 +3123,11 @@ function wireCrewPickers(leg){
     });
   });
 
+  // The strip shows the FIRST seat of each list slot only (index 0).
   CREW_LIST_SLOTS.forEach(slot => {
-    root.querySelectorAll('.crew-list-item[data-crew-slot="' + slot + '"] select').forEach(sel => {
+    root.querySelectorAll('.info-cell[data-crew-slot="' + slot + '"] select').forEach(sel => {
       sel.addEventListener('change', function(){
-        const item = sel.closest('.crew-list-item');
-        const idx = item ? parseInt(item.getAttribute('data-crew-index'), 10) : -1;
-        if(idx < 0) return;
+        const idx = 0;
         leg.crew = leg.crew || { pic:'', sic:'', acm:[], fa:[] };
         if(!Array.isArray(leg.crew[slot])) leg.crew[slot] = [];
         // "Add another" is an action, not a person. Restore the select to the
@@ -3186,30 +3193,97 @@ function collectCrewFromEditor(leg){
   const crew = { pic:'', sic:'', acm:[], fa:[] };
   crew.pic = val('crew_pic');
   crew.sic = val('crew_sic');
+  // *** THE STRIP ONLY SHOWS SEAT 0 OF EACH LIST SLOT. *** Rebuilding the array
+  // from the DOM would therefore DELETE every additional ACM or FA that is not
+  // currently on screen. So the existing array is preserved and only index 0 is
+  // written from the visible control. Emptying that control removes seat 0 and
+  // promotes the next person up, matching what the user sees happen.
+  const prev = (leg && leg.crew) ? leg.crew : {};
   CREW_LIST_SLOTS.forEach(slot => {
-    const out = [];
-    document.querySelectorAll('.crew-list-item[data-crew-slot="' + slot + '"] select').forEach(sel => {
-      // Never persist the add-another sentinel as a crew member.
-      if(sel.value && sel.value !== CREW_ADD_SENTINEL) out.push(sel.value);
-    });
-    crew[slot] = out;
+    const existing = Array.isArray(prev[slot]) ? prev[slot].slice() : [];
+    const sel = document.getElementById('crew_' + slot + '_0');
+    if(!sel){ crew[slot] = existing; return; }
+    const v = (sel.value && sel.value !== CREW_ADD_SENTINEL) ? sel.value : '';
+    if(v){
+      if(existing.length) existing[0] = v; else existing.push(v);
+    } else if(existing.length){
+      existing.shift();
+    }
+    crew[slot] = existing.filter(x => x);
   });
   leg.crew = crew;
 }
 
 // Renders the four crew rows inside their own grid beneath the Overview
 // identity row.
+// ---- INFO STRIP -----------------------------------------------------------
+// Label above, value below, no box. The strip REPORTS what the trip is; it is
+// not a form. The controls underneath are real and live, so nothing is disguised
+// as static and nothing silently fails.
+function infoStripField(label, id, value){
+  return '' +
+    '<div class="info-cell">' +
+      '<div class="info-cell-label">' + escapeHtml(label) + '</div>' +
+      '<input type="text" id="' + id + '" class="info-cell-input" value="' +
+        escapeHtml(String(value == null ? '' : value)) + '">' +
+    '</div>';
+}
+
+function infoStripSelect(label, id, value, choices){
+  return '' +
+    '<div class="info-cell">' +
+      '<div class="info-cell-label">' + escapeHtml(label) + '</div>' +
+      '<div class="select-wrap"><select id="' + id + '" class="info-cell-input">' +
+        stripOptions(choices, value) +
+      '</select></div>' +
+    '</div>';
+}
+
+// The blank option carries NO placeholder text. An unfilled seat renders empty,
+// because a dash or a "none" would be Beacon asserting something the document
+// never said. The label above is enough to identify the seat.
+function stripOptions(choices, value){
+  let opts = '<option value=""></option>';
+  (choices || []).forEach(function(c){
+    const v = String(c && c.value != null ? c.value : c);
+    const l = (c && c.label != null) ? c.label : v;
+    opts += '<option value="' + escapeHtml(v) + '"' +
+      (v === String(value || '') ? ' selected' : '') + '>' + escapeHtml(l) + '</option>';
+  });
+  return opts;
+}
+
+// Crew seats as strip cells. PIC and SIC are single seats. List slots show the
+// FIRST seat only: additional crew belong on the trip-level review grid, not
+// squeezed into a one-line strip. A count suffix flags the extras so they are
+// never silently hidden.
+function crewStripCells(leg){
+  const c = (leg && leg.crew) ? leg.crew : {};
+  const cells = [];
+  cells.push(infoStripSelect('PIC', 'crew_pic', c.pic || '', crewChoicesForSlot('pic', leg, c.pic || '')));
+  cells.push(infoStripSelect('SIC', 'crew_sic', c.sic || '', crewChoicesForSlot('sic', leg, c.sic || '')));
+  CREW_LIST_SLOTS.forEach(function(slot){
+    const list = (c[slot] || []).filter(function(v){ return v; });
+    const first = list.length ? list[0] : '';
+    const label = slot.toUpperCase() + (list.length > 1 ? (' +' + (list.length - 1)) : '');
+    cells.push('' +
+      '<div class="info-cell" data-crew-slot="' + slot + '" data-crew-index="0">' +
+        '<div class="info-cell-label">' + escapeHtml(label) + '</div>' +
+        '<div class="select-wrap"><select id="crew_' + slot + '_0" class="info-cell-input">' +
+          stripOptions(crewChoicesForSlot(slot, leg, first), first) +
+        '</select></div>' +
+      '</div>');
+  });
+  return cells.join('');
+}
+
 function crewBlockHTML(leg){
   const c = (leg && leg.crew) ? leg.crew : {};
   const rows = [];
 
-  // AMBER REMOVED. Beacon is a trip VIEWER, not a trip builder: the trip already
-  // exists and the document already named the crew. Amber means "a human still
-  // has to answer this", so demanding a PIC here was the app asking the pilot to
-  // AUTHOR something rather than reporting what the document said. If a trip
-  // sheet names no PIC, that is a fact about the document worth flagging AT
-  // IMPORT - not a permanent nag on every leg.
-  rows.push(crewSingleRowHTML('PIC', 'pic', c.pic || '', leg, false));
+  // PIC is required, so an empty one gets the amber treatment the rest of the
+  // app uses for "needed but not yet supplied".
+  rows.push(crewSingleRowHTML('PIC', 'pic', c.pic || '', leg, !c.pic));
   rows.push(crewSingleRowHTML('SIC', 'sic', c.sic || '', leg, false));
   rows.push(crewListRowHTML('ACM', 'acm', c.acm || [], leg));
   rows.push(crewListRowHTML('FA', 'fa', c.fa || [], leg));
@@ -3998,18 +4072,6 @@ async function loadRoster(){
 //
 // Only the crew selects depend on rosterCache, so only they are touched. Each
 // picker's own selected value is preserved.
-// Mark every empty control in the info band so CSS can render it as truly blank
-// rather than showing a "Select PIC" style invitation. Runs after render and on
-// every change, because a seat can be emptied as well as filled.
-function syncInfoBandEmptyState(){
-  document.querySelectorAll('.info-band .select-wrap select').forEach(function(sel){
-    sel.classList.toggle('is-empty', !sel.value);
-  });
-}
-document.addEventListener('change', function(e){
-  if(e.target && e.target.closest && e.target.closest('.info-band')) syncInfoBandEmptyState();
-});
-
 function refreshCrewPickerOptions(){
   const leg = state.legs ? state.legs.find(l => l.id === state.activeId) : null;
   if(!leg) return;
@@ -4041,11 +4103,9 @@ function refreshCrewPickerOptions(){
   repaint(document.getElementById('crew_pic'), 'pic', false);
   repaint(document.getElementById('crew_sic'), 'sic', false);
   CREW_LIST_SLOTS.forEach(slot => {
-    const items = document.querySelectorAll('.crew-list-item[data-crew-slot="' + slot + '"] select');
+    const items = document.querySelectorAll('.info-cell[data-crew-slot="' + slot + '"] select');
     items.forEach((sel, i) => repaint(sel, slot, i === items.length - 1));
   });
-  // Rebuilding options resets the class, so re-apply the blank rendering.
-  syncInfoBandEmptyState();
 }
 
 function rosterRowHTML(p){
@@ -5025,7 +5085,7 @@ function renderTripDetailView(){
 }
 
 function currentLegAllSectionsComplete(){
-  const SECTION_KEYS = ['departure','arrival','performance','enroute','permits','dispatch','pax','crew','nextLeg']; // 'overview' removed - info band, not verified
+  const SECTION_KEYS = ['departure','arrival','performance','enroute','permits','dispatch','pax','crew','nextLeg'];
   const lg = (typeof state !== 'undefined' && state.legs) ? state.legs.find(l => l.id === state.activeId) : null;
   if(!lg || !lg.sectionComplete) return false;
   return SECTION_KEYS.every(k => !!lg.sectionComplete[k]);
@@ -5319,18 +5379,17 @@ function renderMain(){
     backLabel = 'Flown Trips';
   }
 
-  // Leg number moved into the header subtext when Overview stopped being a
-  // section. Kyle's re-orientation test: come back to this screen cold and you
-  // must know WHERE YOU ARE in about three seconds. The header is also the part
-  // that survives scrolling down into the far sections.
-  const _legNo = (leg.legNumber || '').trim();
-  const _cityPair = (leg.cityPair || '').trim();
-  const _headerSub = _legNo
-    ? ('Leg ' + _legNo + (_cityPair ? ': ' + _cityPair : ''))
-    : _cityPair;
   setPageHeader({
     title:'Leg Checklist',
-    sub: _headerSub,
+    // Leg number and city pair BOTH live here now, having left the info strip.
+    // The header survives scrolling, so this is the honest home for the two
+    // things you need in order to re-orient after walking away.
+    sub: (function(){
+      const cp = (leg.cityPair || '').trim();
+      const n = (leg.legNumber == null || leg.legNumber === '') ? '' : String(leg.legNumber).trim();
+      if(n && cp) return 'Leg ' + n + ': ' + cp;
+      return n ? ('Leg ' + n) : cp;
+    })(),
     actionsHTML: '<button type="button" class="verify-progress" id="verifyProgress"></button>',
     backLabel: backLabel,
     backTo: (state.previousView === 'tripDetail' && state.previousTripKey) ? 'tripDetail' : (state.previousView === 'history' ? 'history' : 'dashboard')
@@ -5374,24 +5433,27 @@ function renderMain(){
   if(_barDocEl) _barDocEl.innerHTML = legBarDocHTML;
 
   main.innerHTML =
-    // OVERVIEW IS NOT A SECTION. It carries trip IDENTITY - trip number, leg,
-    // city pair, tail, crew - none of which is a CHECK. The test for anything in
-    // the leg checklist is: could it be wrong, and must a human confirm it? This
-    // is context, so it is furniture, and furniture does not get verified.
-    // Deliberately NO sectionTitleHTML: no title, no verify button, no ring,
-    // nothing that trains the eye to expect a tick. Each VALUE carries its own
-    // label instead, which is what distinguishes this from a section.
-    // Still fully EDITABLE - information-only means unverified, not read-only.
-    // Tail and crew genuinely change and there is nowhere else to set them.
-    '<div class="section info-band">' +
-      '<div class="grid">' +
-        field('Trip number', 'tripNumber', leg.tripNumber, {placeholder:'4521'}) +
-        field('Leg', 'legNumber', leg.legNumber, {placeholder:'1'}) +
-        field('City pair', 'cityPair', leg.cityPair, {placeholder:'New York \u2192 London'}) +
-        selectField('Tail number', 'tailNumber', leg.tailNumber, tailChoicesForLeg(leg), {placeholder:'Select aircraft'}) +
+    // *** OVERVIEW DISSOLVED. *** Beacon is a trip VIEWER: the trip already
+    // exists and the document already named the tail and crew. These fields are
+    // context to re-orient by, not claims a human must sign off, so they are no
+    // longer a verifiable section - hence no sectionTitleHTML, no verify button,
+    // no ring, nothing that trains the eye to expect a tick.
+    // NOT A CARD EITHER. A full-bleed STRIP running edge to edge, separated by a
+    // hairline only. The page is made of inset cards, so the one thing that is
+    // NOT inset is self-evidently a different kind of thing - which is what a
+    // lightly-styled container could never achieve.
+    // LEG and CITY PAIR are absent on purpose: both already live in the page
+    // header subtext, so repeating them here was hedging. Hidden inputs keep
+    // them in the DOM because collectAndSave reads fields by id.
+    '<div class="info-strip">' +
+      '<div class="info-strip-row">' +
+        infoStripField('Trip', 'tripNumber', leg.tripNumber) +
+        infoStripSelect('Tail', 'tailNumber', leg.tailNumber, tailChoicesForLeg(leg)) +
+        crewStripCells(leg) +
       '</div>' +
-      crewBlockHTML(leg) +
     '</div>' +
+    '<input type="hidden" id="legNumber" value="' + escapeHtml(String(leg.legNumber == null ? '' : leg.legNumber)) + '">' +
+    '<input type="hidden" id="cityPair" value="' + escapeHtml(String(leg.cityPair || '')) + '">' +
 
     '<div class="section">' +
       '' + sectionTitleHTML('Departure', 'departure', leg) + '' +
@@ -5570,10 +5632,6 @@ function renderMain(){
   }
   applyStatusColor();
 
-  // 'overview' REMOVED: it is an information band now, not a verifiable section.
-  // READY therefore gates on NINE human verifications, not ten. Any stored
-  // sectionVerified['overview'] is an abandoned orphan key and harmless - safe
-  // only because no live trips existed when this changed.
   const ALL_SECTION_KEYS = ['departure','arrival','performance','enroute','permits','dispatch','pax','crew','nextLeg'];
   function checkAllSectionsComplete(){
     // READY is gated on human VERIFICATION, not auto-ticked completeness:
@@ -5982,7 +6040,6 @@ function renderMain(){
   const manualOverrideKeys = window._legSectionOverrides.get(leg.id);
 
   const autoCompleteFieldSections = {
-    overview: ['tripNumber', 'legNumber', 'cityPair', 'tailNumber'],
     performance: ['trim', 'levelOff', 'minBRF'],
     departure: ['depAirportId', 'depAgent', 'depAgentPhone', 'depFrequency', 'date', 'depEtdLocal', 'depEtdZ'],
     arrival: ['arrAirportId', 'arrAgent', 'arrAgentPhone', 'arrFrequency', 'arrDate', 'arrEtaLocal', 'arrEtaZ'],
@@ -6372,7 +6429,6 @@ function renderMain(){
   }
 
   wireCrewPickers(leg);
-  syncInfoBandEmptyState();
   wireLegNotes(leg.id);
   hydrateLegNotes(leg.id);
   wireLegAttachments(leg);
