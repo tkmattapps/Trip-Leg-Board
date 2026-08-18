@@ -103,6 +103,9 @@
   .set-section-title{ font-size:12px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); }
   .set-section-note{ font-size:12px; color:var(--fog-500); margin:0 0 12px; line-height:1.5; }
   .set-list{ display:flex; flex-direction:column; gap:8px; }
+  .set-group{ display:flex; flex-direction:column; gap:8px; }
+  .set-group + .set-group{ margin-top:18px; }
+  .set-group-head{ font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); padding:0 2px 2px; }
   .set-row{ display:flex; align-items:center; gap:12px; padding:12px 14px; background:var(--panel-800); border:1px solid var(--hairline,#24384f); border-radius:10px; }
   .set-row.is-inactive{ opacity:0.5; }
   .set-row-main{ min-width:0; flex:1; }
@@ -1399,7 +1402,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T21:54:59Z';
+const BUILD_VERSION = '2026-08-18T22:04:46Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4915,7 +4918,7 @@ function renderSettingsView(){
   } else if(!rosterCache.length){
     rosterHTML = '<div class="set-empty">No people found.</div>';
   } else {
-    rosterHTML = '<div class="set-list">' + rosterCache.map(rosterRowHTML).join('') + '</div>';
+    rosterHTML = rosterGroupedHTML();
   }
 
   main.innerHTML =
@@ -5009,6 +5012,18 @@ function renderSettingsView(){
 // memberships.membership_role plus memberships.is_admin, and the two must never
 // be conflated.
 const JOB_TITLES = ['pilot', 'dispatcher', 'flight attendant', 'maintenance'];
+
+// The roster groups pilots first because they are the bulk of any flight
+// department and the list is scanned by function. JOB_TITLES is left in its
+// original order deliberately -- the crew pickers and the create dropdown both
+// read it, so display order lives here instead.
+const ROSTER_GROUP_ORDER = ['pilot', 'flight attendant', 'dispatcher', 'maintenance'];
+const ROSTER_GROUP_LABELS = {
+  'pilot': 'Pilots',
+  'flight attendant': 'Flight attendants',
+  'dispatcher': 'Dispatchers',
+  'maintenance': 'Maintenance'
+};
 const JOB_TITLE_LABELS = {
   'pilot': 'Pilot',
   'dispatcher': 'Dispatcher',
@@ -5230,6 +5245,47 @@ function rosterViewerIsAdmin(){
 // check cannot drift apart.
 function normalizeAbbrev(s){
   return String(s || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+// Grouped by job title, alphabetical within each group. A group with nobody in
+// it does not render at all -- an unused role is not a gap in the record, it is
+// simply a role this department does not staff. (That is the opposite of a
+// missing crew abbreviation, which IS incomplete and is flagged in amber.)
+//
+// Anyone whose title is not one of the four known values still has to appear
+// somewhere, or the roster would silently hide an account. They fall into a
+// trailing group rather than vanishing.
+function rosterGroupedHTML(){
+  const people = (rosterCache || []).slice();
+  const byName = (a, b) =>
+    String(a.name || a.email || '').localeCompare(String(b.name || b.email || ''), undefined, { sensitivity: 'base' });
+
+  const out = [];
+  const placed = Object.create(null);
+
+  ROSTER_GROUP_ORDER.forEach(title => {
+    const group = people.filter(x => x.title === title).sort(byName);
+    if(!group.length) return;
+    group.forEach(x => { placed[x.id] = true; });
+    out.push(
+      '<div class="set-group">' +
+        '<div class="set-group-head">' + escapeHtml(ROSTER_GROUP_LABELS[title] || title) + '</div>' +
+        group.map(rosterRowHTML).join('') +
+      '</div>'
+    );
+  });
+
+  const leftover = people.filter(x => !placed[x.id]).sort(byName);
+  if(leftover.length){
+    out.push(
+      '<div class="set-group">' +
+        '<div class="set-group-head">No job title set</div>' +
+        leftover.map(rosterRowHTML).join('') +
+      '</div>'
+    );
+  }
+
+  return out.join('');
 }
 
 function rosterRowHTML(p){
