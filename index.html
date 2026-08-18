@@ -396,7 +396,26 @@
     color:var(--paper-050); font-size:18px; line-height:1; opacity:0.9;
     flex:0 0 auto;
     -webkit-tap-highlight-color:transparent;
+    /* Anchor for the oversized hit area below. */
+    position:relative;
   }
+  /* *** FINGER ROOM WITHOUT LAYOUT COST. ***
+     The glyph is ~26x18 inside a cell only a sixth of a phone wide, so the
+     visible chevron can never reach the 44x44 a thumb wants. This pseudo-
+     element grows the TAPPABLE region to 44x44, centred on the glyph, and
+     overflows the cell freely -- it is absolutely positioned, so it changes
+     nothing about the six-across layout. Grow the glyph instead and the whole
+     strip has to be re-tuned. */
+  .strip-legnav-btn::after{
+    content:''; position:absolute;
+    top:50%; left:50%; transform:translate(-50%, -50%);
+    width:44px; height:44px;
+    /* Above the sibling cells so a slightly-off tap still lands, but the
+       count between the chevrons keeps its own space. */
+    z-index:1;
+  }
+  /* A disabled chevron must not keep swallowing taps around its neighbour. */
+  .strip-legnav-btn:disabled::after{ display:none; }
   .strip-legnav-btn:disabled{ opacity:0.25; cursor:default; }
   .strip-legnav-count{ font-size:16px; color:var(--paper-050); font-family:inherit; white-space:nowrap; flex:0 0 auto; }
   .info-cell[data-w="trip"] .info-cell-input{ width:7ch; }
@@ -1334,7 +1353,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T19:04:40Z';
+const BUILD_VERSION = '2026-08-18T19:13:16Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
