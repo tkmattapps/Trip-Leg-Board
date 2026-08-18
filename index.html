@@ -407,6 +407,18 @@
     background:var(--panel-700);
     box-shadow:0 0 0 1px var(--hairline);
   }
+  /* READ-ONLY STRIP VALUE. Trip, tail and crew are set from the trip pages now,
+     so the strip reports them rather than editing them. A div also fixes the
+     centering: iOS ignores text-align on a <select>, which is why the crew
+     abbreviations sat left of their labels. */
+  .info-cell-value{
+    display:block; width:auto; min-width:0; margin:0 auto;
+    padding:1px 2px; color:var(--paper-050);
+    font-size:16px; font-family:inherit; line-height:1.3;
+    text-align:center; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis;
+    min-height:21px;
+  }
   @media (max-width:820px){
     /* Side padding cut to 6px so the row reaches as close to the screen edge as
        it can. The -16px margin still has to match .main's padding to pull the
@@ -430,6 +442,7 @@
     .info-cell[data-w="trip"] .info-cell-input,
     .info-cell[data-w="tail"] .info-cell-input,
     .info-cell[data-w="crew"] .info-cell-input{ width:100%; }
+    .info-cell-value{ font-size:16px; width:100%; }
     .strip-legnav-count{ font-size:15px; }
     .strip-legnav-btn{ font-size:16px; padding:0 1px; }
     .info-cell[data-w="leg-nav"] .strip-legnav{ gap:2px; }
@@ -1299,7 +1312,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T17:42:58Z';
+const BUILD_VERSION = '2026-08-18T17:51:26Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3370,6 +3383,18 @@ function infoStripField(label, id, value, widthKey){
     '</div>';
 }
 
+// A read-only strip cell: label above, value below, nothing to tap.
+// Trip number, tail and crew are all set from the trip pages now -- the strip
+// reports the leg, it does not edit it.
+function infoStripReadonly(label, value, widthKey){
+  const v = String(value == null ? '' : value);
+  return '' +
+    '<div class="info-cell"' + (widthKey ? ' data-w="' + widthKey + '"' : '') + '>' +
+      '<div class="info-cell-label">' + escapeHtml(label) + '</div>' +
+      '<div class="info-cell-value">' + escapeHtml(v) + '</div>' +
+    '</div>';
+}
+
 function infoStripSelect(label, id, value, choices, widthKey){
   return '' +
     '<div class="info-cell"' + (widthKey ? ' data-w="' + widthKey + '"' : '') + '>' +
@@ -3426,8 +3451,12 @@ function legNavStripCellHTML(leg, stripLegs){
 function crewStripCells(leg){
   const c = (leg && leg.crew) ? leg.crew : {};
   const cells = [];
-  cells.push(infoStripSelect('PIC', 'crew_pic', c.pic || '', crewChoicesForSlot('pic', leg, c.pic || ''), 'crew'));
-  cells.push(infoStripSelect('SIC', 'crew_sic', c.sic || '', crewChoicesForSlot('sic', leg, c.sic || ''), 'crew'));
+  // READ-ONLY. Crew is assigned from the trip page (whole trip) or a leg tile
+  // (one leg), where the consequences of the change are shown before it lands.
+  // A picker here would be a second, quieter path to the same write with none
+  // of that warning, so the strip reports the seat instead.
+  cells.push(infoStripReadonly('PIC', c.pic ? crewDisplayName(c.pic) : '', 'crew'));
+  cells.push(infoStripReadonly('SIC', c.sic ? crewDisplayName(c.sic) : '', 'crew'));
   CREW_LIST_SLOTS.forEach(function(slot){
     const list = (c[slot] || []).filter(function(v){ return v; });
     // *** EMPTY LIST SLOTS ARE NOT RENDERED AT ALL. *** An ACM or a second FA is
@@ -3440,13 +3469,7 @@ function crewStripCells(leg){
     if(!list.length) return;
     const first = list[0];
     const label = slot.toUpperCase() + (list.length > 1 ? (' +' + (list.length - 1)) : '');
-    cells.push('' +
-      '<div class="info-cell" data-w="crew" data-crew-slot="' + slot + '" data-crew-index="0">' +
-        '<div class="info-cell-label">' + escapeHtml(label) + '</div>' +
-        '<div class="select-wrap"><select id="crew_' + slot + '_0" class="info-cell-input">' +
-          stripOptions(crewChoicesForSlot(slot, leg, first), first) +
-        '</select></div>' +
-      '</div>');
+    cells.push(infoStripReadonly(label, crewDisplayName(first), 'crew'));
   });
   return cells.join('');
 }
@@ -3618,7 +3641,10 @@ function crewDisplayName(userId){
 // A blank selection means NO CHANGE. It does not clear the slot: clearing crew
 // across a trip is not something you would ever want to happen by leaving a
 // picker alone.
-let tripQuickState = { tripKey:null, mode:'crew', sel:{} };
+// legId set => the sheet acts on ONE leg (from a leg tile). Null => the whole
+// trip (from a trip tile). Everything downstream reads tripQuickLegs(), so the
+// preview counts and the write follow the scope automatically.
+let tripQuickState = { tripKey:null, legId:null, mode:'crew', sel:{} };
 
 const TRIP_QUICK_CREW_SLOTS = [
   { slot:'pic', label:'PIC' },
@@ -3631,6 +3657,17 @@ function tripQuickTrip(){
   if(!tripQuickState.tripKey) return null;
   return groupIntoTrips(state.legs).find(t => t.key === tripQuickState.tripKey) || null;
 }
+
+// The legs this sheet will actually write to.
+function tripQuickLegs(){
+  const trip = tripQuickTrip();
+  if(!trip) return [];
+  if(!tripQuickState.legId) return trip.legs;
+  const one = trip.legs.find(l => l.id === tripQuickState.legId);
+  return one ? [one] : [];
+}
+
+function tripQuickIsLegScope(){ return !!tripQuickState.legId; }
 
 // What a slot currently holds on one leg, flattened to a single comparable
 // value. List slots report seat 0, which is the seat this action writes.
@@ -3689,10 +3726,15 @@ function tripQuickCrewChoices(slot){
 function tripQuickBodyHTML(){
   const trip = tripQuickTrip();
   if(!trip) return '<div class="sheet-note">Trip not found.</div>';
-  const legs = trip.legs;
+  const legs = tripQuickLegs();
+  if(!legs.length) return '<div class="sheet-note">Leg not found.</div>';
   const live = legs.filter(l => l.status !== 'flown');
   if(!live.length){
-    return '<div class="sheet-note">Every leg on this trip is flown. Flown legs are a sealed record and are never overwritten, so there is nothing to change here.</div>';
+    return '<div class="sheet-note">' +
+      (tripQuickIsLegScope()
+        ? 'This leg is flown. A flown leg is a sealed record and is never overwritten, so there is nothing to change here.'
+        : 'Every leg on this trip is flown. Flown legs are a sealed record and are never overwritten, so there is nothing to change here.') +
+      '</div>';
   }
   const rows = [];
   if(tripQuickState.mode === 'aircraft'){
@@ -3727,7 +3769,9 @@ function tripQuickBodyHTML(){
       );
     });
   }
-  rows.push('<div class="sheet-note">Flown legs are never changed. Anything left on \u201cno change\u201d is left alone.</div>');
+  rows.push('<div class="sheet-note">' +
+    (tripQuickIsLegScope() ? 'A flown leg is never changed. ' : 'Flown legs are never changed. ') +
+    'Anything left on \u201cno change\u201d is left alone.</div>');
   return rows.join('');
 }
 
@@ -3743,21 +3787,33 @@ function renderTripQuickBody(){
   });
   const applyBtn = document.getElementById('tripQuickApplyBtn');
   if(applyBtn){
+    applyBtn.textContent = tripQuickIsLegScope() ? 'Apply to leg' : 'Apply to trip';
     const any = Object.keys(tripQuickState.sel).some(k => tripQuickState.sel[k]);
     applyBtn.disabled = !any;
     applyBtn.style.opacity = any ? '1' : '0.4';
   }
 }
 
-function openTripQuickSheet(tripKey, mode){
-  tripQuickState = { tripKey:tripKey, mode:(mode === 'aircraft' ? 'aircraft' : 'crew'), sel:{} };
+function openTripQuickSheet(tripKey, mode, legId){
+  tripQuickState = {
+    tripKey: tripKey,
+    legId: legId || null,
+    mode: (mode === 'aircraft' ? 'aircraft' : 'crew'),
+    sel: {}
+  };
   const trip = tripQuickTrip();
   const titleEl = document.getElementById('tripQuickTitle');
   const subEl = document.getElementById('tripQuickSub');
   if(titleEl) titleEl.textContent = (tripQuickState.mode === 'aircraft') ? 'Add aircraft' : 'Add crew';
   if(subEl){
-    const n = trip ? trip.legs.length : 0;
-    subEl.textContent = (trip ? ('Trip ' + (trip.tripNumber || 'untitled')) : '') + ' \u00b7 ' + n + ' leg' + (n === 1 ? '' : 's');
+    if(tripQuickIsLegScope()){
+      const leg = tripQuickLegs()[0];
+      const route = leg ? (leg.cityPair || [leg.dep.airportId, leg.arr.airportId].filter(Boolean).join(' \u2192 ')) : '';
+      subEl.textContent = 'Leg ' + ((leg && leg.legNumber) || '?') + (route ? (' \u00b7 ' + route) : '');
+    } else {
+      const n = trip ? trip.legs.length : 0;
+      subEl.textContent = (trip ? ('Trip ' + (trip.tripNumber || 'untitled')) : '') + ' \u00b7 ' + n + ' leg' + (n === 1 ? '' : 's');
+    }
   }
   renderTripQuickBody();
   const s = document.getElementById('tripQuickSheet');
@@ -3771,17 +3827,18 @@ function closeTripQuickSheet(){
   const b = document.getElementById('tripQuickBackdrop');
   if(s){ s.classList.remove('open'); s.setAttribute('aria-hidden','true'); }
   if(b) b.classList.remove('open');
-  tripQuickState = { tripKey:null, mode:'crew', sel:{} };
+  tripQuickState = { tripKey:null, legId:null, mode:'crew', sel:{} };
 }
 
 async function applyTripQuick(){
   const trip = tripQuickTrip();
   if(!trip) return;
+  const scopeLegs = tripQuickLegs();
   const sel = tripQuickState.sel;
   const chosen = Object.keys(sel).filter(k => sel[k]);
   if(!chosen.length) return;
   const touched = [];
-  trip.legs.forEach(leg => {
+  scopeLegs.forEach(leg => {
     // RULE 1: flown is sealed.
     if(leg.status === 'flown') return;
     let changed = false;
@@ -4004,6 +4061,10 @@ function tripBriefLegCardHTML(leg){
     '<div class="dash-card-date">' + escapeHtml(formatISODateDisplay(leg.date) || 'No date') + '</div>' +
     (completeness.complete ? '' : '<div class="dash-card-pending">' + completeness.pending.length + ' item' + (completeness.pending.length === 1 ? '' : 's') + ' pending</div>') +
     (lastEditedCompact(leg) ? '<div class="dash-card-edited">' + escapeHtml(lastEditedCompact(leg)) + '</div>' : '') +
+    '<div class="trip-quick-row">' +
+      '<button type="button" class="trip-quick-btn" data-leg-quick="crew" data-leg-id="' + escapeHtml(leg.id) + '">Crew</button>' +
+      '<button type="button" class="trip-quick-btn" data-leg-quick="aircraft" data-leg-id="' + escapeHtml(leg.id) + '">Aircraft</button>' +
+    '</div>' +
   '</div>';
 }
 
@@ -4063,7 +4124,7 @@ function tripCardHTML(trip){
 function wireCardClicks(originView){
   // Must run BEFORE the .dash-card handler binds, and must stop propagation, or
   // tapping a quick action would also open the trip behind the sheet.
-  document.querySelectorAll('.trip-quick-btn').forEach(btn => {
+  document.querySelectorAll('.trip-quick-btn[data-quick]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       openTripQuickSheet(btn.dataset.tripKey, btn.dataset.quick);
@@ -5489,6 +5550,14 @@ function renderTripDetailView(){
     renderMain();
   });
   wireTripHistory(trip);
+  // Bound BEFORE the card handler and stops propagation, or tapping a quick
+  // action would also open the leg editor behind the sheet.
+  document.querySelectorAll('.trip-quick-btn[data-leg-quick]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTripQuickSheet(trip.key, btn.dataset.legQuick, btn.dataset.legId);
+    });
+  });
   document.querySelectorAll('.dash-card[data-id]').forEach(card => {
     card.addEventListener('click', () => openLegEditor(card.dataset.id));
   });
@@ -5858,14 +5927,19 @@ function renderMain(){
     // them in the DOM because collectAndSave reads fields by id.
     '<div class="info-strip">' +
       '<div class="info-strip-row">' +
-        infoStripField('Trip', 'tripNumber', leg.tripNumber, 'trip') +
+        infoStripReadonly('Trip', leg.tripNumber, 'trip') +
         legNavStripCellHTML(leg, stripLegs) +
-        infoStripSelect('Tail', 'tailNumber', leg.tailNumber, tailChoicesForLeg(leg), 'tail') +
+        infoStripReadonly('Tail', leg.tailNumber, 'tail') +
         crewStripCells(leg) +
       '</div>' +
     '</div>' +
+    // HIDDEN INPUTS ARE LOAD-BEARING: collectAndSave() reads the editor by field
+    // id and rewrites the whole leg. Showing a value read-only without leaving
+    // its input behind would erase it on the next save.
     '<input type="hidden" id="legNumber" value="' + escapeHtml(String(leg.legNumber == null ? '' : leg.legNumber)) + '">' +
     '<input type="hidden" id="cityPair" value="' + escapeHtml(String(leg.cityPair || '')) + '">' +
+    '<input type="hidden" id="tripNumber" value="' + escapeHtml(String(leg.tripNumber || '')) + '">' +
+    '<input type="hidden" id="tailNumber" value="' + escapeHtml(String(leg.tailNumber || '')) + '">' +
 
     '<div class="section">' +
       '' + sectionTitleHTML('Departure', 'departure', leg) + '' +
