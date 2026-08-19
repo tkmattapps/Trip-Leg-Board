@@ -1189,6 +1189,13 @@
   }
   .save-hint{ font-size:12px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
   .review-history-btn{ margin-left:8px; font-size:11px; font-family:system-ui,'Inter',sans-serif; color:var(--amber-500); background:none; border:none; text-decoration:underline; cursor:pointer; padding:0; }
+  /* Archiving is irreversible, so this block is deliberately quiet and sits at
+     the very bottom of the trip page. It is not a primary action and must not
+     read like one -- no amber fill, no full-width tap target near the thumb. */
+  .trip-archive-block{ margin:28px 0 8px; padding-top:16px; border-top:1px solid var(--hairline); display:flex; flex-wrap:wrap; align-items:center; gap:12px; justify-content:space-between; }
+  .trip-archive-hint{ font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.5; color:var(--fog-500); flex:1 1 220px; }
+  .trip-archive-btn{ flex:0 0 auto; font-family:system-ui,'Inter',sans-serif; font-size:12px; letter-spacing:0.5px; color:var(--fog-300); background:none; border:1px solid var(--fog-500); border-radius:6px; padding:8px 14px; cursor:pointer; }
+  .trip-archive-btn:hover{ color:var(--paper-050); border-color:var(--fog-300); }
   .leg-history-panel{ margin-top:12px; padding-top:12px; border-top:1px solid var(--hairline); }
   .toast{
     position:fixed; bottom:24px; left:24px; background:var(--panel-700); border:1px solid var(--amber-500);
@@ -1445,7 +1452,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-19T21:02:10Z';
+const BUILD_VERSION = '2026-08-19T22:41:05Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4481,6 +4488,151 @@ function closeTripQuickSheet(){
   tripQuickState = { tripKey:null, legId:null, mode:'crew', sel:{}, addOpen:{} };
 }
 
+// ---------------------------------------------------------------------------
+// ARCHIVING -- the seal.
+//
+// Beacon splits a FACT from a DECISION. `flown` says the aeroplane went;
+// `archived` says the record is closed. They used to be the same thing, which
+// caused two defects: a trip flown without full verification could never leave
+// the active page, and an accidental promotion to flown was unrecoverable
+// because the record sealed itself.
+//
+// Archiving is per TRIP, admin only, and IRREVERSIBLE. The irreversibility is
+// enforced by the database -- archived_trips has no update or delete policy --
+// not by the absence of a button here. Do not add an un-archive path.
+//
+// Archiving is also the FREEZE POINT: it writes a snapshot of what the trip
+// actually was at this moment. The archive view reads the snapshot, not the
+// live legs, so an archived record cannot drift.
+// ---------------------------------------------------------------------------
+
+// A trip is "complete" only when every leg has actually flown. A trip archived
+// with any leg short of flown is marked incomplete -- permanently and visibly.
+// That mark is not a scolding; it is the adoption signal. How often trips
+// finish in Beacon versus get archived incomplete is the number that says
+// whether Beacon is being used or merely tolerated.
+function tripIsFullyFlown(trip){
+  if(!trip || !Array.isArray(trip.legs) || !trip.legs.length) return false;
+  return trip.legs.every(l => l.status === 'flown');
+}
+
+function tripIsArchived(tripNumber){
+  const key = String(tripNumber == null ? '' : tripNumber).trim();
+  if(!key) return false;
+  return !!(archivedTripsCache || []).find(a => String(a.trip_number) === key);
+}
+
+// The frozen copy. Deliberately stores the WHOLE leg objects rather than a
+// summary: the point of a freeze is that you can answer questions later that
+// nobody thought to ask at archive time. legToRow() is not reused here because
+// this is not a legs row -- it is a record of what the legs were.
+function buildTripSnapshot(trip){
+  return {
+    tripNumber: trip.tripNumber || null,
+    isOrphan: !!trip.isOrphan,
+    frozenAt: new Date().toISOString(),
+    buildVersion: BUILD_VERSION,
+    legs: trip.legs.map(l => JSON.parse(JSON.stringify(l)))
+  };
+}
+
+let archivedTripsCache = [];
+
+async function loadArchivedTrips(){
+  try{
+    const deptId = await getFlightDepartmentId();
+    const { data, error } = await sb
+      .from('archived_trips')
+      .select('id, trip_number, archived_by, archived_at, incomplete, leg_count')
+      .eq('flight_department_id', deptId)
+      .order('archived_at', { ascending:false });
+    if(error) throw error;
+    archivedTripsCache = data || [];
+  }catch(e){
+    // An indicator, not a gate. A failed read must not stop the app booting;
+    // it just means nothing shows as archived this session.
+    archivedTripsCache = [];
+  }
+}
+
+async function archiveTrip(tripKey){
+  const trip = groupIntoTrips(state.legs).find(t => t.key === tripKey);
+  if(!trip) return;
+
+  if(!rosterViewerIsAdmin()){
+    await showConfirm('Only a flight department admin can archive a trip.',
+      { alertOnly:true, title:'Not permitted' });
+    return;
+  }
+
+  const tripNo = String(trip.tripNumber || '').trim();
+  if(!tripNo){
+    await showConfirm('This trip has no trip number, so it cannot be archived yet. Give it a trip number first.',
+      { alertOnly:true, title:'No trip number' });
+    return;
+  }
+
+  const complete = tripIsFullyFlown(trip);
+  const notFlown = trip.legs.filter(l => l.status !== 'flown').length;
+
+  // NEVER BLIND: say what is about to happen, including the permanence and the
+  // incomplete mark, BEFORE the write.
+  const msg = complete
+    ? ('Archive trip ' + tripNo + '? All ' + trip.legs.length + ' legs have flown. ' +
+       'This seals the record permanently -- it cannot be edited or un-archived afterwards.')
+    : ('Archive trip ' + tripNo + '? ' + notFlown + ' of ' + trip.legs.length +
+       ' legs have not been marked flown, so this trip will be permanently marked ' +
+       'as archived incomplete. This seals the record -- it cannot be edited or ' +
+       'un-archived afterwards.');
+
+  const ok = await showConfirm(msg, { okLabel:'Archive trip', danger:true });
+  if(!ok) return;
+
+  try{
+    const deptId = await getFlightDepartmentId();
+    const { data, error } = await sb
+      .from('archived_trips')
+      .insert({
+        flight_department_id: deptId,
+        trip_number: tripNo,
+        archived_by: currentUserProfile ? currentUserProfile.id : null,
+        incomplete: !complete,
+        leg_count: trip.legs.length,
+        snapshot: buildTripSnapshot(trip)
+      })
+      .select('id, trip_number, archived_by, archived_at, incomplete, leg_count');
+
+    if(error){
+      // 23505 is the unique index: this trip is already archived. That is not a
+      // failure, it is a double-tap, and the seal did its job.
+      if(error.code === '23505'){
+        await loadArchivedTrips();
+        showToast('Trip ' + tripNo + ' is already archived');
+        state.view = 'dashboard';
+        renderMain();
+        return;
+      }
+      throw error;
+    }
+
+    // .select() on the insert is load-bearing: an insert RLS refuses returns
+    // success with an empty array rather than an error.
+    if(!data || !data.length){
+      await showConfirm('The archive was refused. You may no longer be an admin of this flight department.',
+        { alertOnly:true, title:'Archive refused' });
+      return;
+    }
+
+    archivedTripsCache.unshift(data[0]);
+    showToast('Trip ' + tripNo + ' archived');
+    state.view = 'dashboard';
+    renderMain();
+  }catch(e){
+    await showConfirm('Could not archive this trip: ' + (e && e.message ? e.message : 'unknown error'),
+      { alertOnly:true, title:'Archive failed' });
+  }
+}
+
 async function applyTripQuick(){
   const trip = tripQuickTrip();
   if(!trip) return;
@@ -5110,6 +5262,7 @@ function openSettingsView(){
   renderMain();
   loadAircraft();
   loadRoster();
+  loadArchivedTrips();
 }
 
 async function loadAircraft(){
@@ -7240,6 +7393,31 @@ function duplicateLegNumbers(trip){
   return Array.from(seen.entries()).filter(([,c]) => c > 1).map(([n]) => n);
 }
 
+// The archive control. Renders for admins only -- not because hiding a button
+// is security (the database enforces that), but because showing a control that
+// will certainly be refused is a lie about what the person can do.
+//
+// Deliberately at the BOTTOM of the trip page and deliberately not styled as a
+// primary action: archiving is irreversible, and an irreversible thing should
+// not sit where a thumb lands by accident.
+function tripArchiveBlockHTML(trip){
+  if(!trip || !trip.tripNumber) return '';
+  if(tripIsArchived(trip.tripNumber)) return '';
+  if(!rosterViewerIsAdmin()) return '';
+
+  const complete = tripIsFullyFlown(trip);
+  const notFlown = trip.legs.filter(l => l.status !== 'flown').length;
+  const hint = complete
+    ? 'All legs flown. Archiving seals this trip permanently.'
+    : (notFlown + ' of ' + trip.legs.length + ' legs not yet flown. This trip can still be archived, ' +
+       'but will be permanently marked incomplete.');
+
+  return '<div class="trip-archive-block">' +
+    '<div class="trip-archive-hint">' + escapeHtml(hint) + '</div>' +
+    '<button type="button" class="trip-archive-btn" id="tripArchiveBtn">Archive trip</button>' +
+  '</div>';
+}
+
 function renderTripDetailView(){
   const main = document.getElementById('mainPanel');
   const allTrips = groupIntoTrips(state.legs);
@@ -7272,7 +7450,16 @@ function renderTripDetailView(){
     tripDocsBlockHTML(trip) +
     (tripLastEditedText(trip) ? ('<div class="save-bar trip-edited-bar"><span class="save-hint">' + escapeHtml(tripLastEditedText(trip)) +
       ' <button type="button" class="review-history-btn" id="tripReviewHistoryBtn">Review history</button></span></div>' +
-      '<div id="tripHistoryPanel" class="leg-history-panel" style="display:none;"></div>') : '');
+      '<div id="tripHistoryPanel" class="leg-history-panel" style="display:none;"></div>') : '') +
+    tripArchiveBlockHTML(trip);
+
+  const archiveBtn = document.getElementById('tripArchiveBtn');
+  if(archiveBtn){
+    archiveBtn.addEventListener('click', function(){
+      autoSaveIfEditing();
+      archiveTrip(trip.key);
+    });
+  }
 
   // (trip-detail back is now handled by the fixed header's back button)
   // Bottom-bar paperclip: jump to this trip's documents block, mirroring the
@@ -9892,6 +10079,9 @@ async function handleLogout(){
   // could be offered the previous department's tails.
   aircraftCache = null;
   rosterCache = null;
+  // Same tenancy reasoning: which trips are archived is department data, and
+  // must not survive into the next person's session on this device.
+  archivedTripsCache = [];
   // Same reasoning as the caches above: the next person to sign in on this
   // device must not see the previous department's name sitting in the bar
   // while their own is still resolving.
