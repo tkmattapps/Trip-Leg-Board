@@ -461,6 +461,11 @@
     overflow:hidden; text-overflow:ellipsis;
     min-height:21px;
   }
+  /* Crew who have LEFT the department. The seat stays exactly where it is --
+     it is a matter of record -- but fog says "true, not current" without
+     needing a legend. Deliberately quiet: a departed pilot on an UPCOMING leg
+     is a real problem, and that belongs to the needs-review flag, not a colour. */
+  .info-cell-value-muted{ color:var(--fog-500); }
   @media (max-width:820px){
     /* Side padding cut to 6px so the row reaches as close to the screen edge as
        it can. The -16px margin still has to match .main's padding to pull the
@@ -1425,7 +1430,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-19T14:12:40Z';
+const BUILD_VERSION = '2026-08-19T15:41:08Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3628,12 +3633,18 @@ function infoStripField(label, id, value, widthKey){
 // A read-only strip cell: label above, value below, nothing to tap.
 // Trip number, tail and crew are all set from the trip pages now -- the strip
 // reports the leg, it does not edit it.
-function infoStripReadonly(label, value, widthKey){
+function infoStripReadonly(label, value, widthKey, opts){
   const v = String(value == null ? '' : value);
+  const o = opts || {};
+  // muted => the value is still TRUE but no longer CURRENT. Used for crew who
+  // have left the department: the seat they held is a matter of record, so it
+  // must not disappear, but it should not read as live either.
+  const cls = 'info-cell-value' + (o.muted ? ' info-cell-value-muted' : '');
+  const title = o.title ? ' title="' + escapeHtml(o.title) + '"' : '';
   return '' +
     '<div class="info-cell"' + (widthKey ? ' data-w="' + widthKey + '"' : '') + '>' +
       '<div class="info-cell-label">' + escapeHtml(label) + '</div>' +
-      '<div class="info-cell-value">' + escapeHtml(v) + '</div>' +
+      '<div class="' + cls + '"' + title + '>' + escapeHtml(v) + '</div>' +
     '</div>';
 }
 
@@ -3690,6 +3701,19 @@ function legNavStripCellHTML(leg, stripLegs){
   '</div>';
 }
 
+// One crew cell. Kept separate from infoStripReadonly because the abbrev/fog
+// decision is a crew rule, not a strip rule, and it applies at three call sites.
+function crewStripCell(label, userId, leg){
+  if(!userId) return infoStripReadonly(label, '', 'crew');
+  const info = crewDisplayInfo(userId, leg);
+  return infoStripReadonly(label, info.abbrev, 'crew', {
+    muted: info.departed,
+    // The full name lives here, so the detail is reachable without the cell
+    // having to be wide enough to print it.
+    title: info.departed ? (info.name + ' — no longer in this department') : ''
+  });
+}
+
 function crewStripCells(leg){
   const c = (leg && leg.crew) ? leg.crew : {};
   const cells = [];
@@ -3697,8 +3721,11 @@ function crewStripCells(leg){
   // (one leg), where the consequences of the change are shown before it lands.
   // A picker here would be a second, quieter path to the same write with none
   // of that warning, so the strip reports the seat instead.
-  cells.push(infoStripReadonly('PIC', c.pic ? crewDisplayName(c.pic, leg) : '', 'crew'));
-  cells.push(infoStripReadonly('SIC', c.sic ? crewDisplayName(c.sic, leg) : '', 'crew'));
+  // ABBREV, never the full name -- six cells to a row, sized for four characters.
+  // A departed colleague renders in fog: the seat is a matter of record, but the
+  // person is no longer on the roster.
+  cells.push(crewStripCell('PIC', c.pic, leg));
+  cells.push(crewStripCell('SIC', c.sic, leg));
   CREW_LIST_SLOTS.forEach(function(slot){
     const list = (c[slot] || []).filter(function(v){ return v; });
     // *** EMPTY LIST SLOTS ARE NOT RENDERED AT ALL. *** An ACM or a second FA is
@@ -3711,7 +3738,7 @@ function crewStripCells(leg){
     if(!list.length) return;
     const first = list[0];
     const label = slot.toUpperCase() + (list.length > 1 ? (' +' + (list.length - 1)) : '');
-    cells.push(infoStripReadonly(label, crewDisplayName(first, leg), 'crew'));
+    cells.push(crewStripCell(label, first, leg));
   });
   return cells.join('');
 }
@@ -3840,7 +3867,11 @@ function crewChoicesForSlot(slot, leg, selfValue){
   // or they left the department -- must still render, or opening the leg would
   // silently drop them.
   if(selfValue && !list.some(c => c.value === selfValue)){
-    list.push({ value: selfValue, label: crewDisplayName(selfValue, leg) + ' (unavailable)' });
+    // Full NAME here, not the abbrev: a dropdown has room, and a departed
+    // colleague's four letters may mean nothing to whoever is reading. Says
+    // WHICH kind of unavailable, now that departure is distinguishable.
+    const _pi = crewDisplayInfo(selfValue, leg);
+    list.push({ value: selfValue, label: _pi.name + (_pi.departed ? ' (left the department)' : ' (unavailable)') });
   }
   list.sort((a, b) => a.label.localeCompare(b.label));
   return list;
@@ -3868,13 +3899,52 @@ function crewTakenIds(leg, slot, selfValue){
 // abbreviation was only ever a label pointing at a live record, and there is no
 // longer a record for it to point at.
 function crewDisplayName(userId, leg){
+  return crewDisplayInfo(userId, leg).text;
+}
+
+// Resolves a seated user id to something displayable, AND says whether the
+// person is still on the active roster.
+//
+// Two callers with different needs, which is why this returns a shape rather
+// than a string:
+//  * the crew strip has SIX CELLS PER ROW and is built for four characters, so
+//    it wants the ABBREV even for someone who has left -- a full legal name
+//    there overflows the cell.
+//  * the pickers and any prose have room, so they want the readable NAME.
+//
+// The snapshot carries BOTH ({ name, abbrev, at }), which is what makes this
+// possible at all. rosterCache now holds ACTIVE memberships only, so a miss
+// there means departed rather than deleted -- the account and the record both
+// still exist.
+//
+// *** The live roster still wins while the person is active, so an abbrev
+// changed today shows through on old legs. If abbrev uniqueness is ever
+// loosened to current-only, THIS ORDER MUST INVERT -- snapshot first on flown
+// legs -- or reuse silently rewrites history. ***
+function crewDisplayInfo(userId, leg){
   let people = [];
   try { people = rosterCache || []; } catch(e){ people = []; }
   const p = people.find(x => x.id === userId);
-  if(p) return p.abbrev || p.name || p.email;
+  if(p){
+    return {
+      text: p.abbrev || p.name || p.email,
+      abbrev: p.abbrev || p.name || p.email,
+      name: p.name || p.email || '',
+      departed: false,
+      known: true
+    };
+  }
   const snap = leg && leg.crewNames && leg.crewNames[userId];
-  if(snap && snap.name) return snap.name;
-  return 'Unknown crew';
+  if(snap && (snap.abbrev || snap.name)){
+    return {
+      text: snap.name || snap.abbrev,
+      abbrev: snap.abbrev || snap.name,
+      name: snap.name || snap.abbrev,
+      departed: true,
+      known: true
+    };
+  }
+  return { text: 'Unknown crew', abbrev: 'Unknown crew', name: 'Unknown crew', departed: false, known: false };
 }
 
 // ---- TRIP-LEVEL QUICK ACTIONS ---------------------------------------------
@@ -4060,7 +4130,8 @@ function tripQuickCrewChoices(slot){
     // Trip scope covers many legs, so there is no single leg to read from.
     // Any leg that seated this person carries the same snapshot; take the first.
     const _snapLeg = (tripQuickLegs() || []).find(l => l && l.crewNames && l.crewNames[selfValue]);
-    list.push({ value:selfValue, label:crewDisplayName(selfValue, _snapLeg) + ' (unavailable)' });
+    const _qi = crewDisplayInfo(selfValue, _snapLeg);
+    list.push({ value:selfValue, label:_qi.name + (_qi.departed ? ' (left the department)' : ' (unavailable)') });
   }
   return list.sort((a, b) => a.label.localeCompare(b.label));
 }
