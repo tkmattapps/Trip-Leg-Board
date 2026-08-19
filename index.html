@@ -1426,7 +1426,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-19T00:14:59Z';
+const BUILD_VERSION = '2026-08-19T00:20:22Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2372,6 +2372,8 @@ function normalizeLeg(leg){
   // Every leg saved before extraction carried crew has no crewRaw at all.
   // Coerce to a list of well-shaped entries; drop anything nameless, since a
   // person with no name is not a record of anybody.
+  // Snapshots of who was seated, for when an account no longer exists.
+  if(!leg.crewNames || typeof leg.crewNames !== 'object' || Array.isArray(leg.crewNames)) leg.crewNames = {};
   if(!Array.isArray(leg.crewRaw)) leg.crewRaw = [];
   leg.crewRaw = leg.crewRaw
     .filter(x => x && typeof x === 'object')
@@ -2409,6 +2411,9 @@ function blankLeg(){
     // Beacon cannot overrule a document, so the printed record survives
     // alongside whatever a human later decided it meant.
     crewRaw: [],
+    // Keyed by user id: { name, abbrev, at }. Stamped on save so the record
+    // survives the deletion of an account. See stampCrewSnapshots.
+    crewNames: {},
     eapisRequired: '',
     compliance: { eapisReqd:'', eapisNotes:'', overflightReqd:'', overflightPermits:[], customsReqd:'', customsNotes:'' },
     dep: { airportId:'', tz:'', etdLocal:'', etdZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', notes:'' },
@@ -2776,8 +2781,69 @@ function tripLastEditedText(trip){
   return lastEditedText(newest);
 }
 
+// ---- CREW NAME SNAPSHOTS ---------------------------------------------------
+// A seat stores an ACCOUNT ID, and every display resolves that id through the
+// live roster. That works right up until the account stops existing -- and an
+// account is the person's own, so they may delete it at any time. Without a
+// snapshot, deleting an account would quietly rewrite history: Hernandez was
+// the cabin attendant on legs 1 and 2 of 410303, and that leg would start
+// reading "Unknown crew".
+//
+// *** THE RECORD MUST NOT DEPEND ON THE ACCOUNT SURVIVING. ***
+//
+// Deliberately NOT a change to the shape of leg.crew. Six different places
+// write those four fields, plus the trip-level quick actions; making seats hold
+// objects instead of ids would mean changing every one of them, and any writer
+// missed would silently store a bare id that renders as nothing. Instead the
+// snapshot is a PARALLEL MAP keyed by user id, stamped in ONE place -- here, on
+// save -- so every writer gets it for free and none of them has to know.
+//
+// Snapshots are written for EVERY leg, not only flown ones: a leg can be
+// deleted, restored, or sit in planning for weeks, and making durability depend
+// on reaching a particular status means the gap only appears in the cases
+// nobody anticipated.
+//
+// The LEGAL NAME is the durable value here, not the abbreviation. An
+// abbreviation is a live label that the department may reassign -- an archived
+// leg deliberately shows today's -- but for a deleted account there is nothing
+// live left to read, so what remains has to be the name on the documents.
+function legCrewSeatedIds(leg){
+  const c = (leg && leg.crew) || {};
+  const ids = [];
+  if(c.pic) ids.push(c.pic);
+  if(c.sic) ids.push(c.sic);
+  (Array.isArray(c.acm) ? c.acm : []).forEach(id => { if(id) ids.push(id); });
+  (Array.isArray(c.fa) ? c.fa : []).forEach(id => { if(id) ids.push(id); });
+  return ids;
+}
+
+function stampCrewSnapshots(leg){
+  let people = [];
+  try { people = rosterCache || []; } catch(e){ people = []; }
+  if(!people.length) return;            // Roster not loaded: stamp nothing rather than stamping blanks.
+  if(!leg.crewNames || typeof leg.crewNames !== 'object') leg.crewNames = {};
+  legCrewSeatedIds(leg).forEach(id => {
+    const p = people.find(x => x.id === id);
+    if(!p) return;                      // Already-departed account: keep whatever snapshot we hold.
+    const name = [p.given, p.surname].filter(Boolean).join(' ').trim();
+    // Refresh on every save, so a corrected legal name reaches the archive.
+    // Only the account's own disappearance freezes it.
+    leg.crewNames[id] = {
+      name: name || p.name || p.email || '',
+      abbrev: (p.abbrev || '').toUpperCase(),
+      at: Date.now()
+    };
+  });
+  // Seats change. A snapshot for somebody no longer seated on this leg is dead
+  // weight, and worse, could resurface if the seat is refilled with a different
+  // person later.
+  const seated = new Set(legCrewSeatedIds(leg));
+  Object.keys(leg.crewNames).forEach(id => { if(!seated.has(id)) delete leg.crewNames[id]; });
+}
+
 async function saveLeg(leg){
   leg.updatedAt = Date.now();
+  stampCrewSnapshots(leg);
   // Last-edited stamp: who touched this leg, and when.
   const _prof = currentUserProfile;
   if(_prof){
@@ -3624,8 +3690,8 @@ function crewStripCells(leg){
   // (one leg), where the consequences of the change are shown before it lands.
   // A picker here would be a second, quieter path to the same write with none
   // of that warning, so the strip reports the seat instead.
-  cells.push(infoStripReadonly('PIC', c.pic ? crewDisplayName(c.pic) : '', 'crew'));
-  cells.push(infoStripReadonly('SIC', c.sic ? crewDisplayName(c.sic) : '', 'crew'));
+  cells.push(infoStripReadonly('PIC', c.pic ? crewDisplayName(c.pic, leg) : '', 'crew'));
+  cells.push(infoStripReadonly('SIC', c.sic ? crewDisplayName(c.sic, leg) : '', 'crew'));
   CREW_LIST_SLOTS.forEach(function(slot){
     const list = (c[slot] || []).filter(function(v){ return v; });
     // *** EMPTY LIST SLOTS ARE NOT RENDERED AT ALL. *** An ACM or a second FA is
@@ -3638,7 +3704,7 @@ function crewStripCells(leg){
     if(!list.length) return;
     const first = list[0];
     const label = slot.toUpperCase() + (list.length > 1 ? (' +' + (list.length - 1)) : '');
-    cells.push(infoStripReadonly(label, crewDisplayName(first), 'crew'));
+    cells.push(infoStripReadonly(label, crewDisplayName(first, leg), 'crew'));
   });
   return cells.join('');
 }
@@ -3767,7 +3833,7 @@ function crewChoicesForSlot(slot, leg, selfValue){
   // or they left the department -- must still render, or opening the leg would
   // silently drop them.
   if(selfValue && !list.some(c => c.value === selfValue)){
-    list.push({ value: selfValue, label: crewDisplayName(selfValue) + ' (unavailable)' });
+    list.push({ value: selfValue, label: crewDisplayName(selfValue, leg) + ' (unavailable)' });
   }
   list.sort((a, b) => a.label.localeCompare(b.label));
   return list;
@@ -3785,11 +3851,22 @@ function crewTakenIds(leg, slot, selfValue){
   return ids;
 }
 
-function crewDisplayName(userId){
+// The LIVE account wins whenever it exists: a renamed person, or a reassigned
+// abbreviation, should show today's value everywhere. The snapshot is the
+// fallback for exactly one case -- the account is gone -- and it is what keeps a
+// flown leg legible after somebody deletes their own account.
+//
+// The snapshot holds the LEGAL name, so a departed colleague reads as
+// "Terrence Mattison" rather than "KMAT". That is the right way round: the
+// abbreviation was only ever a label pointing at a live record, and there is no
+// longer a record for it to point at.
+function crewDisplayName(userId, leg){
   let people = [];
   try { people = rosterCache || []; } catch(e){ people = []; }
   const p = people.find(x => x.id === userId);
   if(p) return p.abbrev || p.name || p.email;
+  const snap = leg && leg.crewNames && leg.crewNames[userId];
+  if(snap && snap.name) return snap.name;
   return 'Unknown crew';
 }
 
@@ -3973,7 +4050,10 @@ function tripQuickCrewChoices(slot){
   // A seated crew member who no longer qualifies -- title changed, or they left
   // the department -- must still render, or the seat would silently read empty.
   if(selfValue && selfValue !== TRIP_QUICK_REMOVE && !list.some(c => c.value === selfValue)){
-    list.push({ value:selfValue, label:crewDisplayName(selfValue) + ' (unavailable)' });
+    // Trip scope covers many legs, so there is no single leg to read from.
+    // Any leg that seated this person carries the same snapshot; take the first.
+    const _snapLeg = (tripQuickLegs() || []).find(l => l && l.crewNames && l.crewNames[selfValue]);
+    list.push({ value:selfValue, label:crewDisplayName(selfValue, _snapLeg) + ' (unavailable)' });
   }
   return list.sort((a, b) => a.label.localeCompare(b.label));
 }
