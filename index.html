@@ -718,6 +718,11 @@
   .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
   .import-leg-date{ font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--fog-500); }
   .import-leg-body{ display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--fog-300); line-height:1.5; }
+  .home-nodept{ max-width:420px; }
+  .home-nodept-head{ font-family:system-ui,'Inter',sans-serif; font-size:18px; font-weight:600;
+    color:var(--paper-050); margin-bottom:10px; }
+  .home-nodept-body{ font-family:system-ui,'Inter',sans-serif; font-size:14px; color:var(--fog-300);
+    line-height:1.6; margin-bottom:10px; }
   .import-crew-list{ display:flex; flex-direction:column; gap:3px; margin-top:4px; }
   .import-crew-person{ display:flex; align-items:baseline; gap:6px; }
   .import-crew-role{ font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color:var(--fog-500); min-width:34px; }
@@ -1421,7 +1426,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-18T23:52:05Z';
+const BUILD_VERSION = '2026-08-19T00:14:59Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -1447,8 +1452,13 @@ async function getFlightDepartmentId(){
     .limit(1);
   if(error) throw error;
   if(!data || !data.length){
+    // NOT an auth failure. The session is perfectly valid -- this person simply
+    // belongs to no flight department, which happens to anyone removed from one
+    // and will happen to independent contractors by design. Flagging it as an
+    // auth error signed them out, and since signing back in changed nothing,
+    // it was an inescapable loop.
     const _e = new Error('no flight department membership');
-    _e.isAuthError = true;
+    _e.isNoDepartment = true;
     throw _e;
   }
   currentFlightDepartmentId = data[0].flight_department_id;
@@ -2420,12 +2430,25 @@ async function loadLegs(){
     state.legs = legs;
     snapshotAllLegs();
     _legsLoadFailed = false;
+    _noDepartment = false;
   }catch(e){
     console.error('loadLegs failed', e);
     // CRITICAL: a failed fetch must NOT render as "zero trips". Keep whatever
     // we already had and flag the failure so the UI can say so honestly.
     _legsLoadFailed = true;
     if(!Array.isArray(state.legs)) state.legs = [];
+    if(e && e.isNoDepartment){
+      // A real, explicable state rather than a failure: signed in, but in no
+      // flight department. Say so plainly and leave them signed in -- there is
+      // nothing they can do at a login screen that would help.
+      _legsLoadFailed = false;
+      state.legs = [];
+      _noDepartment = true;
+      _legsLoaded = true;
+      renderList();
+      renderMain();
+      return;
+    }
     if(e && e.isAuthError){
       // Session died (commonly after a service-worker update). Sending the user
       // to login is honest; showing an empty board is not.
@@ -2446,6 +2469,10 @@ async function loadLegs(){
 }
 
 let _legsLoadFailed = false;
+// Signed in, but belonging to no flight department. A real state, not an error:
+// it is what anyone removed from a department sees, and it is what independent
+// contractors will see until solo accounts exist.
+let _noDepartment = false;
 let refreshInFlight = false;
 function installRefreshHandler(){
   if(installRefreshHandler._done) return;
@@ -4685,7 +4712,20 @@ function renderHomeView(){
         '</div>' +
         '<div class="home-subtitle">Preflight Readiness</div>' +
       '</div>' +
-      '<div class="home-right-col">' +
+      (_noDepartment
+        ? '<div class="home-right-col">' +
+            '<div class="home-nodept">' +
+              '<div class="home-nodept-head">You are not in a flight department</div>' +
+              '<div class="home-nodept-body">Your account is fine and your sign-in worked. ' +
+                'Trips live inside a flight department, and yours is not attached to one yet \u2014 ' +
+                'so there is nothing here to show.</div>' +
+              '<div class="home-nodept-body">Ask an admin of your flight department to add you.</div>' +
+            '</div>' +
+          '</div>'
+        : '') +
+      // The buttons stay in the DOM even when hidden: they are wired by id
+      // immediately after this render, and removing them would throw on null.
+      '<div class="home-right-col"' + (_noDepartment ? ' hidden' : '') + '>' +
         '<button type="button" class="home-btn" id="homeActiveBtn">' +
           '<span class="home-btn-title">Active Trips</span>' +
           '<span class="home-btn-count">' + (_legsLoaded ? (activeCount + ' active trip' + (activeCount === 1 ? '' : 's')) : 'Loading trips…') + '</span>' +
@@ -4910,7 +4950,7 @@ async function loadAircraft(){
     aircraftCache = data || [];
   } catch(e){
     aircraftCache = [];
-    showToast('Could not load aircraft.');
+    if(!(e && e.isNoDepartment)) showToast('Could not load aircraft.');
   }
   if(state.view === 'settings'){ renderSettingsView(); return; }
   // If a leg is open, re-render so the tail picker fills in once the fleet
@@ -5112,7 +5152,9 @@ async function loadRoster(){
       .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
   } catch(e){
     rosterCache = [];
-    showToast('Could not load people.');
+    // No department is not a roster failure. The home screen already explains
+    // it; a second, vaguer complaint on top would just look like a broken app.
+    if(!(e && e.isNoDepartment)) showToast('Could not load people.');
   }
   // Re-render whatever is on screen and depends on this data. The settings
   // roster was the original consumer, but the CREW PICKERS also render from
