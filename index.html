@@ -53,6 +53,14 @@
   .bottom-bar{ position:fixed; left:0; right:0; bottom:0; z-index:35; background:var(--panel-800); border-top:1px solid var(--hairline); }
   .bottom-bar-inner{ display:flex; align-items:center; justify-content:space-between; gap:12px; max-width:1800px; margin:0 auto; padding:10px 20px; padding-bottom:max(10px, env(safe-area-inset-bottom)); min-height:52px; }
   .bottom-bar-slot{ display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto; overflow:hidden; }
+  /* Deliberately quiet: this is a thing you check, not a thing that should
+     compete with the contextual controls beside it. flex:0 1 auto plus the
+     ellipsis means a long department name shrinks rather than pushing the
+     paperclip, refresh and menu buttons off the bar. */
+  .bar-dept{ flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-family:system-ui,'Inter',sans-serif; font-size:12px; font-weight:500; letter-spacing:0.02em;
+    color:var(--fog-500); }
+  .bar-dept:empty{ display:none; }
     .bar-fixed{ display:flex; align-items:center; flex:0 0 auto; }
   .page-header-actions .bar-action{ margin-top:4px; }
   .bar-action{ display:flex; align-items:center; justify-content:center; height:34px; padding:0 14px;
@@ -1273,6 +1281,13 @@
 
 <div class="bottom-bar" id="bottomBar">
   <div class="bottom-bar-inner" id="bottomBarInner">
+    <!-- Which flight department you are signed into. A SIBLING of bottomBarSlot,
+         never inside it: setPageHeader() wipes that slot on EVERY render so a
+         leg's controls can't linger on a page with no legs. Anything living in
+         there would have to be re-injected by every caller, which is exactly the
+         fragility that rule exists to prevent. This element is written once when
+         the department resolves and is not touched by a render again. -->
+    <div class="bar-dept" id="barDeptName"></div>
     <div class="bottom-bar-slot" id="bottomBarSlot"></div>
     <div class="bar-fixed" id="barDocSlot"></div>
     <button type="button" class="bar-btn" id="barRefreshBtn" data-refresh="1" title="Refresh from server" aria-label="Refresh"><span class="refresh-icon" aria-hidden="true">&#8635;</span></button>
@@ -1430,7 +1445,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-19T15:41:08Z';
+const BUILD_VERSION = '2026-08-19T20:14:33Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -9824,6 +9839,41 @@ async function bootApp(){
   loadAircraft();
   // Same for the roster: the crew pickers need names, not ids.
   loadRoster();
+  // And the department name for the bottom bar.
+  loadDepartmentName();
+}
+
+// Writes the signed-in flight department's name into the bottom bar, where it
+// stays visible on every screen rather than only on the home page -- a mistake
+// about which department you are in costs the most inside a leg, not on the
+// board.
+//
+// Deliberately fire-and-forget and deliberately silent on failure. This is an
+// indicator, not a gate: nothing about the app should stop working because a
+// label could not be fetched. An empty element is hidden by .bar-dept:empty, so
+// a failure looks like the bar did before this change rather than like a bug.
+//
+// flight_departments has a SELECT policy ("Users can view own department")
+// scoped to get_my_flight_department_ids() OR get_my_company_ids(), so a
+// signed-in session can read this row. It is the FIRST read of this table
+// anywhere in the app.
+async function loadDepartmentName(){
+  const el = document.getElementById('barDeptName');
+  if(!el) return;
+  try {
+    const deptId = await getFlightDepartmentId();
+    const { data, error } = await sb.from('flight_departments')
+      .select('name')
+      .eq('id', deptId)
+      .maybeSingle();
+    if(error) throw error;
+    el.textContent = (data && data.name) ? data.name : '';
+  } catch(e){
+    // isNoDepartment is an ordinary state, not an error -- someone removed from
+    // a department has no name to show. Everything else is swallowed for the
+    // reason above.
+    el.textContent = '';
+  }
 }
 
 async function handleLogout(){
@@ -9834,6 +9884,11 @@ async function handleLogout(){
   // could be offered the previous department's tails.
   aircraftCache = null;
   rosterCache = null;
+  // Same reasoning as the caches above: the next person to sign in on this
+  // device must not see the previous department's name sitting in the bar
+  // while their own is still resolving.
+  const _deptEl = document.getElementById('barDeptName');
+  if(_deptEl) _deptEl.textContent = '';
   showLoginOverlay();
 }
 
