@@ -1445,7 +1445,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-19T20:14:33Z';
+const BUILD_VERSION = '2026-08-19T21:02:10Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -9741,9 +9741,17 @@ function openInstallOverlay(){
 
 
 (function setupInstallUrls(){
+  // The origin is the truth: whatever host actually served this page is the one
+  // another device should be pointed at. The literal below is only a fallback
+  // for the case where there is no http(s) origin at all (a file:// open), and
+  // is unreachable in normal use. It still gets kept current -- a stale URL
+  // sitting in the source is a lie waiting to be believed by whoever reads it
+  // next. Renamed from zingy-macaron-17a8d2 when the Netlify project became
+  // beaconflight; if the project is ever renamed again, THIS line and the QR
+  // code baked into beacon-intro.html both have to move with it.
   var appUrl = (window.location && /^https?:/.test(window.location.origin || ''))
     ? window.location.origin
-    : 'https://zingy-macaron-17a8d2.netlify.app';
+    : 'https://beaconflight.netlify.app';
   document.querySelectorAll('[data-install-url]').forEach(function(el){
     el.textContent = appUrl;
     el.addEventListener('click', function(){
