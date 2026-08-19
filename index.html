@@ -1100,8 +1100,7 @@
   .crew-list-item .field{ flex:1 1 auto; min-width:0; }
   /* PIC is required: amber until filled, matching the app's "needed but not yet
      supplied" language rather than inventing a new signal. */
-  .crew-row.is-required .select-wrap{ box-shadow:0 0 0 1.25px rgba(242,169,59,0.65); border-radius:8px; }
-  /* No stray descender gap under the control, or the ring sits low. */
+    /* No stray descender gap under the control, or the ring sits low. */
   .select-wrap select{ display:block; width:100%; }
   .field.is-verified select{ box-shadow:none; outline:none; }
   .field.is-verified .select-wrap{
@@ -1426,7 +1425,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-19T00:20:22Z';
+const BUILD_VERSION = '2026-08-19T00:59:31Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2854,7 +2853,6 @@ async function saveLeg(leg){
   leg.lastEditedAt = leg.updatedAt;
   // Change log: diff against the last-saved snapshot BEFORE persisting.
   const _changes = diffLegs(_legSnapshots[leg.id], leg);
-  try{ console.log('[changelog]', leg.id, 'hadSnapshot=', !!_legSnapshots[leg.id], 'changes=', _changes.length, _changes.map(function(c){return c.field_path;})); }catch(_e){}
   // Strip runtime-only scratch state before persisting. _fieldValueBaseline is
   // a snapshot of the RENDERED form, used to spot genuine human edits. Saving it
   // means a stale baseline from an earlier session gets compared against a freshly
@@ -3470,6 +3468,8 @@ function selectField(label, id, value, choices, opts){
 //
 // Only legs that share this leg's tail (or have none) are changed. A leg someone
 // deliberately set to a different aeroplane is left alone.
+// *** DORMANT BY CHOICE -- NOT CALLED ANYWHERE. *** Superseded by the trip-level
+// quick-action sheet for aircraft. Kept for the contract it documents.
 function carryTailForward(leg, newTail, oldTail){
   if(!leg) return [];
   const tn = (leg.tripNumber || '').trim();
@@ -3545,6 +3545,13 @@ function wireCrewPickers(leg){
   });
 }
 
+// *** DORMANT BY CHOICE -- NOT CALLED ANYWHERE. *** Superseded by the trip-level
+// quick-action sheets, which apply crew across a whole trip in one write and show
+// the affected leg count BEFORE the write lands. Kept for the rules it encodes,
+// not the code: carry only to LATER legs, stop at a leg somebody deliberately
+// changed, and never carry the ACM or FA lists.
+// *** IF YOU REVIVE THIS, NOTE IT GROUPS BY leg.groupId WHILE THE REST OF THE
+// CREW CODE GROUPS BY tripNumber. *** It may no longer match reality.
 // Carry-forward, matching carryTailForward's contract: flows to every LATER leg
 // that holds the same old value or nothing, and is VISIBLE, NOT SILENT -- the
 // toast names the slot that moved. Only the single slots carry. ACM and FA lists
@@ -3723,7 +3730,7 @@ function crewBlockHTML(leg){
   return '<div class="crew-block">' + rows.join('') + '</div>';
 }
 
-function crewSingleRowHTML(label, slot, value, leg, wantAmber){
+function crewSingleRowHTML(label, slot, value, leg){
   const id = 'crew_' + slot;
   const choices = crewChoicesForSlot(slot, leg, value);
   // The blank option doubles as the remove action, so its wording depends on
@@ -3731,7 +3738,7 @@ function crewSingleRowHTML(label, slot, value, leg, wantAmber){
   const ph = value ? ('\u2014 Remove ' + label) : ('Select ' + label);
   const sel = selectField(label, id, value, choices, { placeholder: ph });
   // Tag the row so the change listener knows the slot without parsing the id.
-  return '<div class="crew-row' + (wantAmber ? ' is-required' : '') + '" data-crew-slot="' + slot + '">' + sel + '</div>';
+  return '<div class="crew-row" data-crew-slot="' + slot + '">' + sel + '</div>';
 }
 
 // A list slot shows one picker per chosen person plus a single empty picker to
