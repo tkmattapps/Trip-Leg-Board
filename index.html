@@ -1192,6 +1192,12 @@
   /* Archiving is irreversible, so this block is deliberately quiet and sits at
      the very bottom of the trip page. It is not a primary action and must not
      read like one -- no amber fill, no full-width tap target near the thumb. */
+  /* Flown but not yet archived: an outstanding task, flagged so it cannot be
+     mistaken for ordinary active work. Amber because it wants an action, not
+     red because nothing is wrong. */
+  .dash-card-flag{ font-family:system-ui,'Inter',sans-serif; font-size:9px; letter-spacing:1px; color:var(--amber-500); margin-bottom:6px; }
+  .dash-card-awaiting{ border-color:rgba(242,169,59,0.45); }
+  .trip-quick-row-sealed{ font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--fog-500); }
   .trip-archive-block{ margin:28px 0 8px; padding-top:16px; border-top:1px solid var(--hairline); display:flex; flex-wrap:wrap; align-items:center; gap:12px; justify-content:space-between; }
   .trip-archive-hint{ font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.5; color:var(--fog-500); flex:1 1 220px; }
   .trip-archive-btn{ flex:0 0 auto; font-family:system-ui,'Inter',sans-serif; font-size:12px; letter-spacing:0.5px; color:var(--fog-300); background:none; border:1px solid var(--fog-500); border-radius:6px; padding:8px 14px; cursor:pointer; }
@@ -1452,7 +1458,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-19T22:41:05Z';
+const BUILD_VERSION = '2026-08-19T23:38:12Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4030,8 +4036,21 @@ function tripQuickCurrentValue(leg, slot){
 // What a slot currently holds across the whole scope. Returns null when the
 // legs DISAGREE -- 410303 genuinely carries two different PICs -- so the sheet
 // can decline to assert a single value it does not have.
+// Whether a leg is SEALED against edits. This used to be `status === 'flown'`,
+// which conflated a fact about the aeroplane with a decision about the record.
+// The seal now lives on the ARCHIVE: a flown leg is still correctable (that is
+// how an accidental promotion is recovered), and nothing is sealed until the
+// trip is archived.
+//
+// Archiving is per TRIP, so this is answered at trip level via the leg's trip
+// number -- there is no per-leg archived flag, deliberately.
+function legIsSealed(leg){
+  if(!leg) return false;
+  return tripIsArchived(leg.tripNumber);
+}
+
 function tripQuickCommonValue(legs, slot){
-  const live = legs.filter(l => l.status !== 'flown');
+  const live = legs.filter(l => !legIsSealed(l));
   if(!live.length) return null;
   let first = null;
   for(let i = 0; i < live.length; i++){
@@ -4045,7 +4064,7 @@ function tripQuickCommonValue(legs, slot){
 function tripQuickPlan(legs, slot, value){
   const plan = { replace:0, fill:0, same:0, skipped:0 };
   legs.forEach(leg => {
-    if(leg.status === 'flown'){ plan.skipped++; return; }
+    if(legIsSealed(leg)){ plan.skipped++; return; }
     const cur = tripQuickCurrentValue(leg, slot);
     if(cur === value) plan.same++;
     else if(!cur) plan.fill++;
@@ -4060,7 +4079,7 @@ function tripQuickAddPlan(legs, slot, value){
   const base = tripQuickBaseSlot(slot);
   const plan = { added:0, already:0, skipped:0 };
   legs.forEach(leg => {
-    if(leg.status === 'flown'){ plan.skipped++; return; }
+    if(legIsSealed(leg)){ plan.skipped++; return; }
     const c = (leg && leg.crew) ? leg.crew : {};
     const list = (c[base] || []).filter(v => v);
     if(list.indexOf(value) !== -1) plan.already++;
@@ -4082,7 +4101,7 @@ function tripQuickAddPlanHTML(plan, label){
 function tripQuickRemovePlan(legs, slot){
   const plan = { removed:0, already:0, skipped:0 };
   legs.forEach(leg => {
-    if(leg.status === 'flown'){ plan.skipped++; return; }
+    if(legIsSealed(leg)){ plan.skipped++; return; }
     if(tripQuickCurrentValue(leg, slot)) plan.removed++;
     else plan.already++;
   });
@@ -4163,12 +4182,12 @@ function tripQuickBodyHTML(){
   if(!trip) return '<div class="sheet-note">Trip not found.</div>';
   const legs = tripQuickLegs();
   if(!legs.length) return '<div class="sheet-note">Leg not found.</div>';
-  const live = legs.filter(l => l.status !== 'flown');
+  const live = legs.filter(l => !legIsSealed(l));
   if(!live.length){
     return '<div class="sheet-note">' +
       (tripQuickIsLegScope()
-        ? 'This leg is flown. A flown leg is a sealed record and is never overwritten, so there is nothing to change here.'
-        : 'Every leg on this trip is flown. Flown legs are a sealed record and are never overwritten, so there is nothing to change here.') +
+        ? 'This trip has been archived. An archived trip is a sealed record and is never overwritten, so there is nothing to change here.'
+        : 'This trip has been archived. An archived trip is a sealed record and is never overwritten, so there is nothing to change here.') +
       '</div>';
   }
   const rows = [];
@@ -4674,8 +4693,9 @@ async function applyTripQuick(){
   if(!chosen.length) return;
   const touched = [];
   scopeLegs.forEach(leg => {
-    // RULE 1: flown is sealed.
-    if(leg.status === 'flown') return;
+    // RULE 1, RESTATED: an ARCHIVED leg is sealed. It used to say flown. A
+    // flown leg is a fact and remains correctable until the trip is archived.
+    if(legIsSealed(leg)) return;
     let changed = false;
     chosen.forEach(slot => {
       const v = sel[slot];
@@ -4975,7 +4995,18 @@ function tripCardHTML(trip){
   const legStatusDots = legs.map(l =>
     '<span class="leg-status-dot leg-status-' + escapeHtml(l.status) + '">' + escapeHtml(l.legNumber || '?') + '</span>'
   ).join('');
-  return '<div class="dash-card" data-trip-key="' + escapeHtml(trip.key) + '">' +
+  // FLOWN AWAITING ARCHIVE. A trip whose legs have all flown but which nobody
+  // has archived is not finished work -- it is an outstanding task, and it now
+  // lives on the active page rather than disappearing into the archive by
+  // itself. Flagging it is the whole mitigation for the risk we accepted when
+  // choosing a deliberate seal over a time-based one: the pile must be VISIBLE,
+  // or it becomes the same rot in a new place.
+  const awaitingArchive = tripIsFullyFlown(trip) && !tripIsArchived(trip.tripNumber);
+  const archived = tripIsArchived(trip.tripNumber);
+
+  return '<div class="dash-card' + (awaitingArchive ? ' dash-card-awaiting' : '') +
+      '" data-trip-key="' + escapeHtml(trip.key) + '">' +
+    (awaitingArchive ? '<div class="dash-card-flag">FLOWN \u00b7 AWAITING ARCHIVE</div>' : '') +
     '<div class="dash-card-top">' +
       // Deliberately the SAME class the leg tiles use, so the two tile types
       // read as one family. .dash-card-code is left alone because
@@ -4987,10 +5018,12 @@ function tripCardHTML(trip){
     '<div class="dash-card-legsum">' + legCount + ' leg' + (legCount === 1 ? '' : 's') + ' \u2022 ' + escapeHtml(statusSummary) + '</div>' +
     '<div class="dash-card-date">' + escapeHtml(dateLabel) + '</div>' +
     '<div class="dash-card-spacer"></div>' +
-    '<div class="trip-quick-row">' +
-      '<button type="button" class="trip-quick-btn" data-quick="crew" data-trip-key="' + escapeHtml(trip.key) + '">Crew</button>' +
-      '<button type="button" class="trip-quick-btn" data-quick="aircraft" data-trip-key="' + escapeHtml(trip.key) + '">Aircraft</button>' +
-    '</div>' +
+    (archived
+      ? '<div class="trip-quick-row trip-quick-row-sealed">Sealed record</div>'
+      : '<div class="trip-quick-row">' +
+          '<button type="button" class="trip-quick-btn" data-quick="crew" data-trip-key="' + escapeHtml(trip.key) + '">Crew</button>' +
+          '<button type="button" class="trip-quick-btn" data-quick="aircraft" data-trip-key="' + escapeHtml(trip.key) + '">Aircraft</button>' +
+        '</div>') +
   '</div>';
 }
 
@@ -5026,8 +5059,12 @@ function wireCardClicks(originView){
 function renderHomeView(){
   const main = document.getElementById('mainPanel');
   const allTrips = groupIntoTrips(state.legs);
-  const activeCount = allTrips.filter(t => !t.legs.every(l => l.status === 'flown')).length;
-  const historicCount = allTrips.filter(t => t.legs.every(l => l.status === 'flown')).length;
+  // ACTIVE now means NOT ARCHIVED, not "not all flown". A trip that has flown
+  // stays here, visible, until an admin deliberately archives it -- that is the
+  // flown-awaiting-archive work queue. Counting it as historic the moment the
+  // last leg flew is what made the active page rot.
+  const activeCount = allTrips.filter(t => !tripIsArchived(t.tripNumber)).length;
+  const historicCount = allTrips.filter(t => tripIsArchived(t.tripNumber)).length;
   main.innerHTML =
     '<div class="home-view">' +
       '<div class="home-left-col">' +
@@ -5056,8 +5093,8 @@ function renderHomeView(){
           '<span class="home-btn-count">' + (_legsLoaded ? (activeCount + ' active trip' + (activeCount === 1 ? '' : 's')) : 'Loading trips…') + '</span>' +
         '</button>' +
         '<button type="button" class="home-btn" id="homeHistoryBtn">' +
-          '<span class="home-btn-title">Flown Trips</span>' +
-          '<span class="home-btn-count">' + (_legsLoaded ? (historicCount + ' flown trip' + (historicCount === 1 ? '' : 's')) : 'Loading trips…') + '</span>' +
+          '<span class="home-btn-title">Archived Trips</span>' +
+          '<span class="home-btn-count">' + (_legsLoaded ? (historicCount + ' archived trip' + (historicCount === 1 ? '' : 's')) : 'Loading trips…') + '</span>' +
         '</button>' +
         '<button type="button" class="home-btn" id="homeImportBtn">' +
           '<span class="home-btn-title">Import Trip Docs</span>' +
@@ -5162,7 +5199,7 @@ function dashboardCardsHtml(q){
     return hay.includes(q);
   };
   const allTrips = groupIntoTrips(state.legs);
-  const allActiveTrips = allTrips.filter(t => !t.legs.every(l => l.status === 'flown'));
+  const allActiveTrips = allTrips.filter(t => !tripIsArchived(t.tripNumber));
   const shownTrips = allActiveTrips
     .filter(t => t.legs.some(matchesQuery))
     .map(t => t.isOrphan ? t : Object.assign({}, t));
@@ -5219,10 +5256,10 @@ function historyCardsHtml(q){
     return hay.includes(q);
   };
   const allTrips = groupIntoTrips(state.legs);
-  const allFlownTrips = allTrips.filter(t => t.legs.every(l => l.status === 'flown'));
+  const allFlownTrips = allTrips.filter(t => tripIsArchived(t.tripNumber));
   const shownTrips = allFlownTrips.filter(t => t.legs.some(matchesQuery));
   const cardsHtml = shownTrips.length === 0
-    ? '<div class="dash-empty">' + (!_legsLoaded ? 'Loading trips…' : (allFlownTrips.length === 0 ? 'No flown legs yet.' : 'No matches for that search.')) + '</div>'
+    ? '<div class="dash-empty">' + (!_legsLoaded ? 'Loading trips…' : (allFlownTrips.length === 0 ? 'No archived trips yet.' : 'No matches for that search.')) + '</div>'
     : '<div class="dash-grid">' + shownTrips.map(tripCardHTML).join('') + '</div>';
   return { cardsHtml, allFlownTrips };
 }
@@ -5233,7 +5270,7 @@ function updateHistoryCards(){
   const container = document.getElementById('historyCardsContainer');
   if(container) container.innerHTML = cardsHtml;
   const subtitle = document.getElementById('pageHeaderSub');
-  if(subtitle) subtitle.textContent = allFlownTrips.length + ' flown trip' + (allFlownTrips.length === 1 ? '' : 's');
+  if(subtitle) subtitle.textContent = allFlownTrips.length + ' archived trip' + (allFlownTrips.length === 1 ? '' : 's');
   wireCardClicks('history');
 }
 
@@ -6360,7 +6397,7 @@ function renderHistoryView(){
   const main = document.getElementById('mainPanel');
   const q = (state.historyFilter || '').trim().toLowerCase();
   const { cardsHtml, allFlownTrips } = historyCardsHtml(q);
-  setPageHeader({ title:'Flown Trips', sub: allFlownTrips.length + ' flown trip' + (allFlownTrips.length === 1 ? '' : 's'), backLabel:'Home', backTo:'home' });
+  setPageHeader({ title:'Archived Trips', sub: allFlownTrips.length + ' archived trip' + (allFlownTrips.length === 1 ? '' : 's'), backLabel:'Home', backTo:'home' });
   main.innerHTML =
     '<input class="search" id="historySearchInput" placeholder="Search past trips by route, airport, trip #..." style="width:100%; max-width:420px; margin-bottom:18px;" value="' + escapeHtml(state.historyFilter) + '" />' +
     '<div id="historyCardsContainer">' + cardsHtml + '</div>';
@@ -7428,7 +7465,7 @@ function renderTripDetailView(){
     renderMain();
     return;
   }
-  const backLabel = state.tripDetailOrigin === 'history' ? 'Flown Trips' : 'Active Trips';
+  const backLabel = state.tripDetailOrigin === 'history' ? 'Archived Trips' : 'Active Trips';
   setPageHeader({
     title: trip.tripNumber ? ('Trip ' + trip.tripNumber) : 'Untitled trip',
     sub: trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') +
@@ -7771,7 +7808,7 @@ function renderMain(){
     const prevTrip = groupIntoTrips(state.legs).find(t => t.key === state.previousTripKey);
     backLabel = prevTrip ? 'Trip Legs' : 'Active Trips';
   } else if(state.previousView === 'history'){
-    backLabel = 'Flown Trips';
+    backLabel = 'Archived Trips';
   }
 
   setPageHeader({
