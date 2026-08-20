@@ -1198,6 +1198,23 @@
   .dash-card-flag{ font-family:system-ui,'Inter',sans-serif; font-size:9px; letter-spacing:1px; color:var(--amber-500); margin-bottom:6px; }
   .dash-card-awaiting{ border-color:rgba(242,169,59,0.45); }
   .trip-quick-row-sealed{ font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--fog-500); }
+  /* The archive viewer. Deliberately calm: this is a record, not a task. */
+  .archive-seal-banner{ margin:0 0 18px; padding:12px 14px; border:1px solid var(--hairline); border-left:3px solid var(--fog-500); border-radius:6px; background:var(--panel-800); }
+  .archive-seal-banner-warn{ border-left-color:var(--amber-500); }
+  .archive-seal-title{ font-family:system-ui,'Inter',sans-serif; font-size:12px; letter-spacing:1px; text-transform:uppercase; color:var(--fog-300); margin-bottom:4px; }
+  .archive-seal-sub{ font-family:system-ui,'Inter',sans-serif; font-size:12px; line-height:1.5; color:var(--fog-500); }
+  .dash-card-flag-warn{ color:var(--amber-500); }
+  .dash-card-archived-leg{ cursor:default; }
+  .archived-crew-line{ font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.5; color:var(--fog-500); margin-top:6px; }
+  .archive-notes-block{ margin-top:22px; padding-top:14px; border-top:1px solid var(--hairline); }
+  .archive-notes-title{ font-family:system-ui,'Inter',sans-serif; font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--fog-500); margin-bottom:10px; }
+  .archive-note-row{ display:flex; gap:10px; margin-bottom:8px; }
+  .archive-note-leg{ flex:0 0 52px; font-family:system-ui,'Inter',sans-serif; font-size:11px; color:var(--fog-500); }
+  .archive-note-by{ display:block; margin-top:3px; font-size:10px; color:var(--fog-500); }
+  .archive-notes-foot{ margin-top:10px; font-family:system-ui,'Inter',sans-serif; font-size:10px; color:var(--fog-500); }
+  .archive-doc-row{ display:flex; gap:10px; align-items:baseline; margin-bottom:8px; }
+  .archive-doc-link{ flex:1 1 auto; text-align:left; font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--amber-500); background:none; border:none; padding:0; text-decoration:underline; cursor:pointer; }
+  .archive-note-text{ flex:1 1 auto; font-family:system-ui,'Inter',sans-serif; font-size:12px; line-height:1.5; color:var(--fog-300); white-space:pre-wrap; }
   .trip-archive-block{ margin:28px 0 8px; padding-top:16px; border-top:1px solid var(--hairline); display:flex; flex-wrap:wrap; align-items:center; gap:12px; justify-content:space-between; }
   .trip-archive-hint{ font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.5; color:var(--fog-500); flex:1 1 220px; }
   .trip-archive-btn{ flex:0 0 auto; font-family:system-ui,'Inter',sans-serif; font-size:12px; letter-spacing:0.5px; color:var(--fog-300); background:none; border:1px solid var(--fog-500); border-radius:6px; padding:8px 14px; cursor:pointer; }
@@ -1458,7 +1475,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-19T23:38:12Z';
+const BUILD_VERSION = '2026-08-20T01:07:30Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2373,7 +2390,7 @@ function legNotesBlockHTML(field, labelHtml, labelId, placeholder){
     '</div>';
 }
 
-const state = { legs: [], activeId: null, filter: '', view: 'home', historyFilter: '', dashboardFilter: '', activeTripKey: null, tripDetailOrigin: 'dashboard', previousView: null, previousTripKey: null, previousTripOrigin: null };
+const state = { legs: [], activeId: null, filter: '', view: 'home', historyFilter: '', dashboardFilter: '', activeTripKey: null, tripDetailOrigin: 'dashboard', previousView: null, previousTripKey: null, previousTripOrigin: null, archivedTrip: null };
 
 function uid(){ return 'leg_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
@@ -3094,6 +3111,26 @@ function openLegEditor(legId){
   state.previousTripOrigin = state.tripDetailOrigin;
   state.activeId = legId;
   state.view = 'editor';
+  updateNavTabs();
+  renderList();
+  renderMain();
+}
+
+// Opening a frozen trip. state.archivedTrip holds the reconstructed snapshot
+// and is the signal that renderArchivedTripView should draw instead of the
+// live trip view. It is cleared on the way out so a stale snapshot can never
+// be mistaken for a live trip.
+async function openArchivedTrip(tripNumber){
+  autoSaveIfEditing();
+  const row = await loadTripSnapshot(tripNumber);
+  if(!row){
+    await showConfirm('Could not load the archived record for trip ' + tripNumber + '.',
+      { alertOnly:true, title:'Archive unavailable' });
+    return;
+  }
+  state.archivedTrip = tripFromSnapshot(row);
+  state.view = 'archivedTrip';
+  state.activeId = null;
   updateNavTabs();
   renderList();
   renderMain();
@@ -4545,13 +4582,135 @@ function tripIsArchived(tripNumber){
 // summary: the point of a freeze is that you can answer questions later that
 // nobody thought to ask at archive time. legToRow() is not reused here because
 // this is not a legs row -- it is a record of what the legs were.
-function buildTripSnapshot(trip){
+// The frozen copy.
+//
+// Legs are deep-copied whole rather than summarised: the point of a freeze is
+// that you can answer questions later that nobody thought to ask at the time.
+//
+// Notes and attachments do NOT live on the leg blob -- they are separate
+// tables -- so they must be fetched and folded in here, or the archive would
+// seal a trip with its notes and its documents missing. For a record whose
+// purpose is answering an audit, that would be the wrong half.
+//
+// *** PRIVATE NOTES ARE NEVER FROZEN. *** A note written privately stays
+// private, and sealing a trip must not quietly convert it into a permanent
+// department-readable record. Only is_public rows are captured -- including
+// the archiving admin's own. Archiving is not a way to publish someone.
+//
+// Airports are resolved and stamped onto each captured note HERE, unlike the
+// live path which resolves them by join. In the archive the leg may later be
+// edited or deleted, so the frozen note has to carry its own location.
+async function buildTripSnapshot(trip){
+  const legs = trip.legs.map(l => JSON.parse(JSON.stringify(l)));
+
+  const airportsFor = (leg, field) => {
+    const dep = String(((leg.dep || {}).airportId) || '').trim().toUpperCase();
+    const arr = String(((leg.arr || {}).airportId) || '').trim().toUpperCase();
+    let list = [];
+    if(field === 'dep') list = [dep];
+    else if(field === 'arr') list = [arr];
+    else if(field === 'enroute') list = [dep, arr];
+    return list.filter(Boolean);
+  };
+
+  // All airports anywhere on the trip, for the trip-level note.
+  const tripAirports = [];
+  legs.forEach(l => {
+    [((l.dep || {}).airportId), ((l.arr || {}).airportId)].forEach(c => {
+      const code = String(c || '').trim().toUpperCase();
+      if(code && tripAirports.indexOf(code) === -1) tripAirports.push(code);
+    });
+  });
+
+  const legNotes = [];
+  const attachments = [];
+
+  for(let i = 0; i < legs.length; i++){
+    const leg = legs[i];
+    try{
+      const { data } = await sb.from('leg_notes')
+        .select('field, content, author_name, author_role, user_id, updated_at, is_public')
+        .eq('leg_id', leg.id)
+        .eq('is_public', true);
+      (data || []).forEach(n => {
+        legNotes.push({
+          legId: leg.id,
+          legNumber: leg.legNumber || null,
+          field: n.field,
+          content: n.content,
+          authorName: n.author_name || '',
+          authorRole: n.author_role || '',
+          userId: n.user_id,
+          updatedAt: n.updated_at,
+          airports: airportsFor(leg, n.field)
+        });
+      });
+    }catch(e){ /* a note read failure must not silently drop the whole archive */ }
+
+    try{
+      const rows = await fetchAttachments('leg', { legId: leg.id });
+      (rows || []).forEach(r => attachments.push({
+        scope: 'leg',
+        legId: leg.id,
+        legNumber: leg.legNumber || null,
+        id: r.id,
+        fileName: r.file_name || '',
+        label: r.label || '',
+        storagePath: r.storage_path,
+        contentType: r.content_type || '',
+        byteSize: r.byte_size || null,
+        uploaderName: r.uploader_name || '',
+        createdAt: r.created_at
+      }));
+    }catch(e){ /* as above */ }
+  }
+
+  let tripNotes = [];
+  const tripNo = String(trip.tripNumber || '').trim();
+  if(tripNo){
+    try{
+      const { data } = await sb.from('trip_notes')
+        .select('content, author_name, author_role, user_id, updated_at, is_public')
+        .eq('trip_id', tripNo)
+        .eq('is_public', true);
+      tripNotes = (data || []).map(n => ({
+        content: n.content,
+        authorName: n.author_name || '',
+        authorRole: n.author_role || '',
+        userId: n.user_id,
+        updatedAt: n.updated_at,
+        airports: tripAirports.slice()
+      }));
+    }catch(e){ /* as above */ }
+
+    try{
+      const rows = await fetchAttachments('trip', { tripId: tripNo });
+      (rows || []).forEach(r => attachments.push({
+        scope: 'trip',
+        legId: null,
+        legNumber: null,
+        id: r.id,
+        fileName: r.file_name || '',
+        label: r.label || '',
+        storagePath: r.storage_path,
+        contentType: r.content_type || '',
+        byteSize: r.byte_size || null,
+        uploaderName: r.uploader_name || '',
+        createdAt: r.created_at
+      }));
+    }catch(e){ /* as above */ }
+  }
+
   return {
     tripNumber: trip.tripNumber || null,
     isOrphan: !!trip.isOrphan,
     frozenAt: new Date().toISOString(),
     buildVersion: BUILD_VERSION,
-    legs: trip.legs.map(l => JSON.parse(JSON.stringify(l)))
+    airports: tripAirports,
+    legs: legs,
+    legNotes: legNotes,
+    tripNotes: tripNotes,
+    attachments: attachments
   };
 }
 
@@ -4572,6 +4731,64 @@ async function loadArchivedTrips(){
     // it just means nothing shows as archived this session.
     archivedTripsCache = [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// READING THE ARCHIVE.
+//
+// The archive renders from the SNAPSHOT, never from state.legs. That is the
+// whole point of a freeze point: an archived trip must not be able to drift,
+// and must survive the live legs being edited or deleted entirely.
+//
+// Snapshots are fetched ON DEMAND -- loadArchivedTrips() deliberately pulls
+// only the light columns, because a department with years of history would
+// otherwise drag every frozen trip across the wire at boot to render a list.
+// ---------------------------------------------------------------------------
+
+let snapshotCache = {};
+
+async function loadTripSnapshot(tripNumber){
+  const key = String(tripNumber == null ? '' : tripNumber).trim();
+  if(!key) return null;
+  if(snapshotCache[key]) return snapshotCache[key];
+  try{
+    const deptId = await getFlightDepartmentId();
+    const { data, error } = await sb
+      .from('archived_trips')
+      .select('trip_number, archived_by, archived_at, incomplete, leg_count, snapshot')
+      .eq('flight_department_id', deptId)
+      .eq('trip_number', key)
+      .maybeSingle();
+    if(error) throw error;
+    if(!data) return null;
+    snapshotCache[key] = data;
+    return data;
+  }catch(e){
+    return null;
+  }
+}
+
+// A frozen trip, shaped like the trips groupIntoTrips() produces so the
+// existing renderers can consume it without a parallel set of components.
+// isArchived is what tells those renderers to stay read-only.
+function tripFromSnapshot(row){
+  if(!row || !row.snapshot) return null;
+  const snap = row.snapshot;
+  const legs = Array.isArray(snap.legs) ? snap.legs : [];
+  return {
+    key: 'archived:' + String(row.trip_number),
+    tripNumber: row.trip_number,
+    legs: legs,
+    isOrphan: !!snap.isOrphan,
+    isArchived: true,
+    archivedAt: row.archived_at,
+    archivedBy: row.archived_by,
+    incomplete: !!row.incomplete,
+    frozenAt: snap.frozenAt || null,
+    // The raw snapshot rides along: the notes and documents blocks read it
+    // directly, and nothing on this screen may fall back to a live table.
+    snapshot: snap
+  };
 }
 
 async function archiveTrip(tripKey){
@@ -4609,6 +4826,11 @@ async function archiveTrip(tripKey){
 
   try{
     const deptId = await getFlightDepartmentId();
+    // Built BEFORE the insert, and awaited: it reads the notes and attachment
+    // tables. If those reads fail the snapshot is thin, not absent -- but the
+    // seal is permanent, so it is better to know now than to discover a hollow
+    // record years later.
+    const snapshot = await buildTripSnapshot(trip);
     const { data, error } = await sb
       .from('archived_trips')
       .insert({
@@ -4617,7 +4839,7 @@ async function archiveTrip(tripKey){
         archived_by: currentUserProfile ? currentUserProfile.id : null,
         incomplete: !complete,
         leg_count: trip.legs.length,
-        snapshot: buildTripSnapshot(trip)
+        snapshot: snapshot
       })
       .select('id, trip_number, archived_by, archived_at, incomplete, leg_count');
 
@@ -5047,7 +5269,11 @@ function wireCardClicks(originView){
   });
   document.querySelectorAll('.dash-card').forEach(card => {
     card.addEventListener('click', () => {
-      if(card.dataset.tripKey){
+      // An archive card carries a trip NUMBER, not a live trip key -- its legs
+      // may not exist any more. It opens the frozen snapshot instead.
+      if(card.dataset.archivedTrip){
+        openArchivedTrip(card.dataset.archivedTrip);
+      } else if(card.dataset.tripKey){
         openTripDetail(card.dataset.tripKey, originView);
       } else {
         openLegEditor(card.dataset.id);
@@ -5249,18 +5475,40 @@ function renderDashboardView(){
   wireCardClicks('dashboard');
 }
 
+// The archive list is built from archived_trips, NOT from state.legs. It must
+// list a trip whose live legs are long gone, so the light columns on the
+// archive row -- not the legs -- are what a card here is drawn from.
+//
+// Search is therefore narrower here than on the active page: we hold the trip
+// number and the counts, not the routing, until a snapshot is opened. Searching
+// routing across the whole archive means either loading every snapshot or
+// indexing the route at archive time. Worth doing; not worth doing tonight.
+function archivedCardHTML(row){
+  const tripNo = String(row.trip_number || '');
+  const when = row.archived_at ? new Date(row.archived_at) : null;
+  const whenText = when ? when.toLocaleDateString(undefined, { day:'2-digit', month:'short', year:'numeric' }) : '';
+  const legCount = row.leg_count || 0;
+  return '<div class="dash-card dash-card-archived" data-archived-trip="' + escapeHtml(tripNo) + '">' +
+    (row.incomplete ? '<div class="dash-card-flag dash-card-flag-warn">ARCHIVED INCOMPLETE</div>' : '') +
+    '<div class="dash-card-top">' +
+      '<span class="dash-card-leg-title">Trip ' + escapeHtml(tripNo) + '</span>' +
+    '</div>' +
+    '<div class="dash-card-legsum">' + legCount + ' leg' + (legCount === 1 ? '' : 's') + '</div>' +
+    (whenText ? '<div class="dash-card-date">Archived ' + escapeHtml(whenText) + '</div>' : '') +
+    '<div class="dash-card-spacer"></div>' +
+    '<div class="trip-quick-row trip-quick-row-sealed">Sealed record</div>' +
+  '</div>';
+}
+
 function historyCardsHtml(q){
-  const matchesQuery = (leg) => {
-    if(!q) return true;
-    const hay = [leg.tripNumber, leg.legNumber, leg.cityPair, leg.dep.airportId, leg.arr.airportId].join(' ').toLowerCase();
-    return hay.includes(q);
-  };
-  const allTrips = groupIntoTrips(state.legs);
-  const allFlownTrips = allTrips.filter(t => tripIsArchived(t.tripNumber));
-  const shownTrips = allFlownTrips.filter(t => t.legs.some(matchesQuery));
+  const rows = archivedTripsCache || [];
+  const allFlownTrips = rows.slice();
+  const shownTrips = !q
+    ? allFlownTrips
+    : allFlownTrips.filter(r => String(r.trip_number || '').toLowerCase().includes(q));
   const cardsHtml = shownTrips.length === 0
-    ? '<div class="dash-empty">' + (!_legsLoaded ? 'Loading trips…' : (allFlownTrips.length === 0 ? 'No archived trips yet.' : 'No matches for that search.')) + '</div>'
-    : '<div class="dash-grid">' + shownTrips.map(tripCardHTML).join('') + '</div>';
+    ? '<div class="dash-empty">' + (allFlownTrips.length === 0 ? 'No archived trips yet.' : 'No matches for that trip number.') + '</div>'
+    : '<div class="dash-grid">' + shownTrips.map(archivedCardHTML).join('') + '</div>';
   return { cardsHtml, allFlownTrips };
 }
 
@@ -7455,6 +7703,178 @@ function tripArchiveBlockHTML(trip){
   '</div>';
 }
 
+// ---------------------------------------------------------------------------
+// THE ARCHIVE VIEWER.
+//
+// Sealed means READ-ONLY, NOT HIDDEN. Every leg, its crew, its notes and its
+// section state are visible exactly as they stood at archive time. Nothing here
+// writes, and nothing here reads state.legs -- every value on this screen comes
+// out of the snapshot.
+// ---------------------------------------------------------------------------
+
+function archivedLegCardHTML(leg){
+  const route = leg.cityPair || [ (leg.dep||{}).airportId, (leg.arr||{}).airportId ].filter(Boolean).join(' \u2192 ') || 'No city pair defined';
+  const sc = leg.sectionVerified || leg.sectionComplete || {};
+  const verifiedCount = Object.keys(sc).filter(k => sc[k]).length;
+  return '<div class="dash-card dash-card-archived-leg">' +
+    '<div class="dash-card-top">' +
+      '<span class="dash-card-leg-title">Leg ' + escapeHtml(leg.legNumber || '?') + '</span>' +
+    '</div>' +
+    '<div class="ready-room-leg-row">' +
+      '<span class="leg-status-dot leg-status-dot-plain leg-status-' + escapeHtml(leg.status || '') + '"></span>' +
+      '<span class="ready-room-leg-status-word status-word-' + escapeHtml(leg.status || '') + '">' + escapeHtml(statusLabel(leg.status)) + '</span>' +
+    '</div>' +
+    '<div class="dash-card-route">' + escapeHtml(route) + '</div>' +
+    '<div class="dash-card-date">' + escapeHtml(formatISODateDisplay(leg.date) || 'No date') + '</div>' +
+    '<div class="dash-card-legsum">' + escapeHtml(leg.tailNumber || 'No tail') +
+      '  \u00b7  ' + verifiedCount + ' of 9 sections verified</div>' +
+    archivedCrewLineHTML(leg) +
+    '<div class="dash-card-spacer"></div>' +
+    '<div class="trip-quick-row trip-quick-row-sealed">Read only</div>' +
+  '</div>';
+}
+
+// Crew from the SNAPSHOT's own crewNames stamp, not from rosterCache. This is
+// the payoff for stamping the legal name and abbrev onto the leg at save time:
+// the archive still names the crew correctly years later, after they have left
+// the department and after the roster has forgotten them.
+function archivedCrewLineHTML(leg){
+  const crew = leg.crew || {};
+  const names = leg.crewNames || {};
+  const nameFor = (id) => {
+    if(!id) return '';
+    const stamp = names[id];
+    if(stamp && stamp.name) return stamp.name + (stamp.abbrev ? ' (' + stamp.abbrev + ')' : '');
+    return 'Unknown crew member';
+  };
+  const parts = [];
+  if(crew.pic) parts.push('PIC ' + nameFor(crew.pic));
+  if(crew.sic) parts.push('SIC ' + nameFor(crew.sic));
+  (crew.acm || []).filter(Boolean).forEach(id => parts.push('ACM ' + nameFor(id)));
+  (crew.fa || []).filter(Boolean).forEach(id => parts.push('FA ' + nameFor(id)));
+  if(!parts.length) return '';
+  return '<div class="archived-crew-line">' + escapeHtml(parts.join('  \u00b7  ')) + '</div>';
+}
+
+function renderArchivedTripView(){
+  const main = document.getElementById('mainPanel');
+  const trip = state.archivedTrip;
+  if(!trip){
+    state.view = 'history';
+    updateNavTabs();
+    renderMain();
+    return;
+  }
+  const when = trip.archivedAt ? new Date(trip.archivedAt) : null;
+  const whenText = when
+    ? when.toLocaleDateString(undefined, { day:'2-digit', month:'short', year:'numeric' }) +
+      ' at ' + when.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' })
+    : 'an unknown date';
+  const whoStamp = archivedByName(trip);
+
+  setPageHeader({
+    title: 'Trip ' + (trip.tripNumber || ''),
+    sub: trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') + '  \u00b7  ARCHIVED',
+    backLabel: 'Archived Trips',
+    backTo: 'history'
+  });
+
+  main.innerHTML =
+    '<div class="archive-seal-banner' + (trip.incomplete ? ' archive-seal-banner-warn' : '') + '">' +
+      '<div class="archive-seal-title">' +
+        (trip.incomplete ? 'Archived incomplete' : 'Archived') + '</div>' +
+      '<div class="archive-seal-sub">Sealed by ' + escapeHtml(whoStamp) + ' on ' + escapeHtml(whenText) +
+        '. This is a frozen record and cannot be edited.' +
+        (trip.incomplete ? ' Not every leg had been marked flown when it was archived.' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="dash-grid">' + trip.legs.map(archivedLegCardHTML).join('') + '</div>' +
+    archivedNotesBlockHTML(trip) +
+    archivedDocsBlockHTML(trip);
+
+  // Signed on demand rather than at render: a signed URL is short-lived, and
+  // minting one per document every time the page draws would be wasteful and
+  // would hand out links nobody asked for.
+  document.querySelectorAll('[data-archive-doc]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const path = btn.dataset.archiveDoc;
+      if(!path) return;
+      try{
+        const url = await signedAttachmentUrl(path, btn.textContent || 'document');
+        if(url) window.open(url, '_blank');
+      }catch(e){
+        showConfirm('That document could not be opened. The file may have been removed from storage.',
+          { alertOnly:true, title:'Document unavailable' });
+      }
+    });
+  });
+}
+
+// Who sealed it. Best effort against the current roster, but the archive row
+// stores the user ID, so a departed admin still resolves to something honest
+// rather than a blank.
+function archivedByName(trip){
+  const id = trip.archivedBy;
+  if(!id) return 'an unknown user';
+  const row = (rosterCache || []).find(r => r.id === id);
+  if(row) return row.name || row.email || 'a former member';
+  return 'a former member';
+}
+
+// Notes as they were frozen. These come from the SNAPSHOT, not from the notes
+// tables -- an archived trip must still read correctly after a note is edited
+// or its author's account is gone. Only shared notes were ever captured.
+function archivedNotesBlockHTML(trip){
+  const snap = trip.snapshot || {};
+  const tripNotes = snap.tripNotes || [];
+  const legNotes = snap.legNotes || [];
+  if(!tripNotes.length && !legNotes.length) return '';
+
+  const noteRow = (label, n) =>
+    '<div class="archive-note-row">' +
+      '<span class="archive-note-leg">' + escapeHtml(label) + '</span>' +
+      '<span class="archive-note-text">' + escapeHtml(n.content || '') +
+        '<span class="archive-note-by">' +
+          escapeHtml(n.authorName || 'Unknown') +
+          (n.authorRole ? ' \u00b7 ' + escapeHtml(n.authorRole) : '') +
+          (n.airports && n.airports.length ? '  \u00b7  ' + escapeHtml(n.airports.join(', ')) : '') +
+        '</span>' +
+      '</span>' +
+    '</div>';
+
+  const sectionLabel = (f) => f === 'dep' ? 'Departure' : (f === 'arr' ? 'Arrival' : 'En route');
+
+  return '<div class="archive-notes-block">' +
+    '<div class="archive-notes-title">Notes at archive time</div>' +
+    tripNotes.map(n => noteRow('Trip', n)).join('') +
+    legNotes.map(n => noteRow('Leg ' + (n.legNumber || '?') + ' \u00b7 ' + sectionLabel(n.field), n)).join('') +
+    '<div class="archive-notes-foot">Private notes were not captured. Only notes shared with the flight department appear here.</div>' +
+  '</div>';
+}
+
+// Documents. The metadata is frozen into the snapshot; the FILES themselves
+// live on in the storage bucket untouched by archiving. So the archive holds a
+// permanent index, and the link is signed on demand at the moment you tap it.
+function archivedDocsBlockHTML(trip){
+  const snap = trip.snapshot || {};
+  const files = snap.attachments || [];
+  if(!files.length) return '';
+  return '<div class="archive-notes-block">' +
+    '<div class="archive-notes-title">Documents at archive time</div>' +
+    files.map(f =>
+      '<div class="archive-doc-row">' +
+        '<span class="archive-note-leg">' +
+          escapeHtml(f.scope === 'trip' ? 'Trip' : ('Leg ' + (f.legNumber || '?'))) +
+        '</span>' +
+        '<button type="button" class="archive-doc-link" data-archive-doc="' +
+          escapeHtml(f.storagePath || '') + '">' +
+          escapeHtml(f.fileName || 'document') +
+        '</button>' +
+      '</div>'
+    ).join('') +
+  '</div>';
+}
+
 function renderTripDetailView(){
   const main = document.getElementById('mainPanel');
   const allTrips = groupIntoTrips(state.legs);
@@ -7606,8 +8026,11 @@ function updateNavTabs(){
   const dashBtn = document.getElementById('navDashboardBtn');
   const histBtn = document.getElementById('navHistoryBtn');
   const isTripDetail = state.view === 'tripDetail';
+  // An archived trip always belongs to the archive tab: it is only ever reached
+  // from there, and its live legs may not exist to belong anywhere else.
+  const isArchived = state.view === 'archivedTrip';
   if(dashBtn) dashBtn.classList.toggle('active', state.view === 'dashboard' || (isTripDetail && state.tripDetailOrigin !== 'history'));
-  if(histBtn) histBtn.classList.toggle('active', state.view === 'history' || (isTripDetail && state.tripDetailOrigin === 'history'));
+  if(histBtn) histBtn.classList.toggle('active', state.view === 'history' || isArchived || (isTripDetail && state.tripDetailOrigin === 'history'));
 }
 
 const IMPORT_LOADING_MESSAGES = [
@@ -7791,6 +8214,7 @@ function renderMain(){
   if(state.view === 'dashboard'){ renderDashboardView(); return; }
   if(state.view === 'history'){ renderHistoryView(); return; }
   if(state.view === 'tripDetail'){ renderTripDetailView(); return; }
+  if(state.view === 'archivedTrip'){ renderArchivedTripView(); return; }
   if(state.view === 'importPreview'){ renderImportPreviewView(); return; }
   if(state.view === 'settings'){ renderSettingsView(); return; }
 
@@ -10119,6 +10543,8 @@ async function handleLogout(){
   // Same tenancy reasoning: which trips are archived is department data, and
   // must not survive into the next person's session on this device.
   archivedTripsCache = [];
+  snapshotCache = {};
+  state.archivedTrip = null;
   // Same reasoning as the caches above: the next person to sign in on this
   // device must not see the previous department's name sitting in the bar
   // while their own is still resolving.
