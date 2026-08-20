@@ -1009,6 +1009,22 @@
   }
   .feedback-modal-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
   .feedback-modal-title{ font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:22px; color:var(--paper-050); }
+  /* The change advisory. Scrolls rather than growing without limit -- a leg
+     that has been reworked heavily can carry a lot of rows, and a modal taller
+     than the phone is unreadable and untappable. */
+  .changes-list{ max-height:46vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+  .changes-by{ font-size:12px; color:var(--fog-300); margin:0 0 12px; line-height:1.5; }
+  .changes-row{ padding:8px 0; border-top:1px solid var(--hairline); }
+  .changes-row:first-child{ border-top:none; }
+  .changes-field{ font-size:11px; color:var(--fog-500); text-transform:uppercase; letter-spacing:0.04em; }
+  .changes-val{ font-size:14px; color:var(--paper-050); line-height:1.45; margin-top:2px; word-break:break-word; }
+  /* A value that was REPLACED reads differently from one newly filled in, so
+     the old value is shown struck through rather than dropped: "16:00" alone
+     does not tell you it used to be 14:30. */
+  .changes-old{ color:var(--fog-500); text-decoration:line-through; }
+  .changes-arrow{ color:var(--fog-500); }
+  .changes-new-tag{ font-size:10px; color:var(--fog-500); margin-left:6px; }
+  .changes-who{ font-size:11px; color:var(--fog-500); margin-top:3px; }
   .feedback-close-btn{ background:none; border:none; color:var(--fog-500); font-size:22px; line-height:1; cursor:pointer; padding:0 4px; }
   .feedback-close-btn:hover{ color:var(--paper-050); }
   .feedback-list-head{ font-family:system-ui,'Inter',sans-serif; font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--amber-500); margin:20px 0 10px; padding-top:14px; border-top:1px solid var(--hairline); }
@@ -1460,6 +1476,22 @@
   </div>
 </div>
 
+<!-- "What changed since you last looked" -- per-person, advisory only.
+     Its own overlay rather than showConfirm() because showConfirm writes with
+     textContent and this needs a real list: the whole point is to draw the eye
+     to specific fields, which a single run-on paragraph cannot do. -->
+<div class="feedback-overlay" id="changesOverlay">
+  <div class="feedback-modal" style="max-width:420px;">
+    <div class="feedback-modal-head">
+      <span class="feedback-modal-title" id="changesTitle">Changed since you last looked</span>
+    </div>
+    <div id="changesList" class="changes-list"></div>
+    <div style="display:flex; gap:10px; margin-top:18px;">
+      <button class="btn" id="changesOkBtn" style="flex:1;">Got it</button>
+    </div>
+  </div>
+</div>
+
 <div class="feedback-overlay" id="feedbackOverlay">
   <div class="feedback-modal">
     <div class="feedback-modal-head">
@@ -1488,7 +1520,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T03:34:02Z';
+const BUILD_VERSION = '2026-08-20T04:08:30Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2694,6 +2726,188 @@ async function fetchLegChanges(legId){
   return data || [];
 }
 
+/* ============================================================
+   "CHANGED SINCE YOU LAST LOOKED" -- per-person change advisory.
+
+   leg_changes already records every edit with old value, new value and
+   author. What this adds is a PER-PERSON read position (leg_seen), so Beacon
+   can show one crew member exactly what moved since THEY last acknowledged
+   the leg -- rather than a global history, which a crew learns to ignore.
+
+   THREE RULES, all deliberate:
+
+   1. ADVISORY ONLY. It never blocks, never requires the reader to touch the
+      changed fields, and never demotes verification. The assumption is that
+      whoever made the change made it correctly; this exists to direct the eye,
+      not to gate the leg.
+
+   2. NEVER YOUR OWN EDITS. Being told what you just did yourself is the
+      fastest way to train someone to dismiss a dialog without reading it.
+
+   3. SILENT ON FIRST OPEN. On a leg you have never opened, everything is
+      technically new -- and the whole leg is the thing you are about to read
+      anyway. First open sets the mark and says nothing.
+
+   THE MARK MOVES ON DISMISS, NOT ON OPEN. If it moved on open, backing out --
+   or a reload, or a dead battery -- would mark changes read that nobody saw.
+   Showing a change twice is a nuisance; dropping it once is a defect.
+   ============================================================ */
+
+// Has this person ever acknowledged this leg? Returns the ISO seen_at, or null
+// for a first visit. A FAILED READ RETURNS undefined, which is deliberately
+// distinct from null: we must not treat a network error as a first visit and
+// silently swallow the changes.
+async function fetchLegSeen(legId){
+  const me = currentUserProfile ? currentUserProfile.id : null;
+  if(!me) return undefined;
+  const { data, error } = await sb.from('leg_seen')
+    .select('seen_at')
+    .eq('user_id', me)
+    .eq('leg_id', legId)
+    .maybeSingle();
+  if(error) return undefined;
+  return data ? data.seen_at : null;
+}
+
+// Move this person's read position to now. Best-effort: a failure means they
+// see the same advisory again next time, which is the safe direction.
+async function markLegSeen(legId){
+  const me = currentUserProfile ? currentUserProfile.id : null;
+  if(!me) return;
+  const now = new Date().toISOString();
+  try{
+    const { error } = await sb.from('leg_seen')
+      .upsert({ user_id: me, leg_id: legId, seen_at: now, updated_at: now },
+              { onConflict: 'user_id,leg_id' });
+    if(error) console.warn('leg_seen upsert failed', error);
+  }catch(e){ console.warn('markLegSeen failed', e); }
+}
+
+// Changes on this leg made by SOMEBODY ELSE since this person last
+// acknowledged it. Returns [] on a first visit (after silently setting the
+// mark) and [] on any failure -- this is an advisory, and it must never be
+// able to stop a leg opening.
+async function unseenLegChanges(legId){
+  const me = currentUserProfile ? currentUserProfile.id : null;
+  if(!me) return [];
+  const seenAt = await fetchLegSeen(legId);
+  if(seenAt === undefined) return [];        // read failed: say nothing
+  if(seenAt === null){                        // first visit: silent
+    await markLegSeen(legId);
+    return [];
+  }
+  try{
+    const { data, error } = await sb.from('leg_changes')
+      .select('field_path, field_label, old_value, new_value, changed_by, changed_by_name, created_at')
+      .eq('leg_id', legId)
+      .gt('created_at', seenAt)
+      .neq('changed_by', me)
+      .order('created_at', { ascending: true });
+    if(error) return [];
+    return data || [];
+  }catch(e){ return []; }
+}
+
+// Collapse repeated edits to the SAME field into one row: the value it had
+// when you last looked, and the value it has now. Being shown that a departure
+// time went 14:30 -> 15:00 -> 16:00 while you were away is noise; what matters
+// is that it is now 16:00 and it used to be 14:30.
+function collapseChanges(rows){
+  const byPath = new Map();
+  rows.forEach(r => {
+    const key = r.field_path;
+    if(!byPath.has(key)){
+      byPath.set(key, {
+        field_path: key,
+        field_label: r.field_label || changelogLabel(key),
+        old_value: r.old_value,
+        new_value: r.new_value,
+        who: new Set(),
+        created_at: r.created_at
+      });
+    } else {
+      const e = byPath.get(key);
+      e.new_value = r.new_value;              // keep the latest value
+      e.created_at = r.created_at;
+    }
+    const name = (r.changed_by_name || '').trim();
+    if(name) byPath.get(key).who.add(name);
+  });
+  // A field edited back to what it was is NOT a change worth reporting.
+  return Array.from(byPath.values()).filter(e => (e.old_value || '') !== (e.new_value || ''));
+}
+
+function changesRowHTML(e){
+  const oldV = (e.old_value || '');
+  const newV = (e.new_value || '');
+  const filledIn = oldV === '';
+  const who = Array.from(e.who);
+  const whoText = who.length === 0 ? ''
+    : (who.length === 1 ? who[0] : who.slice(0, -1).join(', ') + ' and ' + who[who.length - 1]);
+  const valHTML = filledIn
+    ? escapeHtml(changelogValFmt(newV)) + '<span class="changes-new-tag">filled in</span>'
+    : '<span class="changes-old">' + escapeHtml(changelogValFmt(oldV)) + '</span>' +
+      ' <span class="changes-arrow">\u2192</span> ' + escapeHtml(changelogValFmt(newV));
+  return '<div class="changes-row">' +
+      '<div class="changes-field">' + escapeHtml(e.field_label) + '</div>' +
+      '<div class="changes-val">' + valHTML + '</div>' +
+      (whoText ? '<div class="changes-who">' + escapeHtml(whoText) + '</div>' : '') +
+    '</div>';
+}
+
+// Show the advisory and WAIT for acknowledgement. The mark moves only after
+// this resolves, so an unread dialog leaves the changes pending.
+function showChangesAdvisory(entries){
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('changesOverlay');
+    const list = document.getElementById('changesList');
+    const okBtn = document.getElementById('changesOkBtn');
+    const titleEl = document.getElementById('changesTitle');
+    if(!overlay || !list || !okBtn){ resolve(); return; }
+    const names = [];
+    entries.forEach(e => e.who.forEach(n => { if(names.indexOf(n) === -1) names.push(n); }));
+    const whoLine = names.length === 0 ? 'Someone'
+      : (names.length === 1 ? names[0]
+        : (names.length === 2 ? names.join(' and ') : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]));
+    const n = entries.length;
+    if(titleEl) titleEl.textContent = 'Changed since you last looked';
+    list.innerHTML =
+      '<p class="changes-by">' + escapeHtml(whoLine) + ' changed ' + n +
+        (n === 1 ? ' thing' : ' things') + ' on this leg.</p>' +
+      entries.map(changesRowHTML).join('');
+    overlay.classList.add('open');
+    function done(){
+      overlay.removeEventListener('click', onOverlay);
+      okBtn.removeEventListener('click', onOk);
+      overlay.classList.remove('open');
+      resolve();
+    }
+    function onOk(){ done(); }
+    // Tapping the backdrop also acknowledges: it is advisory, and trapping
+    // someone in a dialog they cannot dismiss is worse than the alternative.
+    function onOverlay(ev){ if(ev.target === overlay) done(); }
+    okBtn.addEventListener('click', onOk);
+    overlay.addEventListener('click', onOverlay);
+  });
+}
+
+// Entry point, called when a leg editor opens. Fire-and-forget by design:
+// the leg renders immediately and the advisory arrives when it arrives. It
+// must never delay or block opening a leg.
+async function checkLegChangesAdvisory(legId){
+  try{
+    const rows = await unseenLegChanges(legId);
+    if(!rows.length) return;
+    const entries = collapseChanges(rows);
+    if(!entries.length){ await markLegSeen(legId); return; }
+    // The user may have navigated on while this was in flight. Showing an
+    // advisory for a leg they are no longer looking at would be baffling.
+    if(state.view !== 'editor' || state.activeId !== legId) return;
+    await showChangesAdvisory(entries);
+    await markLegSeen(legId);
+  }catch(e){ console.warn('checkLegChangesAdvisory failed', e); }
+}
+
 /* ---- Leg History view (reads leg_changes) ---- */
 function changelogValFmt(v){
   if(v == null || v === '') return '(empty)';
@@ -3159,6 +3373,10 @@ function openLegEditor(legId){
   updateNavTabs();
   renderList();
   renderMain();
+  // Deliberately NOT awaited: the leg must render immediately. The advisory
+  // arrives a beat later and checks it is still the leg on screen before
+  // showing anything.
+  checkLegChangesAdvisory(legId);
 }
 
 // Opening a frozen trip. state.archivedTrip holds the reconstructed snapshot
@@ -4881,6 +5099,30 @@ async function archiveTrip(tripKey){
     // seal is permanent, so it is better to know now than to discover a hollow
     // record years later.
     const snapshot = await buildTripSnapshot(trip);
+
+    // The flown dates are DENORMALISED OUT OF THE SNAPSHOT at the freeze point,
+    // so the archive list can be ordered by when a trip flew without dragging
+    // every snapshot across the wire. Migration 12 backfilled the existing
+    // rows; this keeps every future row correct.
+    //
+    // Anything that is not exactly ISO YYYY-MM-DD is ignored rather than
+    // coerced -- a trip with no usable dates keeps NULLs and sorts to the
+    // bottom, which is honest. Arrival date falls back to the leg date because
+    // arrival date was added later and older legs may not carry one.
+    const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+    const depDates = [];
+    const arrDates = [];
+    trip.legs.forEach(l => {
+      const dep = String((l && l.date) || '').trim();
+      const arr = String((l && l.arr && l.arr.date) || '').trim() || dep;
+      if(ISO_DATE.test(dep)) depDates.push(dep);
+      if(ISO_DATE.test(arr)) arrDates.push(arr);
+    });
+    depDates.sort();
+    arrDates.sort();
+    const firstLegDate = depDates.length ? depDates[0] : null;
+    const lastLegDate = arrDates.length ? arrDates[arrDates.length - 1] : null;
+
     const { data, error } = await sb
       .from('archived_trips')
       .insert({
@@ -4889,9 +5131,11 @@ async function archiveTrip(tripKey){
         archived_by: currentUserProfile ? currentUserProfile.id : null,
         incomplete: !complete,
         leg_count: trip.legs.length,
+        first_leg_date: firstLegDate,
+        last_leg_date: lastLegDate,
         snapshot: snapshot
       })
-      .select('id, trip_number, archived_by, archived_at, incomplete, leg_count');
+      .select('id, trip_number, archived_by, archived_at, incomplete, leg_count, first_leg_date, last_leg_date');
 
     if(error){
       // 23505 is the unique index: this trip is already archived. That is not a
