@@ -1485,7 +1485,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T02:41:18Z';
+const BUILD_VERSION = '2026-08-20T03:12:40Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -3100,10 +3100,42 @@ function groupIntoTrips(legs){
     legsArr.sort(legSort);
     tripList.push({ key: '__grp_' + gid, tripNumber: '', legs: legsArr, isOrphan: true });
   });
+  // ORDERED BY WHEN THE TRIP FLIES, not when it was imported.
+  //
+  // This used to sort on createdAt descending, which meant the most recently
+  // IMPORTED trip took top-left regardless of its dates -- a trip three weeks
+  // out could sit above one departing tomorrow. On an active board the useful
+  // order is SOONEST FIRST: the trip you have to deal with next is the one you
+  // should not have to hunt for.
+  //
+  // Dates are ISO strings ('2026-08-24') so they compare correctly as strings;
+  // no Date parsing, and no timezone to get wrong.
+  //
+  // A trip with NO usable date sorts to the BOTTOM rather than to an arbitrary
+  // position. An undated trip is almost always a half-finished import, and
+  // burying it is more honest than floating it to the top where it would look
+  // like the next thing flying.
+  const tripStartDate = (t) => {
+    const dates = t.legs
+      .map(l => (l && typeof l.date === 'string') ? l.date.trim() : '')
+      .filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s));
+    return dates.length ? dates.sort()[0] : '';
+  };
   tripList.sort((t1, t2) => {
-    const min1 = Math.min(...t1.legs.map(l => l.createdAt || 0));
-    const min2 = Math.min(...t2.legs.map(l => l.createdAt || 0));
-    return min2 - min1;
+    const d1 = tripStartDate(t1);
+    const d2 = tripStartDate(t2);
+    if(d1 && d2){
+      if(d1 !== d2) return d1 < d2 ? -1 : 1;
+      // Same start date: hold still rather than shuffling between renders.
+      const min1 = Math.min(...t1.legs.map(l => l.createdAt || 0));
+      const min2 = Math.min(...t2.legs.map(l => l.createdAt || 0));
+      return min1 - min2;
+    }
+    if(d1) return -1;   // dated trips above undated
+    if(d2) return 1;
+    const m1 = Math.min(...t1.legs.map(l => l.createdAt || 0));
+    const m2 = Math.min(...t2.legs.map(l => l.createdAt || 0));
+    return m2 - m1;     // among undated, newest import first
   });
   return tripList;
 }
