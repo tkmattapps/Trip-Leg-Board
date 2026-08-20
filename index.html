@@ -1270,8 +1270,10 @@
     /* Top centre, not bottom left. On a phone held in two hands your palm and
        thumb cover the bottom of the screen, and your eye is at the top where
        you just tapped -- a bottom-left toast is effectively invisible. Centred
-       so it clears the slide-out, which opens from the right. */
-    position:fixed; top:18px; left:50%; transform:translateX(-50%) translateY(-8px);
+       so it clears the slide-out, which opens from the right. Pushed down clear
+       of the notch/camera housing, which was covering it outright, and the
+       safe-area inset keeps it clear on whatever hardware it lands on. */
+    position:fixed; top:calc(60px + env(safe-area-inset-top, 0px)); left:50%; transform:translateX(-50%) translateY(-8px);
     background:var(--panel-700); border:1px solid var(--amber-500);
     color:var(--paper-050); padding:11px 18px; border-radius:4px; font-size:13px; font-family:system-ui,'Inter',sans-serif;
     max-width:calc(100vw - 32px); text-align:center;
@@ -1542,7 +1544,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T06:22:09Z';
+const BUILD_VERSION = '2026-08-20T06:27:55Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
