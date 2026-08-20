@@ -1050,6 +1050,14 @@
   .install-qr-wrap{ display:flex; flex-direction:column; align-items:center; gap:8px; margin:4px 0 20px; }
   .install-link-wrap{ margin:0 0 20px; text-align:center; }
   .install-link-label{ color:var(--fog-400); font-size:13px; line-height:1.5; margin-bottom:8px; }
+  /* Separates the two genuinely different tasks in this modal: the QR and the
+     link get Beacon onto ANOTHER device; everything below installs it on the
+     one in your hand. Without this the reader has to work out which half
+     applies to them. */
+  .install-steps-lead{
+    color:var(--fog-300); font-size:12px; font-weight:600; line-height:1.5;
+    margin:0 0 12px; padding-top:14px; border-top:1px solid var(--hairline);
+  }
   .install-qr-box{ background:#fff; padding:12px; border-radius:10px; line-height:0; }
   .install-qr-box img, .install-qr-box canvas{ display:block; }
   .install-qr-caption{ font-family:system-ui,'Inter',sans-serif; font-size:11px; color:var(--fog-500); text-align:center; }
@@ -1492,16 +1500,16 @@
     </p>
     <div class="install-qr-wrap">
       <div class="install-qr-box" id="installQr"></div>
-      <div class="install-qr-caption">Point another device's camera here to open Beacon</div>
+      <div class="install-qr-caption">Point another device's camera here to open Beacon on it</div>
     </div>
     <div class="install-link-wrap">
-      <div class="install-link-label">Or open this link on the device you want to install Beacon on (tap to copy):</div>
+      <div class="install-link-label">Or copy the link and send it to another device (tap to copy):</div>
       <button type="button" class="install-url" data-install-url>&hellip;</button>
     </div>
+    <div class="install-steps-lead">To install on the device you're using right now:</div>
     <div class="install-platform">
       <div class="install-platform-title">iPhone / iPad (Safari or Chrome)</div>
       <ol class="install-steps">
-        <li>Using the link above, open Beacon in Safari or Chrome</li>
         <li>Tap the Share icon (square with an arrow)</li>
         <li>Tap "Add to Home Screen"</li>
       </ol>
@@ -1509,7 +1517,6 @@
     <div class="install-platform">
       <div class="install-platform-title">Mac (Safari)</div>
       <ol class="install-steps">
-        <li>Using the link above, open Beacon in Safari</li>
         <li>File menu &rarr; "Add to Dock"</li>
         <li>It opens in its own window from then on</li>
       </ol>
@@ -1517,7 +1524,6 @@
     <div class="install-platform">
       <div class="install-platform-title">Mac / Windows (Chrome)</div>
       <ol class="install-steps">
-        <li>Using the link above, open Beacon in Chrome</li>
         <li>Click the install icon in the address bar (or menu &rarr; "Cast, save, and share" &rarr; "Install page as app")</li>
       </ol>
     </div>
@@ -1582,7 +1588,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T19:05:33Z';
+const BUILD_VERSION = '2026-08-20T19:31:20Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
