@@ -253,11 +253,12 @@
   .home-btn:hover{ border-color:var(--amber-500); transform:translateY(-2px); }
   .home-btn-title{ font-family:'Big Shoulders Display',sans-serif; font-size:20px; }
   .home-btn-count{ font-size:12px; color:var(--fog-300); }
-  /* The action tile. Amber fill against two outlined tiles reads as primary
-     without introducing a new colour, and the separator above says plainly
-     that it is not the third member of a set of three. */
+  /* The action tile. A solid amber fill read too loud beside two quiet tiles --
+     it dominated the home screen rather than merely leading it. The outline
+     carries the same amber without the shout, and the separator above is what
+     actually does the work of saying this is not the third member of a set. */
   .home-btn-action{
-    background:var(--amber-500); border-color:var(--amber-500); color:var(--ink-900);
+    background:var(--panel-800); border-color:var(--amber-500); color:var(--amber-500);
     margin-top:10px; position:relative;
   }
   .home-btn-action::before{
@@ -265,7 +266,7 @@
     border-top:1px solid var(--hairline);
   }
   .home-btn-action:hover{ border-color:var(--amber-500); filter:brightness(1.08); }
-  .home-btn-action .home-btn-count{ color:rgba(14,26,43,0.72); }
+  .home-btn-action .home-btn-count{ color:var(--fog-300); }
   .app{ display:flex; min-height:100vh; min-height:100dvh; max-width:1800px; margin:0 auto; }
   .mobile-topbar{ display:none; }
   .sidebar-backdrop{ display:none; }
@@ -1557,7 +1558,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T14:41:18Z';
+const BUILD_VERSION = '2026-08-20T15:02:11Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
