@@ -1568,7 +1568,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T15:46:20Z';
+const BUILD_VERSION = '2026-08-20T17:18:44Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -8010,12 +8010,13 @@ function renderImportPreviewView(){
         '<button type="button" class="btn btn-primary" id="importChooseFileBtn">Choose a PDF</button>' +
         // Say plainly that a model is doing the reading. A pilot in the friends
         // test went looking for the AI and never found it -- the old wording
-        // described the filing, not the work. The "it can misread" line is not
-        // a disclaimer bolted on: the review screen only earns its keep if the
-        // reader arrives expecting to correct something.
+        // described the filing, not the work. Kept to two lines: the field list
+        // was detail nobody needs before choosing a file, and the header subtitle
+        // already carries the promise that nothing saves without confirmation,
+        // so this only has to say "check it".
         '<div class="import-ai-note">' +
-          '<div class="import-ai-note-lead">Beacon reads the document for you.</div>' +
-          '<div>An AI pulls the trip apart into legs, times, airports, crew and handling details, then lays it out for you to check. If the trip is already on your board it works out what changed and shows you the revision instead of a duplicate. It reads faithfully, but it can misread &mdash; nothing lands on your board until you confirm it.</div>' +
+          '<div class="import-ai-note-lead">Beacon reads it with Claude.</div>' +
+          '<div>It will build a new trip or revise an existing one. It can misread, so verify its work.</div>' +
         '</div>' +
       '</div>' +
       '<div class="import-actions"><button type="button" class="btn" id="importCancelBtn">Back</button></div>';
@@ -8844,14 +8845,19 @@ function updateNavTabs(){
   if(histBtn) histBtn.classList.toggle('active', state.view === 'history' || isArchived || (isTripDetail && state.tripDetailOrigin === 'history'));
 }
 
+// Beacon speaks in FIRST PERSON here, with Claude named as a working partner
+// rather than a supplier. Deliberately only TWO lines open with "I'm" - seven
+// in a row read as a tic. Claude is explicit in three and implied by "us"/"we"
+// in two more, which is presence without it becoming an advert.
 const IMPORT_LOADING_MESSAGES = [
-  'Patience is a virtue\u2026 and a required checklist item.',
-  'Remember\u2026 slow is smooth, and smooth is fast.',
-  'Reading the fine print so you don\u2019t have to.',
-  'Cross-checking the cross-checks.',
-  'Still working \u2014 big documents take a minute.',
+  'Patience is a required checklist item. Bear with me.',
+  'Slow is smooth, and smooth is fast.',
+  'Claude and I are reading the fine print so you don\u2019t have to.',
+  'I\u2019m cross-checking the cross-checks.',
+  'Big documents take us a minute.',
   'Don\u2019t taxi off now \u2014 we\u2019re nearly cleared for departure.',
-  'I\u2019m heads down for a moment\u2026'
+  'Claude\u2019s heads down. I\u2019ll lay it out when it\u2019s back.',
+  'Handing this to Claude and watching over its shoulder.'
 ];
 let importLoadingTimer = null;
 let importLoadingIndex = 0;
