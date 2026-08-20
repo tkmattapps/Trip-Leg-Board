@@ -1485,7 +1485,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T02:14:05Z';
+const BUILD_VERSION = '2026-08-20T02:41:18Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -6653,6 +6653,16 @@ async function handleToggleAircraftActive(id){
 
 function renderHistoryView(){
   const main = document.getElementById('mainPanel');
+  // Re-read the archive on the way in, so a trip sealed by a COLLEAGUE appears
+  // within a navigation instead of requiring a relaunch. Fire-and-forget: the
+  // list draws immediately from what is already cached, and re-draws only if
+  // the fetch actually changed the count. Boot has already awaited this once,
+  // so this is a refresh, not the load-bearing read.
+  (async () => {
+    const before = archivedTripsCache.length;
+    await loadArchivedTrips();
+    if(archivedTripsCache.length !== before && state.view === 'history') renderMain();
+  })();
   const q = (state.historyFilter || '').trim().toLowerCase();
   const { cardsHtml, allFlownTrips } = historyCardsHtml(q);
   setPageHeader({ title:'Archived Trips', sub: allFlownTrips.length + ' archived trip' + (allFlownTrips.length === 1 ? '' : 's'), backLabel:'Home', backTo:'home' });
@@ -10726,6 +10736,18 @@ function hideLoginOverlay(){
 async function bootApp(){
   installRefreshHandler();
   await loadCurrentUserProfile();
+  // AWAITED, and awaited BEFORE loadLegs(), deliberately.
+  //
+  // This is not a display cache. legIsSealed() -> tripIsArchived() ->
+  // archivedTripsCache is the ONLY thing standing between a user and editing a
+  // sealed trip. If the list has not loaded, every archived trip renders as
+  // active and its legs are editable. Loading it late is the same bug in a
+  // smaller window.
+  //
+  // It was previously called only from openSettingsView(), so a device that
+  // never opened Settings enforced no seal at all. Found live: a trip archived
+  // on one machine stayed 'awaiting archive' and editable on every other.
+  await loadArchivedTrips();
   await loadLegs();
   loadRemoteAirportTZ();
   // Load the fleet once at boot so the tail picker is populated the moment any
