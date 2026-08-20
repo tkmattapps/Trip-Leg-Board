@@ -762,6 +762,16 @@
   .import-crew-out.is-warn{ color:var(--amber-500); }
   .import-actions{ display:flex; gap:10px; justify-content:flex-end; }
   .import-upload-box{ background:var(--panel-800); border:1px dashed var(--hairline); border-radius:6px; padding:32px 20px; text-align:center; margin-bottom:24px; }
+  /* Sits between the choose button and the file-type line. Left-aligned inside
+     a centred box on purpose: it is two sentences of prose, and centred prose
+     is harder to read than centred labels. Capped so it does not sprawl on a
+     wide iPad. */
+  .import-ai-note{
+    max-width:520px; margin:16px auto 0; text-align:left;
+    color:var(--fog-300); font-size:13px; line-height:1.5;
+    border-left:2px solid var(--amber-500); padding-left:12px;
+  }
+  .import-ai-note-lead{ color:var(--paper-050); font-weight:600; margin-bottom:3px; }
   .import-unmatched-select{ background:var(--panel-900, #0f1115); color:var(--paper-050); border:1px solid var(--hairline); border-radius:4px; padding:8px; font-size:13px; }
   /* Flex column so the quick-action row sits at the BOTTOM of every card.
      .dash-grid stretches its items, so the cards in a row are already the
@@ -1558,7 +1568,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T15:02:11Z';
+const BUILD_VERSION = '2026-08-20T15:31:04Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -7986,7 +7996,7 @@ function renderImportPreviewView(){
   // floated over this view's title during extraction. Use the real header like
   // every other view does, and drop the inline one.
   setPageHeader({
-    title: 'Import Trip Documents',
+    title: 'Read Trip Paperwork',
     sub: 'Nothing is saved to your board until you confirm.',
     backLabel: 'Active Trips',
     backTo: 'dashboard'
@@ -7997,7 +8007,16 @@ function renderImportPreviewView(){
     main.innerHTML = header +
       '<div class="import-upload-box">' +
         '<input type="file" id="importFileInput" accept="application/pdf" style="display:none;" />' +
-        '<button type="button" class="btn btn-primary" id="importChooseFileBtn">Choose PDF to import</button>' +
+        '<button type="button" class="btn btn-primary" id="importChooseFileBtn">Choose a PDF</button>' +
+        // Say plainly that a model is doing the reading. A pilot in the friends
+        // test went looking for the AI and never found it -- the old wording
+        // described the filing, not the work. The "it can misread" line is not
+        // a disclaimer bolted on: the review screen only earns its keep if the
+        // reader arrives expecting to correct something.
+        '<div class="import-ai-note">' +
+          '<div class="import-ai-note-lead">Beacon reads the document for you.</div>' +
+          '<div>An AI pulls the trip apart into legs, times, airports, crew and handling details, then lays it out for you to check. It reads faithfully, but it can misread &mdash; nothing lands on your board until you confirm it.</div>' +
+        '</div>' +
         '<div style="margin-top:10px; color:var(--fog-300); font-size:13px;">Accepts a trip sheet PDF (builds new legs) or an ITPS handling notes PDF (updates a matching existing leg).</div>' +
       '</div>' +
       '<div class="import-actions"><button type="button" class="btn" id="importCancelBtn">Back</button></div>';
