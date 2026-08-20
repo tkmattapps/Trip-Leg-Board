@@ -1114,11 +1114,11 @@
   .lg-group-title{ font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--amber-500); margin:0 0 10px; }
   .lg-row{ display:flex; align-items:flex-start; gap:10px; margin-bottom:10px; }
   .lg-row:last-child{ margin-bottom:0; }
-  .lg-key{ flex:0 0 92px; display:flex; align-items:center; padding-top:1px; }
+  .lg-key{ flex:0 0 92px; display:flex; align-items:center; padding-top:1px; min-width:0; }
   .lg-row.compact .lg-key{ flex:0 0 22px; padding-top:4px; }
   .lg-body{ flex:1 1 auto; min-width:0; font-size:12px; line-height:1.5; color:var(--fog-300); }
   .lg-body b{ color:var(--paper-050); font-weight:600; }
-  .lg-sample{ display:inline-block; font-family:system-ui,'Inter',sans-serif; font-size:12px; background:var(--panel-700); border:1px solid var(--hairline); border-radius:4px; padding:4px 8px; }
+  .lg-sample{ display:flex; align-items:center; justify-content:center; width:100%; box-sizing:border-box; font-family:system-ui,'Inter',sans-serif; font-size:12px; background:var(--panel-700); border:1px solid var(--hairline); border-radius:4px; padding:4px 8px; }
   .lg-sample.extracted{ color:#5FD0E8; }
   .lg-sample.human{ color:var(--paper-050); }
   .lg-sample.ring-ok{ color:var(--paper-050); box-shadow:0 0 0 1.25px rgba(74,201,126,0.36); }
@@ -1128,8 +1128,8 @@
      .field.src-extracted .yn button.on-y. Square, and set to the width of the
      key column so it lines up with the samples above and below it. */
   .lg-sample.yn-demo{
-    width:36px; height:36px; padding:0; box-sizing:border-box;
-    display:inline-flex; align-items:center; justify-content:center;
+    width:100%; height:36px; padding:0; box-sizing:border-box;
+    display:flex; align-items:center; justify-content:center;
     background:rgba(226,87,76,0.18); border:1px solid var(--alert-600);
     border-radius:3px; color:#2BD9F5; font-weight:700; font-size:12px;
     text-shadow:0 0 3px rgba(0,0,0,0.75);
@@ -1599,7 +1599,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T20:36:52Z';
+const BUILD_VERSION = '2026-08-20T20:52:18Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
