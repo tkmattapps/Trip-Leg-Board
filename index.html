@@ -253,6 +253,19 @@
   .home-btn:hover{ border-color:var(--amber-500); transform:translateY(-2px); }
   .home-btn-title{ font-family:'Big Shoulders Display',sans-serif; font-size:20px; }
   .home-btn-count{ font-size:12px; color:var(--fog-300); }
+  /* The action tile. Amber fill against two outlined tiles reads as primary
+     without introducing a new colour, and the separator above says plainly
+     that it is not the third member of a set of three. */
+  .home-btn-action{
+    background:var(--amber-500); border-color:var(--amber-500); color:var(--ink-900);
+    margin-top:10px; position:relative;
+  }
+  .home-btn-action::before{
+    content:''; position:absolute; top:-15px; left:12%; right:12%;
+    border-top:1px solid var(--hairline);
+  }
+  .home-btn-action:hover{ border-color:var(--amber-500); filter:brightness(1.08); }
+  .home-btn-action .home-btn-count{ color:rgba(14,26,43,0.72); }
   .app{ display:flex; min-height:100vh; min-height:100dvh; max-width:1800px; margin:0 auto; }
   .mobile-topbar{ display:none; }
   .sidebar-backdrop{ display:none; }
@@ -1544,7 +1557,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T06:27:55Z';
+const BUILD_VERSION = '2026-08-20T14:41:18Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -5842,9 +5855,17 @@ function renderHomeView(){
           '<span class="home-btn-title">Archived Trips</span>' +
           '<span class="home-btn-count">' + (_legsLoaded ? (historicCount + ' archived trip' + (historicCount === 1 ? '' : 's')) : 'Loading trips…') + '</span>' +
         '</button>' +
-        '<button type="button" class="home-btn" id="homeImportBtn">' +
-          '<span class="home-btn-title">Import Trip Docs</span>' +
-          '<span class="home-btn-count">Review before adding</span>' +
+        // Not a navigation button. The two above take you somewhere that already
+        // exists; this one DOES something -- it reads paperwork and either
+        // builds a trip or updates one. That difference is permanent, not a
+        // function of whether the board happens to be empty, so it is styled
+        // by what it IS rather than by the user's current state.
+        // "Import Trip Docs" was the old label and it failed a real pilot in
+        // the friends test: he went looking for the AI and never found it.
+        // The subtext said "adding", which hid the revision half entirely.
+        '<button type="button" class="home-btn home-btn-action" id="homeImportBtn">' +
+          '<span class="home-btn-title">Read Trip Paperwork</span>' +
+          '<span class="home-btn-count">New trips or revisions</span>' +
         '</button>' +
       '</div>' +
     '</div>';
