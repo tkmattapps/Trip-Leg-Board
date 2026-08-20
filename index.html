@@ -110,6 +110,21 @@
   .set-section-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:4px; }
   .set-section-title{ font-size:12px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); }
   .set-section-note{ font-size:12px; color:var(--fog-500); margin:0 0 12px; line-height:1.5; }
+  /* Placeholder for a DESIGNED-NOT-BUILT feature. Deliberately inert: no
+     controls at all, because a disabled toggle invites a tap and teaches
+     people the app is broken. The dashed rule says "nothing here yet" more
+     honestly than a greyed-out switch does. */
+  .set-soon{
+    border:1px dashed var(--hairline); border-radius:6px;
+    padding:12px 14px; background:var(--panel-800);
+    font-size:12px; color:var(--fog-500); line-height:1.6;
+  }
+  .set-soon strong{ color:var(--fog-300); font-weight:600; }
+  .set-soon-pill{
+    display:inline-block; margin-left:8px; padding:1px 7px; border-radius:9px;
+    border:1px solid var(--amber-500); color:var(--amber-500);
+    font-size:10px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase;
+  }
   .set-list{ display:flex; flex-direction:column; gap:8px; }
   .set-group{ display:flex; flex-direction:column; gap:8px; }
   .set-group + .set-group{ margin-top:18px; }
@@ -1567,7 +1582,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T18:24:05Z';
+const BUILD_VERSION = '2026-08-20T19:05:33Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -6209,6 +6224,30 @@ function renderSettingsView(){
           ? ' As an admin you can add people, edit names and crew abbreviations, and reset passwords here.'
           : '') + '</p>' +
       rosterHTML +
+    '</div>' +
+    // DESIGNED, NOT BUILT - see beacon-configurable-fields-design.md.
+    // Shown to beta testers so the absence reads as "coming" rather than
+    // "missing". Three switches: the department decides what is REQUIRED, the
+    // department decides its default LAYOUT, the person decides their own VIEW.
+    // The rule that keeps it safe: a person can never hide something the
+    // department requires them to verify.
+    '<div class="set-section">' +
+      '<div class="set-section-head">' +
+        '<div class="set-section-title">Fields and verification' +
+          '<span class="set-soon-pill">Coming soon</span></div>' +
+      '</div>' +
+      '<p class="set-section-note">How this department decides what a leg has to show, ' +
+        'and what has to be checked before a trip is ready.</p>' +
+      '<div class="set-soon">' +
+        '<strong>Your department will set its own rules.</strong> An admin will choose which ' +
+        'sections have to be verified before a trip can go ready. Turning a section off ' +
+        'means it is no longer required \u2014 nothing is ever hidden from the record, and ' +
+        'you can still verify a section that is not required.' +
+        '<br><br>' +
+        '<strong>You will be able to tidy your own screen.</strong> Fields you never use can be ' +
+        'collapsed on your device without changing anything for anyone else. ' +
+        'You will not be able to hide something your department requires you to verify.' +
+      '</div>' +
     '</div>';
 
   const acctName = document.getElementById('acctName');
