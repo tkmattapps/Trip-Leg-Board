@@ -1588,7 +1588,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T19:31:20Z';
+const BUILD_VERSION = '2026-08-20T19:58:44Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -11179,11 +11179,11 @@ function legendBodyHTML(){
       '<div class="lg-group-title">Leg status</div>',
       '<div class="lg-row compact"><span class="lg-key"><span class="leg-status-dot leg-status-dot-plain leg-status-planning"></span></span><span class="lg-body"><b>Planning</b> &mdash; the leg is still being built. One or more sections have not been verified.</span></div>',
       '<div class="lg-row compact"><span class="lg-key"><span class="leg-status-dot leg-status-dot-plain leg-status-ready"></span></span><span class="lg-body"><b>Ready</b> &mdash; every section on the leg has been verified by a person.</span></div>',
-      '<div class="lg-row compact"><span class="lg-key"><span class="leg-status-dot leg-status-dot-plain leg-status-flown"></span></span><span class="lg-body"><b>Flown</b> &mdash; the leg is complete and sits in the trip archive.</span></div>',
+      '<div class="lg-row compact"><span class="lg-key"><span class="leg-status-dot leg-status-dot-plain leg-status-flown"></span></span><span class="lg-body"><b>Flown</b> &mdash; the leg has been flown. It stays on the board, and stays editable, until the trip is archived.</span></div>',
     '</div>',
     '<div class="lg-group">',
       '<div class="lg-group-title">Where a value came from</div>',
-      '<div class="lg-row"><span class="lg-key"><span class="lg-sample extracted">KBDL</span></span><span class="lg-body"><b>Cyan</b> &mdash; pulled out of an imported trip document. Nobody has confirmed it yet. Read it against the source.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample extracted">KBDL</span></span><span class="lg-body"><b>Cyan</b> &mdash; read out of paperwork you uploaded. Nobody has confirmed it yet. Read it against the source.</span></div>',
       '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">KBDL</span></span><span class="lg-body"><b>White</b> &mdash; entered by hand by crew or dispatch.</span></div>',
       '<div class="lg-row"><span class="lg-key"><span class="lg-sample extracted">YES</span></span><span class="lg-body">On a Yes/No toggle the button keeps its own red or green fill &mdash; that carries the warning. Only the wording turns cyan.</span></div>',
     '</div>',
@@ -11191,6 +11191,23 @@ function legendBodyHTML(){
       '<div class="lg-group-title">Verification</div>',
       '<div class="lg-row"><span class="lg-key"><span class="lg-sample ring-ok">KBDL</span></span><span class="lg-body"><b>Green outline</b> &mdash; verified. Where a section is built from cards (Airports, Permits, Pax) the outline sits on the whole card; elsewhere it sits on the field.</span></div>',
       '<div class="lg-row"><span class="lg-key"><span class="lg-sample ring-broken">KBDL</span></span><span class="lg-body"><b>Amber outline</b> with a <span class="lg-chip">changed since verified</span> tag &mdash; the value was edited after it was signed off. Check it and verify again.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">9 of 9</span></span><span class="lg-body">A leg can only go <b>Ready</b> once all nine sections are verified. Verifying is per section, and every sign-off records who did it and when.</span></div>',
+    '</div>',
+    '<div class="lg-group">',
+      '<div class="lg-group-title">Changed since you last looked</div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample ring-broken">3 changes</span></span><span class="lg-body">Opening a leg someone else has edited shows you what moved, who moved it, and what it was before. It is <b>advisory only</b> &mdash; nothing is blocked, and dismissing it changes no data.</span></div>',
+      '<div class="lg-row"><span class="lg-key"></span><span class="lg-body">It never reports your own edits back to you, and what you have read is private &mdash; nobody else can see where you got to.</span></div>',
+    '</div>',
+    '<div class="lg-group">',
+      '<div class="lg-group-title">Notes</div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">Shared</span></span><span class="lg-body">Everyone in the department reads it, and your name is on it. Use it for anything the next crew needs.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">Private</span></span><span class="lg-body">Yours alone. Not visible to anyone else in the department, including an admin, and never frozen into the archive.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">Airport notes</span></span><span class="lg-body">On the leg card, top right. Recalls what your department has written before about either airport on that leg. Coming soon.</span></div>',
+    '</div>',
+    '<div class="lg-group">',
+      '<div class="lg-group-title">The archive</div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample ring-ok">Sealed</span></span><span class="lg-body">Archiving is done <b>per trip, by an admin, and it cannot be undone</b>. It freezes the trip exactly as it stood: every field, who verified what, the crew in each seat, and the shared notes.</span></div>',
+      '<div class="lg-row"><span class="lg-key"></span><span class="lg-body">A trip does not archive itself. Flown legs sit on the board until somebody decides the record is finished. A trip can be archived with legs still unflown &mdash; it is marked incomplete if so.</span></div>',
     '</div>',
     '<p class="lg-note">Verification is a human decision. Opening a leg to read it never removes a sign-off &mdash; only a real edit does.</p>'
   ].join('');
