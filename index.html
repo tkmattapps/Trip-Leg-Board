@@ -1210,6 +1210,16 @@
   .archive-notes-title{ font-family:system-ui,'Inter',sans-serif; font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--fog-500); margin-bottom:10px; }
   .archive-note-row{ display:flex; gap:10px; margin-bottom:8px; }
   .archive-note-leg{ flex:0 0 52px; font-family:system-ui,'Inter',sans-serif; font-size:11px; color:var(--fog-500); }
+  .arch-section-title{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; font-family:system-ui,'Inter',sans-serif; font-size:13px; font-weight:600; letter-spacing:.02em; color:var(--paper-050); padding-bottom:8px; margin-bottom:12px; border-bottom:1px solid var(--hairline); }
+  .arch-section-title.is-checked{ color:#4AC97E; }
+  .arch-verify-tag{ flex:0 0 auto; font-size:10px; font-weight:500; letter-spacing:.04em; text-transform:uppercase; color:var(--fog-500); }
+  .arch-section-title.is-checked .arch-verify-tag{ color:#4AC97E; }
+  .arch-grid{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px 12px; }
+  @media (max-width:700px){ .arch-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  .arch-field-label{ font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:.04em; text-transform:uppercase; color:var(--fog-500); margin-bottom:3px; }
+  .arch-field-value{ font-family:system-ui,'Inter',sans-serif; font-size:16px; color:var(--paper-050); line-height:1.35; word-break:break-word; }
+  .arch-note{ grid-column:1 / -1; padding:10px 12px; border-left:2px solid var(--amber-500); background:rgba(242,169,59,0.06); border-radius:4px; }
+  .dash-card-archived-leg{ cursor:pointer; }
   .archive-note-by{ display:block; margin-top:3px; font-size:10px; color:var(--fog-500); }
   .archive-notes-foot{ margin-top:10px; font-family:system-ui,'Inter',sans-serif; font-size:10px; color:var(--fog-500); }
   .archive-doc-row{ display:flex; gap:10px; align-items:baseline; margin-bottom:8px; }
@@ -1475,7 +1485,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T01:07:30Z';
+const BUILD_VERSION = '2026-08-20T02:14:05Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -7716,7 +7726,8 @@ function archivedLegCardHTML(leg){
   const route = leg.cityPair || [ (leg.dep||{}).airportId, (leg.arr||{}).airportId ].filter(Boolean).join(' \u2192 ') || 'No city pair defined';
   const sc = leg.sectionVerified || leg.sectionComplete || {};
   const verifiedCount = Object.keys(sc).filter(k => sc[k]).length;
-  return '<div class="dash-card dash-card-archived-leg">' +
+  return '<div class="dash-card dash-card-archived-leg" data-archived-leg="' +
+      escapeHtml(String(leg.id || '')) + '">' +
     '<div class="dash-card-top">' +
       '<span class="dash-card-leg-title">Leg ' + escapeHtml(leg.legNumber || '?') + '</span>' +
     '</div>' +
@@ -7730,7 +7741,7 @@ function archivedLegCardHTML(leg){
       '  \u00b7  ' + verifiedCount + ' of 9 sections verified</div>' +
     archivedCrewLineHTML(leg) +
     '<div class="dash-card-spacer"></div>' +
-    '<div class="trip-quick-row trip-quick-row-sealed">Read only</div>' +
+    '<div class="trip-quick-row trip-quick-row-sealed">Read only \u00b7 tap to view</div>' +
   '</div>';
 }
 
@@ -7791,6 +7802,21 @@ function renderArchivedTripView(){
     '<div class="dash-grid">' + trip.legs.map(archivedLegCardHTML).join('') + '</div>' +
     archivedNotesBlockHTML(trip) +
     archivedDocsBlockHTML(trip);
+
+  // Tapping a sealed leg opens the read-only detail. The leg comes from the
+  // SNAPSHOT array already in memory -- no fetch, and deliberately no lookup
+  // against state.legs, which may have moved on or been deleted.
+  document.querySelectorAll('[data-archived-leg]').forEach(card => {
+    card.addEventListener('click', () => {
+      const id = card.dataset.archivedLeg;
+      const leg = (trip.legs || []).find(l => String(l.id || '') === id);
+      if(!leg) return;
+      state.archivedLeg = leg;
+      state.view = 'archivedLeg';
+      renderMain();
+      window.scrollTo(0, 0);
+    });
+  });
 
   // Signed on demand rather than at render: a signed URL is short-lived, and
   // minting one per document every time the page draws would be wasteful and
@@ -7873,6 +7899,213 @@ function archivedDocsBlockHTML(trip){
       '</div>'
     ).join('') +
   '</div>';
+}
+
+// ===========================================================================
+// ARCHIVED LEG DETAIL -- read-only
+//
+// A SEPARATE renderer from the live editor, deliberately. The editor emits real
+// <input> elements and there is a load-bearing comment on it: collectAndSave()
+// reads the editor by field id and rewrites the whole leg. Reusing it for a
+// sealed record would put live, writable inputs on an archived screen -- one
+// stray save and Beacon would write a frozen record back onto a live leg.
+//
+// So this renderer emits TEXT ONLY. It is structurally incapable of writing.
+// It mirrors the editor's nine sections, labels and order so the record reads
+// as the crew saw it.
+//
+// *** THE COST, STATED: the field list is DUPLICATED from the editor and will
+// drift as fields are added. The fix is to refactor the editor into a renderer
+// that takes a read-only mode, at which point this function is deleted. Until
+// then, a field added to the editor must be added here too. ***
+function archField(label, value){
+  const v = (value == null ? '' : String(value)).trim();
+  if(!v) return '';   // Empty renders as nothing, per the standing rule.
+  return '<div class="arch-field">' +
+    '<div class="arch-field-label">' + escapeHtml(label) + '</div>' +
+    '<div class="arch-field-value">' + escapeHtml(v) + '</div>' +
+  '</div>';
+}
+
+// Yes/no items. Unlike a text field, FALSE is meaningful here -- "slot not
+// required" is a real answer -- so only null/undefined/'' is treated as unset.
+function archYN(label, value){
+  if(value === null || value === undefined || value === '') return '';
+  const yes = (value === true || value === 'yes' || value === 'Y' || value === 'y');
+  return '<div class="arch-field">' +
+    '<div class="arch-field-label">' + escapeHtml(label) + '</div>' +
+    '<div class="arch-field-value">' + (yes ? 'Yes' : 'No') + '</div>' +
+  '</div>';
+}
+
+function archSection(label, key, leg, bodyHTML){
+  if(!bodyHTML) return '';
+  const verified = !!(leg.sectionVerified && leg.sectionVerified[key]);
+  return '<div class="section">' +
+    '<div class="arch-section-title' + (verified ? ' is-checked' : '') + '">' +
+      escapeHtml(label) +
+      '<span class="arch-verify-tag">' + (verified ? 'Verified' : 'Not verified') + '</span>' +
+    '</div>' +
+    '<div class="arch-grid">' + bodyHTML + '</div>' +
+  '</div>';
+}
+
+// Notes frozen for THIS leg, shown in the section the crew wrote them in.
+function archLegNotes(trip, leg, field){
+  const notes = ((trip.snapshot || {}).legNotes || [])
+    .filter(n => n.legId === leg.id && n.field === field);
+  if(!notes.length) return '';
+  return notes.map(n =>
+    '<div class="arch-note">' +
+      '<div class="arch-field-label">Note \u00b7 ' + escapeHtml(n.authorName || 'Unknown') + '</div>' +
+      '<div class="arch-field-value">' + escapeHtml(n.content || '') + '</div>' +
+    '</div>'
+  ).join('');
+}
+
+function archivedLegDetailHTML(trip, leg){
+  const dep = leg.dep || {}, arr = leg.arr || {}, comp = leg.compliance || {};
+
+  const depBody =
+    archField('Airport ID', dep.airportId) +
+    archField('Departure date', leg.date) +
+    archField('UTC offset', dep.utcOffsetManual) +
+    archField('ETD local', displayLocal12h(dep.etdLocal)) +
+    archField('ETD Z (UTC)', dep.etdZ) +
+    archField('Hours of operation', dep.hours) +
+    archYN('Dep slot req\u2019d', dep.slotReqd) +
+    archField('Slot time / number', dep.slotTimeNumber) +
+    archField('Slot time allowance', dep.slotAllowance) +
+    archField('Handling agent', dep.agent) +
+    archField('Phone number', dep.agentPhone) +
+    archField('ARINC Frequency', dep.frequency) +
+    archField('Fuel vendor', dep.fuelVendor) +
+    archField('Fuel price', dep.fuelPricePerGallon) +
+    archField('Payment method', dep.fuelPaymentMethod) +
+    archField('Ramp fee', dep.rampFee) +
+    archYN('Waived w/ fuel', dep.rampFeeWaived) +
+    archField('Min GAL to waive', dep.rampFeeMinGallons) +
+    archLegNotes(trip, leg, 'dep');
+
+  const arrBody =
+    archField('Airport ID', arr.airportId) +
+    archField('Arrival date', arr.date) +
+    archField('UTC offset', arr.utcOffsetManual) +
+    archField('ETA local', displayLocal12h(arr.etaLocal)) +
+    archField('ETA Z (UTC)', arr.etaZ) +
+    archField('Hours of operation', arr.hours) +
+    archYN('Arr slot req\u2019d', arr.slotReqd) +
+    archField('Slot time / number', arr.slotTimeNumber) +
+    archField('Slot time allowance', arr.slotAllowance) +
+    archField('Handling agent', arr.agent) +
+    archField('Phone number', arr.agentPhone) +
+    archField('ARINC Frequency', arr.frequency) +
+    archField('Fuel vendor', arr.fuelVendor) +
+    archField('Fuel price', arr.fuelPricePerGallon) +
+    archField('Payment method', arr.fuelPaymentMethod) +
+    archField('Ramp fee', arr.rampFee) +
+    archYN('Waived w/ fuel', arr.rampFeeWaived) +
+    archField('Min GAL to waive', arr.rampFeeMinGallons) +
+    archLegNotes(trip, leg, 'arr');
+
+  const perfBody =
+    archField('Trim', leg.trim) +
+    archField('Level off altitude', leg.levelOff) +
+    archField('Min BRF', leg.minBRF);
+
+  const enrBody =
+    archField('Max shear', leg.maxShear) +
+    archField('ETE', leg.ete) +
+    archLegNotes(trip, leg, 'enroute');
+
+  // Overflight countries were a repeating list in the editor.
+  const ovf = Array.isArray(comp.overflightPermits) ? comp.overflightPermits : [];
+  const ovfBody = ovf.map(o => {
+    if(!o) return '';
+    const country = (o.country || o.name || '').trim();
+    const num = (o.permitNumber || o.number || '').trim();
+    if(!country && !num) return '';
+    return archField(country || 'Country', num || '\u2014');
+  }).join('');
+
+  const permBody =
+    archYN('eAPIS required', (comp.eapisReqd !== undefined ? comp.eapisReqd : leg.eapisRequired)) +
+    archField('eAPIS notes', comp.eapisNotes) +
+    archYN('Customs required', comp.customsReqd) +
+    archField('Customs notes', comp.customsNotes) +
+    archYN('Landing permit required', (arr.permitReqd !== undefined ? arr.permitReqd : leg.permitReqd)) +
+    archField('Landing permit number', (arr.permitNumber || leg.permitNumber)) +
+    archYN('Overflight permits required', comp.overflightReqd) +
+    ovfBody;
+
+  const dispBody = archYN('FRAT / release', leg.fratRelease);
+
+  const paxBody =
+    archField('Pax total / notes', leg.paxTotalNotes) +
+    archYN('Ground transport arranged \u00b7 ' + (dep.airportId || 'departure'), dep.groundTransportReqd) +
+    archField('Details', (dep.groundTransportDetails || dep.paxBaggageNotes)) +
+    archYN('Ground transport arranged \u00b7 ' + (arr.airportId || 'arrival'), arr.groundTransportReqd) +
+    archField('Details', (arr.groundTransportDetails || arr.paxBaggageNotes));
+
+  const crewBody =
+    archivedCrewLineHTML(leg) +
+    archField('Hotel / rental car notes', (leg.crewHotelCarNotes || arr.hotelCarNotes));
+
+  const nextBody =
+    archField('Destination', leg.nextLegDestination) +
+    archField('Date', leg.nextLegDate) +
+    archField('Day', leg.nextLegDay) +
+    archField('ETD', displayLocal12h(leg.nextLegEtd)) +
+    archField('ETA', displayLocal12h(leg.nextLegEta));
+
+  const sections =
+    archSection('Departure', 'departure', leg, depBody) +
+    archSection('Arrival', 'arrival', leg, arrBody) +
+    archSection('Performance', 'performance', leg, perfBody) +
+    archSection('Enroute', 'enroute', leg, enrBody) +
+    archSection('Permits', 'permits', leg, permBody) +
+    archSection('Dispatch', 'dispatch', leg, dispBody) +
+    archSection('Pax', 'pax', leg, paxBody) +
+    archSection('Crew', 'crew', leg, crewBody) +
+    archSection('Next pax leg', 'nextLeg', leg, nextBody);
+
+  return sections ||
+    '<div class="archive-notes-block"><div class="archive-notes-foot">' +
+    'This leg was archived with no recorded data.</div></div>';
+}
+
+// Read-only detail for one sealed leg. Everything comes from the snapshot held
+// in state.archivedTrip -- this screen never reads state.legs.
+function renderArchivedLegView(){
+  const main = document.getElementById('mainPanel');
+  const trip = state.archivedTrip;
+  const leg = state.archivedLeg;
+  if(!trip || !leg){
+    state.view = 'history';
+    updateNavTabs();
+    renderMain();
+    return;
+  }
+  const route = leg.cityPair ||
+    [ (leg.dep||{}).airportId, (leg.arr||{}).airportId ].filter(Boolean).join(' \u2192 ') || '';
+  const sv = leg.sectionVerified || {};
+  const verifiedCount = Object.keys(sv).filter(k => sv[k]).length;
+
+  setPageHeader({
+    title: 'Leg ' + (leg.legNumber || '?') + (route ? '  \u00b7  ' + route : ''),
+    sub: 'Trip ' + (trip.tripNumber || '') + '  \u00b7  ARCHIVED  \u00b7  ' +
+         verifiedCount + ' of 9 verified',
+    backLabel: 'Trip ' + (trip.tripNumber || ''),
+    backTo: 'archivedTrip'
+  });
+
+  main.innerHTML =
+    '<div class="archive-seal-banner">' +
+      '<div class="archive-seal-title">Read only</div>' +
+      '<div class="archive-seal-sub">This leg is part of a sealed trip record. ' +
+        'Values are shown as they stood when the trip was archived.</div>' +
+    '</div>' +
+    archivedLegDetailHTML(trip, leg);
 }
 
 function renderTripDetailView(){
@@ -8191,6 +8424,10 @@ document.addEventListener('click', function(e){
   else if(dest === 'dashboard'){ state.view = 'dashboard'; }
   else if(dest === 'history'){ state.view = 'history'; }
   else if(dest === 'tripDetail'){ state.view = 'tripDetail'; }
+  // Returning to a sealed trip. state.archivedTrip is left intact -- it holds
+  // the snapshot the archived screens render from, and renderArchivedTripView
+  // bounces to the archive list if it is ever missing.
+  else if(dest === 'archivedTrip'){ state.view = 'archivedTrip'; state.archivedLeg = null; }
   else return;
   state.activeId = null;
   if(typeof updateNavTabs === 'function') updateNavTabs();
@@ -8215,6 +8452,7 @@ function renderMain(){
   if(state.view === 'history'){ renderHistoryView(); return; }
   if(state.view === 'tripDetail'){ renderTripDetailView(); return; }
   if(state.view === 'archivedTrip'){ renderArchivedTripView(); return; }
+  if(state.view === 'archivedLeg'){ renderArchivedLegView(); return; }
   if(state.view === 'importPreview'){ renderImportPreviewView(); return; }
   if(state.view === 'settings'){ renderSettingsView(); return; }
 
