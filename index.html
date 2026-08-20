@@ -1248,17 +1248,13 @@
     font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:0.06em;
     text-transform:uppercase; font-weight:600;
     padding:4px 9px; border-radius:4px; cursor:pointer;
-    display:inline-flex; align-items:flex-start; gap:0;
+    display:inline-flex; align-items:center; gap:0;
     background:transparent; border:1px solid var(--fog-500); color:var(--fog-300);
   }
   .verify-progress{
     background:var(--panel-700); border-color:var(--fog-500);
     padding:9px 14px; font-size:11px;
   }
-  .vp-chev{ display:inline-flex; flex-direction:column; align-items:center; opacity:0.9;
-    position:relative; top:-2px; }
-  .vp-chev i{ font-style:normal; font-size:13px; line-height:0.42; }
-  .vp-chev i:nth-child(1){ opacity:0.55; }
   .verify-progress:hover{ background:var(--panel-800); }
   .verify-progress.is-done{ border-color:#4AC97E; color:#4AC97E; cursor:default; }
   .verify-progress.is-done:hover{ background:transparent; }
@@ -1599,7 +1595,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T21:04:33Z';
+const BUILD_VERSION = '2026-08-20T21:19:47Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -9393,10 +9389,10 @@ function renderMain(){
     }).length;
     const allDone = done === total;
     const label = allDone ? 'CHECKLIST COMPLETE' : (done + ' of ' + total + ' checked');
-    // Chevron signals this is tappable and jumps DOWN to the next unverified
-    // section; it disappears when there is nowhere left to jump.
-    el.innerHTML = '<span class="vp-label"></span>' +
-      (allDone ? '' : '<span class="vp-space">\u00a0</span><span class="vp-chev" aria-hidden="true"><i>\u2304</i><i>\u2304</i></span>');
+    // Tapping still jumps DOWN to the next unverified section; the chevron that
+    // used to advertise that was removed as visual noise. The title attribute
+    // and the count itself carry it.
+    el.innerHTML = '<span class="vp-label"></span>';
     el.querySelector('.vp-label').textContent = label;
     el.classList.toggle('is-done', allDone);
     el.setAttribute('title', allDone ? 'Every section signed off' : 'Jump to next unchecked item');
