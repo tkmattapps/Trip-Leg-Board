@@ -1568,7 +1568,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T15:31:04Z';
+const BUILD_VERSION = '2026-08-20T15:46:20Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -8015,9 +8015,8 @@ function renderImportPreviewView(){
         // reader arrives expecting to correct something.
         '<div class="import-ai-note">' +
           '<div class="import-ai-note-lead">Beacon reads the document for you.</div>' +
-          '<div>An AI pulls the trip apart into legs, times, airports, crew and handling details, then lays it out for you to check. It reads faithfully, but it can misread &mdash; nothing lands on your board until you confirm it.</div>' +
+          '<div>An AI pulls the trip apart into legs, times, airports, crew and handling details, then lays it out for you to check. If the trip is already on your board it works out what changed and shows you the revision instead of a duplicate. It reads faithfully, but it can misread &mdash; nothing lands on your board until you confirm it.</div>' +
         '</div>' +
-        '<div style="margin-top:10px; color:var(--fog-300); font-size:13px;">Accepts a trip sheet PDF (builds new legs) or an ITPS handling notes PDF (updates a matching existing leg).</div>' +
       '</div>' +
       '<div class="import-actions"><button type="button" class="btn" id="importCancelBtn">Back</button></div>';
     document.getElementById('importChooseFileBtn').addEventListener('click', () => {
