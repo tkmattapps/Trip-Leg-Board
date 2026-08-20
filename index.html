@@ -878,9 +878,18 @@
      two competing for the same row: the badge is a passive indicator and the
      button is a target, so stacking keeps the tap area clear of it. */
   .dash-card-top-right{ display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex:0 0 auto; }
-  .leg-airport-notes-btn{ background:transparent; border:1px solid var(--fog-500); color:var(--fog-300);
-    font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.2; padding:4px 7px;
-    border-radius:3px; cursor:pointer; white-space:nowrap; }
+  /* Borrows .trip-quick-btn's affordance exactly -- hairline border, amber on
+     hover -- so it reads as the same class of control as Crew/Aircraft/Status
+     rather than as a stray bit of text. Smaller only because it sits in the
+     card header, not the action row. */
+  .leg-airport-notes-btn{
+    font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:500;
+    line-height:1.2; padding:5px 9px; border-radius:3px; cursor:pointer;
+    border:1px solid var(--hairline); background:transparent; color:var(--fog-300);
+    transition:border-color 0.15s ease, color 0.15s ease;
+    -webkit-tap-highlight-color:transparent; white-space:nowrap;
+  }
+  .leg-airport-notes-btn:hover{ border-color:var(--amber-500); color:var(--amber-500); }
   .leg-airport-notes-btn:active{ background:var(--panel-700); }
   .dash-card-code{ font-family:system-ui,'Inter',sans-serif; font-size:14px; font-weight:600; }
   .dash-card-leg-title{ font-family:'Big Shoulders Display','Inter',sans-serif; font-size:20px; font-weight:700; letter-spacing:0.5px; color:var(--paper-050, #F5F7FA); }
@@ -1528,7 +1537,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T06:03:27Z';
+const BUILD_VERSION = '2026-08-20T06:14:41Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -5765,16 +5774,6 @@ function wireCardClicks(originView){
   // Scoped to leg tiles only. Trip-tile dots are status indicators and carry
   // no data-leg-id at all now; the selector is narrowed so a future dot cannot
   // silently inherit jump-to behaviour again.
-  // Placeholder only -- deliberately not wired to the airport_notes view yet.
-  // Must stopPropagation like the other in-card controls, or the tap falls
-  // through to the card and opens the leg. It answers rather than doing
-  // nothing: a control that looks live and is silent reads as a broken app.
-  document.querySelectorAll('[data-airport-notes]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      showToast('Airport notes coming soon');
-    });
-  });
   document.querySelectorAll('.dash-card[data-id] .leg-status-dot-clickable[data-leg-id]').forEach(dot => {
     dot.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -8709,6 +8708,15 @@ function renderTripDetailView(){
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       openTripQuickSheet(trip.key, btn.dataset.legQuick, btn.dataset.legId);
+    });
+  });
+  // Leg cards in THIS view are wired here, not in wireCardClicks() -- the trip
+  // detail view has never called it. Same rule as the quick buttons: bind
+  // before the card handler and stop propagation, or the tap opens the leg.
+  document.querySelectorAll('[data-airport-notes]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showToast('Airport notes coming soon');
     });
   });
   document.querySelectorAll('.dash-card[data-id]').forEach(card => {
