@@ -1567,7 +1567,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T18:09:12Z';
+const BUILD_VERSION = '2026-08-20T18:24:05Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -7994,9 +7994,11 @@ function renderImportPreviewView(){
   // setPageHeader, so the fixed page header kept the PREVIOUS page's title and
   // floated over this view's title during extraction. Use the real header like
   // every other view does, and drop the inline one.
+  // No subtitle: the AI note below the chooser now carries the same promise
+  // ("Nothing lands on your board until you say so"), and saying it twice a few
+  // inches apart reads like the app is nervous about it.
   setPageHeader({
     title: 'Read Trip Paperwork',
-    sub: 'Nothing is saved to your board until you confirm.',
     backLabel: 'Active Trips',
     backTo: 'dashboard'
   });
