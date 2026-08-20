@@ -1520,7 +1520,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T04:26:11Z';
+const BUILD_VERSION = '2026-08-20T04:41:07Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2612,7 +2612,19 @@ function installRefreshHandler(){
 // Fields that are housekeeping / not meaningful edits — never logged.
 const CHANGELOG_SKIP = {
   'id':1, 'createdAt':1, 'updatedAt':1, 'lastEditedAt':1, 'lastEditedBy':1,
-  'lastEditedByName':1, 'lastEditedByRole':1, 'dep.tz':1, 'arr.tz':1
+  'lastEditedByName':1, 'lastEditedByRole':1, 'dep.tz':1, 'arr.tz':1,
+  // The UTC offset is DERIVED, not decided. setupTZAutofill rewrites it from
+  // the airport's timezone and the leg date on every render, and BLANKS it
+  // when the date is empty because the value becomes unknowable. Those writes
+  // land in the DOM, collectAndSave reads them back, and the log then credits
+  // the app's arithmetic to whichever human happened to have the leg open --
+  // which is a provenance lie, not just noise.
+  //
+  // Skipping it loses nothing anyone can act on: the operational values that
+  // depend on the offset, dep.etdZ and arr.etaZ, are their own fields and are
+  // still logged. Even a hand-typed offset at a tz-less airport is a lookup,
+  // not a decision.
+  'dep.utcOffsetManual':1, 'arr.utcOffsetManual':1
 };
 
 // Whole SUBTREES that are never a meaningful edit. Needed because CHANGELOG_SKIP
