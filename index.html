@@ -1123,6 +1123,17 @@
   .lg-sample.human{ color:var(--paper-050); }
   .lg-sample.ring-ok{ color:var(--paper-050); box-shadow:0 0 0 1.25px rgba(74,201,126,0.36); }
   .lg-sample.ring-broken{ color:var(--paper-050); box-shadow:0 0 0 1.25px rgba(242,169,59,0.65); }
+  /* Reproduces a live Y/N toggle exactly: the same 36px height and red tint as
+     .yn button.on-y, with the extracted cyan text from
+     .field.src-extracted .yn button.on-y. Square, and set to the width of the
+     key column so it lines up with the samples above and below it. */
+  .lg-sample.yn-demo{
+    width:36px; height:36px; padding:0; box-sizing:border-box;
+    display:inline-flex; align-items:center; justify-content:center;
+    background:rgba(226,87,76,0.18); border:1px solid var(--alert-600);
+    border-radius:3px; color:#2BD9F5; font-weight:700; font-size:12px;
+    text-shadow:0 0 3px rgba(0,0,0,0.75);
+  }
   .lg-chip{ display:inline-block; padding:1px 6px; border-radius:3px; font-family:system-ui,'Inter',sans-serif; font-size:9px; letter-spacing:0.04em; background:rgba(242,169,59,0.18); color:var(--amber-500); }
   .lg-note{ font-size:11px; line-height:1.55; color:var(--fog-500); margin:18px 0 0; padding-top:14px; border-top:1px solid var(--hairline); }
   /* ---- Overview: city pair spans the two columns the Date field vacated ---- */
@@ -1588,7 +1599,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T19:58:44Z';
+const BUILD_VERSION = '2026-08-20T20:36:52Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -11182,10 +11193,10 @@ function legendBodyHTML(){
       '<div class="lg-row compact"><span class="lg-key"><span class="leg-status-dot leg-status-dot-plain leg-status-flown"></span></span><span class="lg-body"><b>Flown</b> &mdash; the leg has been flown. It stays on the board, and stays editable, until the trip is archived.</span></div>',
     '</div>',
     '<div class="lg-group">',
-      '<div class="lg-group-title">Where a value came from</div>',
+      '<div class="lg-group-title">Who owns a value</div>',
       '<div class="lg-row"><span class="lg-key"><span class="lg-sample extracted">KBDL</span></span><span class="lg-body"><b>Cyan</b> &mdash; read out of paperwork you uploaded. Nobody has confirmed it yet. Read it against the source.</span></div>',
-      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">KBDL</span></span><span class="lg-body"><b>White</b> &mdash; entered by hand by crew or dispatch.</span></div>',
-      '<div class="lg-row"><span class="lg-key"><span class="lg-sample extracted">YES</span></span><span class="lg-body">On a Yes/No toggle the button keeps its own red or green fill &mdash; that carries the warning. Only the wording turns cyan.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">KBDL</span></span><span class="lg-body"><b>White</b> &mdash; a person owns this value. Either someone typed it, or someone read what was extracted and verified it. Verifying turns a field from cyan to white.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample yn-demo">Y</span></span><span class="lg-body">On a Yes/No toggle the button keeps its own red or green fill &mdash; that carries the warning. Only the letter turns cyan.</span></div>',
     '</div>',
     '<div class="lg-group">',
       '<div class="lg-group-title">Verification</div>',
