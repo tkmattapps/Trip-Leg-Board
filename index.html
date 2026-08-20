@@ -1520,7 +1520,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T04:08:30Z';
+const BUILD_VERSION = '2026-08-20T04:26:11Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2615,6 +2615,24 @@ const CHANGELOG_SKIP = {
   'lastEditedByName':1, 'lastEditedByRole':1, 'dep.tz':1, 'arr.tz':1
 };
 
+// Whole SUBTREES that are never a meaningful edit. Needed because CHANGELOG_SKIP
+// matches exact paths, and some paths contain a user id -- 'crewNames.<uuid>.at'
+// can never be listed literally.
+//
+// crewNames is DERIVED DATA: a cache of names resolved from the roster so the
+// archive can name crew years after they leave. A real crew change is already
+// logged under crew.pic / crew.sic / crew.acm / crew.fa. Logging the cache too
+// reports the same fact twice, in a form nobody can read.
+const CHANGELOG_SKIP_PREFIX = ['crewNames.'];
+
+function changelogSkipPath(p){
+  if(CHANGELOG_SKIP[p]) return true;
+  for(let i = 0; i < CHANGELOG_SKIP_PREFIX.length; i++){
+    if(p.indexOf(CHANGELOG_SKIP_PREFIX[i]) === 0) return true;
+  }
+  return false;
+}
+
 // Human-friendly labels for dotted field paths. Falls back to a
 // prettified version of the path when not listed.
 const CHANGELOG_LABELS = {
@@ -2675,7 +2693,7 @@ function diffLegs(before, after){
   Object.keys(b).forEach(function(p){ paths[p]=1; });
   const changes = [];
   Object.keys(paths).forEach(function(p){
-    if(CHANGELOG_SKIP[p]) return;
+    if(changelogSkipPath(p)) return;
     const ov = a[p] == null ? '' : a[p];
     const nv = b[p] == null ? '' : b[p];
     if(ov !== nv){ changes.push({ field_path:p, old:ov, new:nv }); }
@@ -2816,6 +2834,11 @@ function collapseChanges(rows){
   const byPath = new Map();
   rows.forEach(r => {
     const key = r.field_path;
+    // Filter at READ time as well as write time. Rows logged before a path
+    // joined the skip list are already in the table, and they would otherwise
+    // surface as an advisory full of machine noise on every leg nobody has
+    // opened yet. Cheaper and safer than deleting history.
+    if(changelogSkipPath(key)) return;
     if(!byPath.has(key)){
       byPath.set(key, {
         field_path: key,
@@ -3102,11 +3125,22 @@ function stampCrewSnapshots(leg){
     const p = people.find(x => x.id === id);
     if(!p) return;                      // Already-departed account: keep whatever snapshot we hold.
     const name = [p.given, p.surname].filter(Boolean).join(' ').trim();
-    // Refresh on every save, so a corrected legal name reaches the archive.
-    // Only the account's own disappearance freezes it.
+    const resolvedName = name || p.name || p.email || '';
+    const resolvedAbbrev = (p.abbrev || '').toUpperCase();
+    const prev = leg.crewNames[id];
+    // Refresh when the resolved name or abbrev has actually MOVED, so a
+    // corrected legal name still reaches the archive. Only the account's own
+    // disappearance freezes it.
+    //
+    // But do NOT re-stamp 'at' when nothing changed. 'at' means "when this
+    // snapshot was taken", and restamping it on every save silently redefined
+    // it as "when the leg was last saved" -- which updatedAt already records.
+    // It also made every save emit one phantom change log row PER SEATED CREW
+    // MEMBER, which is exactly the noise the change advisory then reported.
+    if(prev && prev.name === resolvedName && prev.abbrev === resolvedAbbrev) return;
     leg.crewNames[id] = {
-      name: name || p.name || p.email || '',
-      abbrev: (p.abbrev || '').toUpperCase(),
+      name: resolvedName,
+      abbrev: resolvedAbbrev,
       at: Date.now()
     };
   });
