@@ -1520,7 +1520,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T05:12:44Z';
+const BUILD_VERSION = '2026-08-20T05:34:19Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2581,6 +2581,19 @@ async function loadLegs(){
     const rawLegs = await storage.listLegsFull();
     const legs = rawLegs.map(normalizeLeg);
     legs.sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
+    // Carry over runtime scratch (underscore-prefixed, memory-only) from the
+    // copy we are replacing -- the provenance baseline lives there. Without
+    // this, a refresh wipes the baseline and the NEXT save reads every field as
+    // a fresh human edit, repainting the whole leg as hand-entered and filling
+    // the change log with edits nobody made.
+    const priorById = new Map(Array.isArray(state.legs) ? state.legs.map(l => [l.id, l]) : []);
+    legs.forEach(fresh => {
+      const prev = priorById.get(fresh.id);
+      if(!prev) return;
+      Object.keys(prev).forEach(k => {
+        if(k.charAt(0) === '_' && !(k in fresh)) fresh[k] = prev[k];
+      });
+    });
     state.legs = legs;
     snapshotAllLegs();
     _legsLoadFailed = false;
@@ -2628,6 +2641,39 @@ let _legsLoadFailed = false;
 // contractors will see until solo accounts exist.
 let _noDepartment = false;
 let refreshInFlight = false;
+// Which editor fields hold a value the server has NOT been told about yet.
+// Diffs the live DOM against the provenance baseline, which is rewritten on
+// every save -- so with the 500ms blur autosave in play this is normally empty,
+// and only a mid-typing refresh produces anything. Returns field ids.
+function uncommittedEditorFields(){
+  if(state.view !== 'editor' || !state.activeId) return [];
+  const leg = state.legs.find(l => l.id === state.activeId);
+  if(!leg) return [];
+  const baseline = leg._fieldValueBaseline;
+  // No baseline means the leg has never been saved or diffed. We cannot tell
+  // what is dirty, so claim nothing rather than nagging on every refresh.
+  if(!baseline) return [];
+  const dirty = [];
+  const snap = snapshotEditorFieldValues();
+  Object.keys(snap).forEach(fid => {
+    if(!(fid in baseline)) return;
+    if(baseline[fid] !== snap[fid]) dirty.push(fid);
+  });
+  return dirty;
+}
+
+// Human-readable labels for the fields listed in the refresh prompt. The label
+// lives in the .field wrapper, so read it from the DOM rather than duplicating
+// the editor's field list -- which would silently drift.
+function editorFieldLabel(fid){
+  const wrap = document.querySelector('.field[data-field-id="' + fid + '"]');
+  if(wrap){
+    const lab = wrap.querySelector('.field-label, label');
+    if(lab && lab.textContent) return lab.textContent.trim();
+  }
+  return fid;
+}
+
 function installRefreshHandler(){
   if(installRefreshHandler._done) return;
   installRefreshHandler._done = true;
@@ -2640,11 +2686,39 @@ function installRefreshHandler(){
     btn.disabled = true;
     btn.classList.add('is-refreshing');
     try{
-      // Persist any leg currently being edited before pulling fresh data.
-      autoSaveIfEditing();
-      await new Promise(r => setTimeout(r, 120));
-      // loadLegs re-renders via renderMain, which dispatches on state.view.
-      // We never touch state.view or state.activeId, so we stay on the current page.
+      /* REFRESH IS A PULL, NOT A PUSH.
+       *
+       * This used to call autoSaveIfEditing() first, which pushed the whole
+       * in-memory leg UP before fetching anything DOWN. Because a save rewrites
+       * the entire leg as one JSON blob, that flattened any edit another person
+       * had made to a DIFFERENT field on the same leg -- and then the fetch
+       * pulled back the writer's own overwrite, so nothing on screen suggested
+       * it had happened.
+       *
+       * The reason someone taps refresh is that they DOUBT what is on their
+       * screen. That is the last moment their copy should be treated as
+       * authoritative. A refresh icon means "get me the current state" in every
+       * other app; Beacon was quietly publishing instead.
+       *
+       * Genuinely unsaved typing still must not vanish, so we ASK rather than
+       * choosing for them. With the 500ms blur autosave this prompt is rare --
+       * it takes refreshing mid-keystroke to see it. That rarity is the point:
+       * a prompt that fired on every refresh would be dismissed reflexively.
+       */
+      const dirty = uncommittedEditorFields();
+      if(dirty.length){
+        const names = dirty.slice(0, 4).map(editorFieldLabel);
+        const more = dirty.length > names.length ? ' and ' + (dirty.length - names.length) + ' more' : '';
+        const ok = await showConfirm(
+          'You have unsaved changes to ' + names.join(', ') + more + '. ' +
+          'Refreshing pulls the current version from the server. Save your changes first?',
+          { title: 'Unsaved changes', okLabel: 'Save, then refresh',
+            cancelLabel: 'Discard and refresh', danger: false });
+        if(ok){
+          autoSaveIfEditing();
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
       await loadLegs();
       showToast('Refreshed');
     }catch(err){
