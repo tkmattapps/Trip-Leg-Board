@@ -939,6 +939,9 @@
   .leg-status-hint{ opacity:0.55; font-size:9px; }
   .dash-card-route{ font-size:13px; color:var(--fog-500); margin-bottom:8px; }
   .dash-card-date{ font-size:11px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
+  /* Secondary to the flown date on an archived card: the filing date is a
+     provenance detail, not what the list is ordered by. */
+  .dash-card-archived-on{ font-size:10px; color:var(--fog-500); opacity:0.72; font-family:system-ui,'Inter',sans-serif; margin-top:2px; }
   .dash-card-legsum{ font-size:11px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; margin-bottom:4px; }
   .dash-card-edited{ font-size:10px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; letter-spacing:0.3px; margin-top:6px; opacity:0.85; }
   .dash-card-pending{ font-size:11px; color:var(--alert-600); margin-top:8px; font-family:system-ui,'Inter',sans-serif; }
@@ -1485,7 +1488,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T03:12:40Z';
+const BUILD_VERSION = '2026-08-20T03:34:02Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -4763,8 +4766,13 @@ async function loadArchivedTrips(){
     const deptId = await getFlightDepartmentId();
     const { data, error } = await sb
       .from('archived_trips')
-      .select('id, trip_number, archived_by, archived_at, incomplete, leg_count')
+      .select('id, trip_number, archived_by, archived_at, incomplete, leg_count, first_leg_date, last_leg_date')
       .eq('flight_department_id', deptId)
+      // Ordered by when the trip FLEW, not when it was filed. Those are usually
+      // the same order but not always -- a trip archived late would otherwise
+      // jump above trips that flew after it. nullsFirst:false keeps any trip
+      // with no usable dates at the bottom rather than at the top.
+      .order('last_leg_date', { ascending:false, nullsFirst:false })
       .order('archived_at', { ascending:false });
     if(error) throw error;
     archivedTripsCache = data || [];
@@ -5527,16 +5535,25 @@ function renderDashboardView(){
 // indexing the route at archive time. Worth doing; not worth doing tonight.
 function archivedCardHTML(row){
   const tripNo = String(row.trip_number || '');
+  const legCount = row.leg_count || 0;
+  // The card leads with WHEN THE TRIP FLEW, because that is what the list is
+  // now ordered by. Showing the archive date at the top of a list sorted by
+  // flown date would make the order look arbitrary.
+  const startLabel = formatISODateDisplay(row.first_leg_date || '');
+  const endLabel = formatISODateDisplay(row.last_leg_date || '');
+  let flownText = '';
+  if(startLabel && endLabel) flownText = (startLabel === endLabel) ? startLabel : (startLabel + ' \u2013 ' + endLabel);
+  else flownText = startLabel || endLabel || '';
   const when = row.archived_at ? new Date(row.archived_at) : null;
   const whenText = when ? when.toLocaleDateString(undefined, { day:'2-digit', month:'short', year:'numeric' }) : '';
-  const legCount = row.leg_count || 0;
   return '<div class="dash-card dash-card-archived" data-archived-trip="' + escapeHtml(tripNo) + '">' +
     (row.incomplete ? '<div class="dash-card-flag dash-card-flag-warn">ARCHIVED INCOMPLETE</div>' : '') +
     '<div class="dash-card-top">' +
       '<span class="dash-card-leg-title">Trip ' + escapeHtml(tripNo) + '</span>' +
     '</div>' +
     '<div class="dash-card-legsum">' + legCount + ' leg' + (legCount === 1 ? '' : 's') + '</div>' +
-    (whenText ? '<div class="dash-card-date">Archived ' + escapeHtml(whenText) + '</div>' : '') +
+    (flownText ? '<div class="dash-card-date">' + escapeHtml(flownText) + '</div>' : '') +
+    (whenText ? '<div class="dash-card-archived-on">Archived ' + escapeHtml(whenText) + '</div>' : '') +
     '<div class="dash-card-spacer"></div>' +
     '<div class="trip-quick-row trip-quick-row-sealed">Sealed record</div>' +
   '</div>';
