@@ -873,7 +873,15 @@
   .dash-card-add:hover{ border-color:var(--amber-500); color:var(--amber-500); }
   .dash-card-add-plus{ font-size:32px; font-weight:300; line-height:1; }
   .dash-card-add-label{ font-size:14px; font-weight:600; letter-spacing:0.5px; }
-  .dash-card-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; }
+  .dash-card-top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; gap:8px; }
+  /* Airport notes sits top-right with the paperclip below it, rather than the
+     two competing for the same row: the badge is a passive indicator and the
+     button is a target, so stacking keeps the tap area clear of it. */
+  .dash-card-top-right{ display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex:0 0 auto; }
+  .leg-airport-notes-btn{ background:transparent; border:1px solid var(--fog-500); color:var(--fog-300);
+    font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.2; padding:4px 7px;
+    border-radius:3px; cursor:pointer; white-space:nowrap; }
+  .leg-airport-notes-btn:active{ background:var(--panel-700); }
   .dash-card-code{ font-family:system-ui,'Inter',sans-serif; font-size:14px; font-weight:600; }
   .dash-card-leg-title{ font-family:'Big Shoulders Display','Inter',sans-serif; font-size:20px; font-weight:700; letter-spacing:0.5px; color:var(--paper-050, #F5F7FA); }
   .dash-card-orphan-banner{ background:var(--alert-600, #E2574C); color:#fff; font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.02em; padding:6px 10px; border-radius:4px; margin-bottom:10px; text-align:center; }
@@ -1520,7 +1528,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T05:34:19Z';
+const BUILD_VERSION = '2026-08-20T06:03:27Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -5641,7 +5649,14 @@ function tripBriefLegCardHTML(leg){
     (isUnassignedBrief ? '<div class="dash-card-orphan-banner">Unassigned leg. Please add trip number.</div>' : '') +
     '<div class="dash-card-top">' +
       '<span class="dash-card-leg-title">Leg ' + escapeHtml(leg.legNumber || '?') + '</span>' +
-      '<span class="leg-attach-badge" data-attach-badge="' + escapeHtml(leg.id) + '" style="display:none"></span>' +
+      // Right-hand stack: airport notes on top, attachment badge beneath it.
+      // The leg knows both ends of its own route, so ONE control answers for
+      // the pair -- asking the same question twice, once per airport code,
+      // is the same question twice.
+      '<span class="dash-card-top-right">' +
+        '<button type="button" class="leg-airport-notes-btn" data-airport-notes="' + escapeHtml(leg.id) + '">Airport notes</button>' +
+        '<span class="leg-attach-badge" data-attach-badge="' + escapeHtml(leg.id) + '" style="display:none"></span>' +
+      '</span>' +
     '</div>' +
     '<div class="ready-room-leg-row">' +
       '<span class="leg-status-dot leg-status-dot-plain leg-status-' + escapeHtml(leg.status) + '"></span>' +
@@ -5750,6 +5765,16 @@ function wireCardClicks(originView){
   // Scoped to leg tiles only. Trip-tile dots are status indicators and carry
   // no data-leg-id at all now; the selector is narrowed so a future dot cannot
   // silently inherit jump-to behaviour again.
+  // Placeholder only -- deliberately not wired to the airport_notes view yet.
+  // Must stopPropagation like the other in-card controls, or the tap falls
+  // through to the card and opens the leg. It answers rather than doing
+  // nothing: a control that looks live and is silent reads as a broken app.
+  document.querySelectorAll('[data-airport-notes]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showToast('Airport notes coming soon');
+    });
+  });
   document.querySelectorAll('.dash-card[data-id] .leg-status-dot-clickable[data-leg-id]').forEach(dot => {
     dot.addEventListener('click', (e) => {
       e.stopPropagation();
