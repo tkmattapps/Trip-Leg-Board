@@ -1520,7 +1520,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T04:41:07Z';
+const BUILD_VERSION = '2026-08-20T05:12:44Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -1643,6 +1643,61 @@ const storage = {
 
 function legRowToLeg(row){
   return Object.assign({}, row.data || {}, { id: row.id });
+}
+
+/* ============================================================
+   RE-READ ONE LEG ON OPEN.
+
+   loadLegs() runs at boot, on the Refresh button, and after an import or an
+   undo -- and nowhere else. openLegEditor() never fetched: it rendered
+   whatever state.legs happened to hold. So on a device left sitting, every
+   leg you opened was as old as your last boot.
+
+   That is not merely a display problem. The editor writes the WHOLE leg back
+   as one JSON blob, and there is a 500ms blur autosave, so a stale copy plus a
+   stray tap is enough to commit old values over someone else's work -- with no
+   deliberate action and nothing on screen to suggest it happened. Confirmed
+   live: an arrival date typed on one device kept "dropping out" because the
+   other device still held a blank and saved it back.
+
+   Opening a leg is the moment the user declares interest in exactly one row,
+   so fetch exactly that row. It also makes the change advisory honest: the
+   popup reads from the server, and before this the fields beside it were
+   rendering from memory, so the two could contradict each other on the same
+   screen.
+
+   FAILS SOFT: on any error we keep the copy we have. A leg that opens with old
+   data is bad; a leg that will not open is worse.
+   ============================================================ */
+async function reloadOneLeg(legId){
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    if(!session) return false;
+    const { data, error } = await sb.from('legs')
+      .select('*')
+      .eq('id', legId)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if(error || !data) return false;
+    const fresh = normalizeLeg(legRowToLeg(data));
+    const i = state.legs.findIndex(l => l.id === legId);
+    if(i === -1) return false;
+    // Preserve runtime scratch (underscore-prefixed) that lives only in memory
+    // -- the provenance baseline among it. Dropping it would make the next save
+    // read every field as a fresh human edit.
+    const prev = state.legs[i];
+    Object.keys(prev).forEach(k => {
+      if(k.charAt(0) === '_' && !(k in fresh)) fresh[k] = prev[k];
+    });
+    state.legs[i] = fresh;
+    // Re-baseline the change-log snapshot, or the next save would diff against
+    // the copy we just threw away and log every difference as this user's edit.
+    snapshotLeg(fresh);
+    return true;
+  }catch(e){
+    console.warn('reloadOneLeg failed', legId, e);
+    return false;
+  }
 }
 
 function legToRow(leg, flightDepartmentId, userId){
@@ -3419,10 +3474,30 @@ function openLegEditor(legId){
   updateNavTabs();
   renderList();
   renderMain();
-  // Deliberately NOT awaited: the leg must render immediately. The advisory
-  // arrives a beat later and checks it is still the leg on screen before
-  // showing anything.
-  checkLegChangesAdvisory(legId);
+  // Render first from memory so the leg appears instantly, then re-read the
+  // row and re-render if it actually moved. Awaiting the fetch before the
+  // first paint would put a spinner between the tap and the leg, which is a
+  // poor trade for data that is usually already correct.
+  //
+  // The advisory runs AFTER the re-read, not in parallel: it reads the change
+  // log from the server, so if the fields were still rendering from a stale
+  // copy the popup and the fields could disagree on the same screen. Observed
+  // live -- an advisory saying a fuel vendor had been filled in, sitting above
+  // an empty fuel vendor field.
+  (async () => {
+    // If the user has already started typing, DO NOT re-render underneath them:
+    // renderMain rebuilds the editor from state.legs and would take the
+    // half-typed value with it. Skip the repaint and let the advisory report
+    // what moved instead -- telling someone what changed is safe, yanking the
+    // field they are typing into is not.
+    const focused = document.activeElement;
+    const typing = !!(focused && focused.closest && focused.closest('#legEditorForm, .field'));
+    const moved = await reloadOneLeg(legId);
+    // The user may have navigated on while that was in flight.
+    if(state.view !== 'editor' || state.activeId !== legId) return;
+    if(moved && !typing) renderMain();
+    await checkLegChangesAdvisory(legId);
+  })();
 }
 
 // Opening a frozen trip. state.archivedTrip holds the reconstructed snapshot
