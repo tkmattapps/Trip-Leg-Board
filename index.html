@@ -1735,7 +1735,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T07:58:00Z';
+const BUILD_VERSION = '2026-08-22T08:26:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5831,7 +5831,7 @@ function windToggleField(leg){
         '<button type="button" class="yn-btn wind-btn' + hwActive + '" data-val="HW">HW</button>' +
         '<button type="button" class="yn-btn wind-btn' + twActive + '" data-val="TW">TW</button>' +
       '</div>' +
-      '<input type="text" id="windComponent" value="' + escapeHtml(leg.windComponent || '') + '" placeholder="- or +" style="flex:1" />' +
+      '<input type="text" id="windComponent" value="' + escapeHtml(leg.windComponent || '') + '" style="flex:1" />' +
     '</div>' +
     '<input type="hidden" id="windDirection" value="' + escapeHtml(dir) + '" />' +
   '</div>';
