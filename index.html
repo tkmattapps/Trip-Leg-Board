@@ -95,11 +95,17 @@
   .drawer-item:active{ background:var(--panel-700); }
   .drawer-ico{ flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:6px; font-size:14px; background:var(--panel-700); }
   .drawer-label{ min-width:0; }
+  /* Separated section at the foot of the slide-out for actions that WRITE,
+     as opposed to the navigation items above. */
+  .drawer-group{ margin-top:14px; padding-top:12px; border-top:1px solid var(--hairline); display:flex; flex-direction:column; gap:4px; }
+  .drawer-group-title{ font-family:system-ui,'Inter',sans-serif; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); padding:0 10px 2px; }
+  .drawer-group-note{ font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.35; color:var(--fog-500); padding:2px 10px 0; }
   .drawer-item-danger .drawer-label{ color:var(--alert-600); }
   .drawer-ico-mark{ display:block; width:22px; height:22px; }
   .drawer-ico.di-delete{ color:var(--alert-600); }
   .drawer-ico.di-undo{ color:var(--amber-500); }
   .drawer-ico.di-legend{ color:var(--fog-300); }
+  .drawer-ico.di-newleg{ color:var(--amber-500); font-weight:700; }
   .drawer-ico.di-settings{ color:var(--fog-300); }
 
   /* ---------- Department settings page ----------
@@ -1469,6 +1475,15 @@
     <button type="button" class="drawer-item drawer-item-danger" id="drawerDeleteBtn" hidden><span class="drawer-ico di-delete">&#128465;</span><span class="drawer-label" id="drawerDeleteLabel">Delete</span></button>
     <button type="button" class="drawer-item" id="drawerUndoBtn" hidden><span class="drawer-ico di-undo">&#8630;</span><span class="drawer-label" id="drawerUndoLabel">Undo delete</span></button>
     <button type="button" class="drawer-item" id="drawerLogoutBtn"><span class="drawer-ico di-logout">&#8617;</span><span class="drawer-label">Log out</span></button>
+    <!-- Deliberately set apart from the items above, which are all PLACES to go.
+         This one WRITES to the shared board, and it is the uncommon path: trips
+         normally arrive as paperwork. Grouped under its own heading so it reads
+         as an unusual action rather than another route. -->
+    <div class="drawer-group">
+      <div class="drawer-group-title">Manual entry</div>
+      <button type="button" class="drawer-item" id="drawerNewLegBtn"><span class="drawer-ico di-newleg">&#43;</span><span class="drawer-label">Start a leg by hand</span></button>
+      <div class="drawer-group-note">Most trips arrive as paperwork. Use this only when there is none.</div>
+    </div>
   </div>
 </div>
 
@@ -1613,7 +1628,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-21T01:09:33Z';
+const BUILD_VERSION = '2026-08-21T01:42:55Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -6058,8 +6073,7 @@ function renderDashboardView(){
   const main = document.getElementById('mainPanel');
   const q = (state.dashboardFilter || '').trim().toLowerCase();
   const { cardsHtml, allActiveTrips } = dashboardCardsHtml(q);
-  setPageHeader({ title:'Active Trips', sub: allActiveTrips.length + ' active trip' + (allActiveTrips.length === 1 ? '' : 's'), backLabel:'Home', backTo:'home',
-    actionsHTML: '<button type="button" class="bar-action" id="newTripBtn">+ Create new trip</button>' });
+  setPageHeader({ title:'Active Trips', sub: allActiveTrips.length + ' active trip' + (allActiveTrips.length === 1 ? '' : 's'), backLabel:'Home', backTo:'home' });
   main.innerHTML =
         '<input class="search" id="dashboardSearchInput" placeholder="Search missions by route, airport, trip #..." style="width:100%; max-width:420px; margin-bottom:18px;" value="' + escapeHtml(state.dashboardFilter) + '" />' +
     '<div id="dashboardCardsContainer">' + cardsHtml + '</div>';
@@ -6068,15 +6082,6 @@ function renderDashboardView(){
     dashboardSearchInput.addEventListener('input', (e) => {
       state.dashboardFilter = e.target.value;
       updateDashboardCards();
-    });
-  }
-  const newTripBtn = document.getElementById('newTripBtn');
-  if(newTripBtn){
-    newTripBtn.addEventListener('click', () => {
-      const leg = blankLeg();
-      leg.legNumber = '1';
-      state.legs.unshift(leg);
-      openLegEditor(leg.id);
     });
   }
   // Refresh buttons are wired via a single delegated handler (see installRefreshHandler),
@@ -11294,6 +11299,18 @@ function openInstallOverlay(){
   if(stb) stb.addEventListener('click', function(){ closeDrawer(); openSettingsView(); });
   const lgb = document.getElementById('drawerLegendBtn');
   if(lgb) lgb.addEventListener('click', function(){ closeDrawer(); openLegendOverlay(); });
+  // Manual leg entry. Same behaviour the dashboard's header button used to have;
+  // only the entry point moved. Flush any open editor first so this cannot
+  // discard uncommitted work on the way out.
+  const nlb = document.getElementById('drawerNewLegBtn');
+  if(nlb) nlb.addEventListener('click', function(){
+    closeDrawer();
+    if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
+    const leg = blankLeg();
+    leg.legNumber = '1';
+    state.legs.unshift(leg);
+    openLegEditor(leg.id);
+  });
   const lb = document.getElementById('drawerLogoutBtn');
   if(lb) lb.addEventListener('click', function(){ closeDrawer(); handleLogout(); });
   const ub2 = document.getElementById('drawerUndoBtn');
