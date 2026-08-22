@@ -105,6 +105,7 @@
   .drawer-ico.di-delete{ color:var(--alert-600); }
   .drawer-ico.di-undo{ color:var(--amber-500); }
   .drawer-ico.di-legend{ color:var(--fog-300); }
+  .drawer-ico.di-terms{ color:var(--fog-300); }
   .drawer-ico.di-newleg{ color:var(--amber-500); font-weight:700; }
   .drawer-ico.di-settings{ color:var(--fog-300); }
 
@@ -1099,6 +1100,83 @@
   }
   .feedback-modal-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
   .feedback-modal-title{ font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:22px; color:var(--paper-050); }
+
+  /* ---- THE TERMS GATE ----------------------------------------------------
+     Deliberately NOT .feedback-overlay. That class carries a close button and
+     a click-outside-to-dismiss handler, and A NOTICE YOU CAN SWIPE PAST IS NOT
+     NOTICE. This overlay has no dismissal path at all: the only way out is the
+     checkbox and the button. z-index sits above every other overlay so nothing
+     can be raised over it.
+
+     Same visual language as the rest of the app so it reads as part of Beacon
+     rather than as an interruption bolted on. */
+  .terms-overlay{
+    display:none; position:fixed; inset:0; background:var(--panel-900); z-index:200;
+    align-items:center; justify-content:center; padding:20px;
+  }
+  .terms-overlay.open{ display:flex; }
+  .terms-modal{
+    background:var(--ink-900); border:1px solid var(--hairline); border-radius:8px;
+    width:100%; max-width:480px; max-height:88vh; padding:22px;
+    display:flex; flex-direction:column;
+  }
+  .terms-title{
+    font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:24px;
+    color:var(--paper-050); margin-bottom:4px;
+  }
+  .terms-version-line{ font-size:11px; color:var(--fog-500); margin-bottom:16px; }
+
+  /* The two clauses that actually need reading sit ABOVE the checkbox in plain
+     sight, not behind the link. Nobody opens the link. Amber, because this is
+     information the reader did not cause and cannot fix -- RED IS AN ALERT,
+     AMBER IS INFORMATION. */
+  .terms-callout{
+    background:rgba(242,169,59,0.12); color:var(--amber-500);
+    border:1px solid rgba(242,169,59,0.35); border-radius:6px;
+    padding:12px 14px; margin-bottom:16px;
+  }
+  .terms-callout p{ margin:0 0 8px; font-size:13px; line-height:1.45; }
+  .terms-callout p:last-child{ margin-bottom:0; }
+
+  .terms-intro{ font-size:13px; color:var(--fog-300); line-height:1.55; margin:0 0 16px; }
+
+  /* The consent row. The checkbox is unchecked on every open and is never
+     pre-filled: A PRE-CHECKED BOX IS CLOSE TO WORTHLESS. */
+  .terms-consent{
+    display:flex; align-items:flex-start; gap:10px; margin-bottom:16px;
+    padding:12px; border:1px solid var(--hairline); border-radius:6px;
+    background:var(--panel-800);
+  }
+  .terms-consent input[type="checkbox"]{
+    width:20px; height:20px; margin:0; flex:0 0 auto; accent-color:var(--amber-500);
+  }
+  .terms-consent label{ font-size:13px; color:var(--paper-050); line-height:1.45; cursor:pointer; }
+
+  /* Conspicuous, per the sign-in-wrap requirement: visibly a link, not grey
+     small print. */
+  .terms-link{
+    color:var(--amber-500); text-decoration:underline; cursor:pointer;
+    background:none; border:0; padding:0; font:inherit;
+  }
+
+  .terms-agree-btn{ width:100%; }
+  .terms-agree-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+  /* The full text, shown when the link is tapped. Scrolls within the modal. */
+  .terms-body{
+    display:none; overflow-y:auto; flex:1 1 auto; min-height:0;
+    border:1px solid var(--hairline); border-radius:6px; padding:14px;
+    background:var(--panel-800); margin-bottom:16px;
+  }
+  .terms-body.open{ display:block; }
+  .terms-body h2{
+    font-family:'Big Shoulders Display',sans-serif; font-size:15px; color:var(--amber-500);
+    margin:18px 0 8px; letter-spacing:0.02em;
+  }
+  .terms-body h2:first-child{ margin-top:0; }
+  .terms-body p{ font-size:12px; color:var(--fog-300); line-height:1.6; margin:0 0 10px; }
+  .terms-body strong{ color:var(--paper-050); }
+  .terms-body .terms-meta{ font-size:11px; color:var(--fog-500); margin-bottom:14px; }
   /* The change advisory. Scrolls rather than growing without limit -- a leg
      that has been reworked heavily can carry a lot of rows, and a modal taller
      than the phone is unreadable and untappable. */
@@ -1472,6 +1550,7 @@
     <button type="button" class="drawer-item" id="drawerFeedbackBtn"><span class="drawer-ico di-feedback">&#128172;</span><span class="drawer-label">Send feedback</span></button>
     <button type="button" class="drawer-item" id="drawerInstallBtn"><span class="drawer-ico di-install">&#128241;</span><span class="drawer-label">Install on a device</span></button>
     <button type="button" class="drawer-item" id="drawerLegendBtn"><span class="drawer-ico di-legend">&#128273;</span><span class="drawer-label">Legend</span></button>
+    <button type="button" class="drawer-item" id="drawerTermsBtn"><span class="drawer-ico di-terms">&#128220;</span><span class="drawer-label">Terms of Use</span></button>
     <button type="button" class="drawer-item drawer-item-danger" id="drawerDeleteBtn" hidden><span class="drawer-ico di-delete">&#128465;</span><span class="drawer-label" id="drawerDeleteLabel">Delete</span></button>
     <button type="button" class="drawer-item" id="drawerUndoBtn" hidden><span class="drawer-ico di-undo">&#8630;</span><span class="drawer-label" id="drawerUndoLabel">Undo delete</span></button>
     <button type="button" class="drawer-item" id="drawerLogoutBtn"><span class="drawer-ico di-logout">&#8617;</span><span class="drawer-label">Log out</span></button>
@@ -1571,6 +1650,34 @@
 </div>
 
 
+<!-- THE TERMS GATE.
+     No close button, no click-outside handler, no escape key. The only exit is
+     the checkbox and the button. Shown after login but BEFORE the board renders
+     whenever the signed-in user has no acceptance row for TERMS_VERSION. -->
+<div class="terms-overlay" id="termsOverlay" role="dialog" aria-modal="true" aria-labelledby="termsTitle">
+  <div class="terms-modal">
+    <div class="terms-title" id="termsTitle">Before you use Beacon</div>
+    <div class="terms-version-line" id="termsVersionLine"></div>
+
+    <div class="terms-callout">
+      <p><strong>Beacon is not approved for operational use.</strong> Do not rely on it to plan or conduct a flight. Your released paperwork remains the record.</p>
+      <p><strong>Do not upload real trip paperwork.</strong> No other operator's documents, and no passenger information. Use fabricated or sanitised documents for testing.</p>
+    </div>
+
+    <p class="terms-intro">Beacon is a pre-release test application. Access is granted for evaluation only, on the terms below.</p>
+
+    <div class="terms-body" id="termsBody"></div>
+
+    <div class="terms-consent">
+      <input type="checkbox" id="termsCheckbox">
+      <label for="termsCheckbox">I have read and agree to the <button type="button" class="terms-link" id="termsReadLink">Interim Terms of Use</button>.</label>
+    </div>
+
+    <button type="button" class="btn btn-primary terms-agree-btn" id="termsAgreeBtn" disabled>Continue</button>
+  </div>
+</div>
+
+
 <div class="feedback-overlay" id="confirmOverlay">
   <div class="feedback-modal" style="max-width:360px;">
     <div class="feedback-modal-head">
@@ -1628,7 +1735,35 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T04:14:10Z';
+const BUILD_VERSION = '2026-08-22T05:31:00Z';
+
+// ---- THE TERMS GATE ------------------------------------------------------
+//
+// *** TERMS_VERSION IS NOT BUILD_VERSION. ***
+//
+// BUILD_VERSION above changes on EVERY push. TERMS_VERSION changes ONLY when
+// the terms text is deliberately revised. The gate reads TERMS_VERSION and
+// nothing else, so deploying a hundred builds never re-prompts anybody. Bump
+// it by hand when the wording changes substantively, and every user is gated
+// again on their next load.
+//
+// The discipline is therefore on the author, not the code. That is the correct
+// trade: the alternative -- gating on a hash of the text -- means fixing a typo
+// silently forces the entire beta to re-accept.
+const TERMS_VERSION = '0.1';
+
+// SHA-256 of the canonical plain text of version 0.1, recorded alongside each
+// acceptance. This is EVIDENCE, NOT A GATE: it answers "what exactly did this
+// person agree to" long after the wording has moved on. It is never compared
+// at boot.
+const TERMS_TEXT_HASH = '8e367d538aa68a06e45b0927a743b64b05c38575c6e4bb25d667969e2e76de3b';
+
+// The full text, rendered inline. Held in the file rather than in a table
+// because this is an interim document that will be replaced wholesale after
+// legal review, and because a gate that cannot render without a network round
+// trip is a gate that fails open.
+const TERMS_TEXT_HTML = "<p class=\"terms-meta\"><strong>Version 0.1 \u2014 Effective 22 August 2026</strong></p><p>These Interim Terms of Use (\"Terms\") govern access to and use of the Beacon software application (\"Beacon\" or the \"Software\"), provided by Terrence Kyle Mattison (\"Provider\"). By creating an account, logging in, or otherwise accessing the Software, you (\"User\") accept these Terms in full. If you do not accept these Terms, do not access the Software.</p><p>These are interim terms issued pending execution of a definitive agreement. Provider may amend them, and continued access following notice of amendment constitutes acceptance.</p><h2>1. NATURE OF THE SOFTWARE; NO OPERATIONAL RELIANCE</h2><p><strong>1.1</strong> The Software is pre-release, experimental, and provided solely for evaluation and testing. It has not been certified, approved, audited, or validated by any aviation authority, standards body, or independent assessor.</p><p><strong>1.2 THE SOFTWARE IS NOT APPROVED FOR OPERATIONAL USE AND MUST NOT BE RELIED UPON IN THE PLANNING OR CONDUCT OF ANY FLIGHT.</strong></p><p><strong>1.3</strong> The Software is an organizational tool for information originating elsewhere. It is not a flight planning system, dispatch system, electronic flight bag, navigation source, performance or weight-and-balance tool, or system of record of any kind.</p><p><strong>1.4</strong> The Software does not replace, supplement, or discharge any obligation arising under 14 C.F.R. Part 91 or any other applicable regulation. Regulatory compliance remains solely with the pilot in command and the operator.</p><p><strong>1.5</strong> The Software employs automated systems, including third-party artificial intelligence services, to extract data from uploaded documents. <strong>Such extraction is frequently incomplete and may be inaccurate.</strong> All extracted values constitute drafts for human review and do not constitute findings, determinations, or verified data. User is solely responsible for independently verifying every operationally relevant value against the source document and the applicable authoritative source of record.</p><p><strong>1.6</strong> Designation of an item as \"verified\" within the Software records only that a person viewed that item within a test application. It does not constitute a sign-off, approval, airworthiness determination, dispatch release, or evidence of regulatory compliance.</p><p><strong>1.7 Known limitation.</strong> The Software does not currently implement concurrent-editing protection. Where two users edit the same record simultaneously, one user's changes may be overwritten without notice.</p><p><strong>1.8</strong> User acknowledges that the authoritative record of any trip remains the operator's own documents, dispatch systems, and released paperwork.</p><h2>2. ACCEPTABLE USE; DATA RESTRICTIONS</h2><p><strong>2.1</strong> User shall not upload, enter, or transmit into the Software:</p><p><strong>(a)</strong> any document or data belonging to any operator, employer, or client other than the flight department under which User's account was issued;</p><p><strong>(b)</strong> passenger names, contact information, itineraries, or any other passenger data, whether or not individuals are identified by name;</p><p><strong>(c)</strong> personal data concerning any individual who is not a member of User's own flight department;</p><p><strong>(d)</strong> any information subject to a confidentiality, employment, or client obligation restricting its disclosure;</p><p><strong>(e)</strong> any live operational document relating to a flight not yet flown, except where User's flight department has authorized such use in writing.</p><p><strong>2.2</strong> User shall use fabricated or sanitized documents for all testing purposes. Where a realistic document is required, operator, crew, passenger, and other identifying details shall be substituted.</p><p><strong>2.3</strong> User's authorized access to a document in the course of employment does not itself constitute authorization to transmit that document to the Software. User is solely responsible for obtaining any consent or authorization required prior to upload.</p><p><strong>2.4</strong> User shall not share account credentials or permit access to the Software by any person who has not accepted these Terms.</p><p><strong>2.5</strong> Provider may remove any content from the Software at any time, without notice, where Provider believes in good faith that it violates this Section 2. User waives any claim arising from such removal.</p><p><strong>2.6</strong> User shall notify Provider promptly upon becoming aware that content prohibited under this Section has been uploaded.</p><h2>3. DATA HANDLING; DISCLOSURES</h2><p><strong>3.1 Infrastructure.</strong> Data entered into the Software is stored on third-party cloud services (currently Supabase and Netlify) under accounts owned and controlled personally by Provider. Such data does not reside on the systems of any operator or employer.</p><p><strong>3.2 Third-party processing.</strong> Uploaded documents are transmitted to a third-party artificial intelligence service (currently Anthropic) for automated extraction. Document content leaves Provider's infrastructure for this purpose.</p><p><strong>3.3 No security certification.</strong> The Software has not undergone independent security assessment or penetration testing. Provider has implemented tenancy isolation and access controls but makes no representation or warranty that such controls are free from defect.</p><p><strong>3.4 Document links.</strong> Links generated for uploaded documents grant access to any holder of the link, for a limited period, without further authentication. User shall not forward or republish such links.</p><p><strong>3.5 Provider access.</strong> Provider retains technical capability to access data stored within the Software and may exercise that capability as necessary to operate, maintain, debug, or secure the Software, or to investigate a suspected violation of these Terms.</p><p><strong>3.6 No confidentiality undertaking.</strong> Provider gives no undertaking of confidentiality in respect of data entered into the Software. User shall not enter any information the disclosure of which would cause harm.</p><p><strong>3.7 Deletion.</strong> Provider shall, upon User's request, use reasonable efforts to delete User's data, but does not guarantee removal from backups or third-party systems.</p><h2>4. INTELLECTUAL PROPERTY; RESTRICTIONS</h2><p><strong>4.1 Ownership.</strong> The Software and all intellectual property rights therein are and remain the exclusive property of Provider, including without limitation the source code, database schema, data model, user interface, visual design, workflow logic, verification and cross-check methodology, archive and provenance design, document extraction approach, terminology, and documentation. All rights not expressly granted are reserved. No license is granted by implication, estoppel, or otherwise.</p><p><strong>4.2 Limited license.</strong> Subject to these Terms, Provider grants User a personal, revocable, non-exclusive, non-transferable, non-sublicensable license to access the Software solely for evaluation and the provision of feedback, and for no other purpose.</p><p><strong>4.3 Restrictions.</strong> User shall not, and shall not permit any third party to:</p><p><strong>(a)</strong> reverse engineer, decompile, disassemble, or otherwise attempt to derive the source code, structure, algorithms, or underlying ideas of the Software by any means;</p><p><strong>(b)</strong> copy, reproduce, republish, distribute, transmit, sell, license, sublicense, lease, rent, or otherwise transfer the Software or any portion thereof;</p><p><strong>(c)</strong> create any derivative work based upon the Software;</p><p><strong>(d)</strong> develop, contribute to, or assist any person in developing any product or service competitive with the Software using knowledge, designs, workflows, or methodology derived from access granted hereunder;</p><p><strong>(e)</strong> remove, obscure, or alter any proprietary notice;</p><p><strong>(f)</strong> access the Software for purposes of benchmarking or competitive analysis, or on behalf of any competitor;</p><p><strong>(g)</strong> employ any automated means to access, scrape, index, or extract data from the Software;</p><p><strong>(h)</strong> circumvent, probe, or defeat any authentication, access control, tenancy isolation, or security mechanism, or access data belonging to any flight department other than User's own;</p><p><strong>(i)</strong> disclose to any third party any non-public aspect of the Software, including screenshots, feature descriptions, or workflows.</p><p><strong>4.4 Security research.</strong> Notwithstanding Section 4.3(h), User may report a suspected vulnerability to Provider, provided User does not exploit it beyond the minimum necessary to demonstrate its existence, does not access or extract any data belonging to another party, and does not disclose it publicly.</p><p><strong>4.5 Feedback.</strong> User assigns to Provider all right, title, and interest in any feedback, suggestions, or bug reports concerning the Software, including all intellectual property rights therein, and waives any claim to attribution or compensation. Such feedback is provided on a non-confidential basis.</p><h2>5. DISCLAIMER OF WARRANTIES</h2><p><strong>5.1 THE SOFTWARE IS PROVIDED \"AS IS\" AND \"AS AVAILABLE,\" WITH ALL FAULTS AND WITHOUT WARRANTY OF ANY KIND.</strong></p><p><strong>5.2 PROVIDER DISCLAIMS ALL WARRANTIES, EXPRESS, IMPLIED, AND STATUTORY, INCLUDING WITHOUT LIMITATION THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, NON-INFRINGEMENT, AND ACCURACY.</strong></p><p><strong>5.3</strong> Provider does not warrant that the Software will be accurate, complete, reliable, timely, secure, uninterrupted, or error-free, or that data entered into the Software will be preserved. <strong>Data may be lost, altered, or deleted without notice.</strong> Provider may modify, suspend, or discontinue the Software at any time without notice.</p><h2>6. LIMITATION OF LIABILITY</h2><p><strong>6.1 TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, PROVIDER SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF PROFITS, REVENUE, DATA, GOODWILL, OR BUSINESS INTERRUPTION, ARISING OUT OF OR RELATING TO THE SOFTWARE, UNDER ANY THEORY OF LIABILITY, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.</strong></p><p><strong>6.2 PROVIDER SHALL NOT BE LIABLE FOR ANY DAMAGES ARISING FROM OR RELATING TO ANY FLIGHT OPERATION, INCLUDING WITHOUT LIMITATION ANY DELAY, DIVERSION, INCIDENT, ACCIDENT, INJURY, DEATH, PROPERTY DAMAGE, REGULATORY ACTION, OR ENFORCEMENT PROCEEDING, WHETHER OR NOT ARISING FROM INFORMATION DISPLAYED BY, OMITTED FROM, OR INCORRECTLY EXTRACTED BY THE SOFTWARE.</strong></p><p><strong>6.3</strong> The Software is provided without charge. User acknowledges that the disclaimers and limitations in Sections 5 and 6 constitute a fundamental basis of the bargain and that Provider would not make the Software available absent them.</p><p><strong>6.4</strong> Nothing in these Terms limits liability that cannot be limited under applicable law.</p><h2>7. INDEMNIFICATION</h2><p>User shall indemnify, defend, and hold harmless Provider from and against any claim, demand, loss, liability, damage, cost, or expense (including reasonable attorneys' fees) arising out of or relating to: (a) User's breach of these Terms, including any violation of Section 2; (b) any content uploaded by User, including any claim asserted by an employer, operator, client, or individual whose data such content contains; (c) User's reliance on the Software in connection with any flight operation; or (d) User's violation of any applicable law or third-party right.</p><h2>8. TERM; TERMINATION; GENERAL</h2><p><strong>8.1</strong> These Terms take effect upon first access and continue until terminated. Provider may terminate or suspend access at any time, for any reason, without notice. Sections 1, 2.5, 3, 4, 5, 6, 7, and 8 survive termination.</p><p><strong>8.2</strong> The confidentiality obligation in Section 4.3(i) continues for three (3) years following termination.</p><p><strong>8.3</strong> User may not assign these Terms. Provider may assign them freely, including to an entity subsequently formed by Provider to hold the Software.</p><p><strong>8.4</strong> These Terms are governed by the laws of the State of New York, without regard to its conflict of laws principles. The parties submit to the exclusive jurisdiction of the state and federal courts located in the State of New York.</p><p><strong>8.5</strong> These Terms constitute the entire agreement between the parties concerning the Software and supersede all prior discussions. If any provision is held unenforceable, the remainder shall continue in full force. No failure to enforce any provision constitutes a waiver.</p>";
+
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -11353,6 +11488,36 @@ function closeLegendOverlay(){
   const ov = document.getElementById('legendOverlay');
   if(ov) ov.classList.remove('open');
 }
+// The same overlay reused as a reader. The consent row and the Continue button
+// are hidden, the text is opened by default, and a Close button is put in their
+// place -- a control must do what its label says, and there is nothing to agree
+// to on a second reading.
+function openTermsReadOnly(){
+  const ov   = document.getElementById('termsOverlay');
+  const cb   = ov && ov.querySelector('.terms-consent');
+  const btn  = document.getElementById('termsAgreeBtn');
+  const link = document.getElementById('termsReadLink');
+  const body = document.getElementById('termsBody');
+  const vline= document.getElementById('termsVersionLine');
+  if(!ov) return;
+
+  body.innerHTML = TERMS_TEXT_HTML;
+  body.classList.add('open');
+  body.scrollTop = 0;
+  vline.textContent = 'Interim Terms of Use, version ' + TERMS_VERSION;
+  if(cb) cb.style.display = 'none';
+  if(link) link.onclick = null;
+
+  btn.disabled = false;
+  btn.textContent = 'Close';
+  btn.onclick = () => {
+    ov.classList.remove('open');
+    if(cb) cb.style.display = '';
+  };
+
+  ov.classList.add('open');
+}
+
 function openInstallOverlay(){
   const ov = document.getElementById('installOverlay');
   if(ov) ov.classList.add('open');
@@ -11388,6 +11553,11 @@ function openInstallOverlay(){
   if(stb) stb.addEventListener('click', function(){ closeDrawer(); openSettingsView(); });
   const lgb = document.getElementById('drawerLegendBtn');
   if(lgb) lgb.addEventListener('click', function(){ closeDrawer(); openLegendOverlay(); });
+  // Re-reading the terms after acceptance. REMOVING AN AFFORDANCE DOES NOT
+  // REMOVE THE OBLIGATION -- somebody who agreed three weeks ago must still be
+  // able to find out what they agreed to.
+  const tmb = document.getElementById('drawerTermsBtn');
+  if(tmb) tmb.addEventListener('click', function(){ closeDrawer(); openTermsReadOnly(); });
   // Manual leg entry. Same behaviour the dashboard's header button used to have;
   // only the entry point moved. Flush any open editor first so this cannot
   // discard uncommitted work on the way out.
@@ -11517,9 +11687,130 @@ function hideLoginOverlay(){
   document.body.classList.add('authed');
 }
 
+// Returns true when the signed-in user already has an acceptance row for the
+// CURRENT terms version.
+//
+// Note what this is not: it is not a first-login check. It asks "has this
+// person accepted THIS VERSION", which means everyone already using Beacon is
+// gated on their next load, because nobody has a row yet. Bumping
+// TERMS_VERSION re-gates the whole beta automatically.
+//
+// FAILS CLOSED. If the query errors -- offline, RLS misconfigured, table
+// missing -- this returns false and the gate is shown. A gate that fails open
+// is not a gate. The cost of a false gate is one extra tap; the cost of a
+// false pass is that the record does not exist.
+async function hasAcceptedCurrentTerms(){
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if(!user) return false;
+    const { data, error } = await sb.from('agreement_acceptances')
+      .select('version')
+      .eq('user_id', user.id)
+      .eq('version', TERMS_VERSION)
+      .maybeSingle();
+    if(error) throw error;
+    return !!data;
+  } catch(e){
+    console.warn('terms check failed, gating', e);
+    return false;
+  }
+}
+
+// Writes the acceptance. The department id is denormalised in deliberately so
+// the record survives the membership being ended -- THE RECORD MUST NOT DEPEND
+// ON THE MEMBERSHIP SURVIVING.
+//
+// getFlightDepartmentId() can legitimately throw for somebody with no
+// department, and that must not block acceptance, so it is caught separately
+// and left null.
+async function recordTermsAcceptance(){
+  const { data: { user } } = await sb.auth.getUser();
+  if(!user) throw new Error('not signed in');
+
+  let deptId = null;
+  try { deptId = await getFlightDepartmentId(); } catch(e){ deptId = null; }
+
+  const { error } = await sb.from('agreement_acceptances')
+    .insert({
+      user_id: user.id,
+      version: TERMS_VERSION,
+      text_hash: TERMS_TEXT_HASH,
+      flight_department_id: deptId,
+      user_agent: (navigator.userAgent || '').slice(0, 500)
+    });
+
+  // 23505 is the unique violation on the (user_id, version) primary key, which
+  // means this version is already accepted -- a double tap, or a second device.
+  // That is success, not failure.
+  if(error && error.code !== '23505') throw error;
+}
+
+// Shows the gate and resolves only once the user has accepted and the row is
+// written. Everything downstream of it in bootApp is therefore blocked.
+//
+// There is no reject path and no dismissal path by design. The checkbox is
+// reset on every open so a previous session's state can never carry over.
+function showTermsGate(){
+  return new Promise((resolve) => {
+    const ov   = document.getElementById('termsOverlay');
+    const cb   = document.getElementById('termsCheckbox');
+    const btn  = document.getElementById('termsAgreeBtn');
+    const link = document.getElementById('termsReadLink');
+    const body = document.getElementById('termsBody');
+    const vline= document.getElementById('termsVersionLine');
+    if(!ov){ resolve(); return; }
+
+    body.innerHTML = TERMS_TEXT_HTML;
+    vline.textContent = 'Interim Terms of Use, version ' + TERMS_VERSION;
+
+    cb.checked = false;
+    btn.disabled = true;
+    btn.textContent = 'Continue';
+    body.classList.remove('open');
+    link.textContent = 'Interim Terms of Use';
+
+    cb.onchange = () => { btn.disabled = !cb.checked; };
+
+    link.onclick = () => {
+      const open = body.classList.toggle('open');
+      link.textContent = open ? 'Hide the terms' : 'Interim Terms of Use';
+      if(open) body.scrollTop = 0;
+    };
+
+    btn.onclick = async () => {
+      if(!cb.checked) return;
+      btn.disabled = true;
+      btn.textContent = 'Recording\u2026';
+      try {
+        await recordTermsAcceptance();
+        ov.classList.remove('open');
+        resolve();
+      } catch(e){
+        // The gate stays up. Accepting without the record being written would
+        // give the friction with none of the evidence, which is the worst of
+        // both.
+        console.error('acceptance failed', e);
+        btn.textContent = 'Could not record \u2014 try again';
+        btn.disabled = false;
+      }
+    };
+
+    ov.classList.add('open');
+  });
+}
+
 async function bootApp(){
   installRefreshHandler();
   await loadCurrentUserProfile();
+
+  // THE GATE SITS HERE DELIBERATELY: after the profile is known, so the
+  // acceptance can be attributed, but BEFORE loadLegs() and before anything
+  // renders. Nothing of the department's data reaches the screen until the
+  // terms have been accepted.
+  if(!(await hasAcceptedCurrentTerms())){
+    await showTermsGate();
+  }
+
   // AWAITED, and awaited BEFORE loadLegs(), deliberately.
   //
   // This is not a display cache. legIsSealed() -> tripIsArchived() ->
