@@ -1628,7 +1628,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-21T01:42:55Z';
+const BUILD_VERSION = '2026-08-22T03:41:20Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -5728,7 +5728,7 @@ function dashboardCardHTML(leg){
   const route = leg.cityPair || [leg.dep.airportId, leg.arr.airportId].filter(Boolean).join(' \u2192 ') || 'No city pair defined';
   const isUnassigned = !(leg.tripNumber || '').trim();
   return '<div class="dash-card" data-id="' + leg.id + '">' +
-    (isUnassigned ? '<div class="dash-card-orphan-banner">Unassigned leg. Please add trip number.</div>' : '') +
+    (isUnassigned ? '<div class="dash-card-orphan-banner">No trip number on the paperwork.</div>' : '') +
     '<div class="dash-card-top">' +
       '<span class="dash-card-code">' + escapeHtml(legLabel(leg)) + '</span>' +
     '</div>' +
@@ -5750,7 +5750,7 @@ function tripBriefLegCardHTML(leg){
   const tripNumLabel = (leg.tripNumber || '').trim() || 'UNTITLED';
   const isUnassignedBrief = !(leg.tripNumber || '').trim();
   return '<div class="dash-card" data-id="' + leg.id + '">' +
-    (isUnassignedBrief ? '<div class="dash-card-orphan-banner">Unassigned leg. Please add trip number.</div>' : '') +
+    (isUnassignedBrief ? '<div class="dash-card-orphan-banner">No trip number on the paperwork.</div>' : '') +
     '<div class="dash-card-top">' +
       '<span class="dash-card-leg-title">Leg ' + escapeHtml(leg.legNumber || '?') + '</span>' +
       // Right-hand stack: airport notes on top, attachment badge beneath it.
@@ -7382,6 +7382,33 @@ function legIdentityKey(leg){
   return dep + '|' + arr + '|' + date;
 }
 
+// A numberless trip still has to be NAMEABLE -- in the import summary, on the
+// trip card, and in the page header. Beacon deliberately does NOT invent a
+// trip number to fill the gap: a fabricated number would land in trip_notes,
+// in attachment rows and in the archive's unique key as though the paperwork
+// had said it. Instead we describe the trip from what the document DID give
+// us -- the first leg's route and date -- and say plainly that it is unnumbered.
+// Route only, never the full chain: a ten-leg trip would run off the header.
+function unnumberedTripLabel(legs){
+  const first = (legs && legs[0]) || null;
+  if(!first) return 'Unnumbered trip';
+  const d1 = formatISODateDisplay(first.date) || '';
+  return 'Unnumbered trip' + (d1 ? (' \u00B7 ' + d1) : '');
+}
+
+// Same idea for the import summary, where the route is genuinely useful
+// because the user is deciding whether this upload revises that trip.
+function recFirstLegLabel(rec){
+  const src = (rec.toUpdate && rec.toUpdate[0] && rec.toUpdate[0].existingLeg)
+           || (rec.toAdd && rec.toAdd[0]) || null;
+  if(!src) return '';
+  const dep = ((src.dep && src.dep.airportId) || '').trim().toUpperCase();
+  const arr = ((src.arr && src.arr.airportId) || '').trim().toUpperCase();
+  const dt = formatISODateDisplay(src.date) || '';
+  const route = (dep && arr) ? (dep + ' to ' + arr) : (dep || arr || '');
+  return [route, dt].filter(Boolean).join(', ');
+}
+
 // ---- CREW MATCHING: DOCUMENT NAMES -> ROSTER ACCOUNTS ----------------------
 // The legal name is the ONLY value that appears both on an incoming trip
 // document and on a user record, so it is the join key. Documents print
@@ -7542,8 +7569,16 @@ function crewMatchReport(leg){
   return { entries: entries, crew: crew };
 }
 
-function buildLegFromExtraction(extracted){
+function buildLegFromExtraction(extracted, groupId){
   const leg = blankLeg();
+  // *** ONE groupId PER UPLOAD. *** blankLeg() hands out a fresh uid per leg,
+  // which is right for a hand-built leg and WRONG for an import: legs from one
+  // document belong to one trip. Without this a trip sheet carrying no trip
+  // number shatters into a solo card per leg on Active Trips, because
+  // groupIntoTrips falls back to '__solo_' + leg.id when groupId is missing.
+  // The caller passes ONE id for the whole batch. Optional so the older
+  // single-leg call sites keep working unchanged.
+  if(groupId) leg.groupId = groupId;
   leg.tripNumber = extracted.tripNumber || '';
   leg.legNumber = (extracted.legNumber || '').trim() || '?';
   leg.date = toISODate(extracted.date || '');
@@ -7971,7 +8006,38 @@ async function processImportFile(file){
         return true;
       });
       const tripNumber = (dedupedLegs[0] && dedupedLegs[0].tripNumber || '').trim();
-      const existingLegs = tripNumber ? state.legs.filter(l => (l.tripNumber || '').trim() === tripNumber) : [];
+      // ONE group id for every leg in this upload. Only load-bearing when the
+      // paperwork carries NO trip number: groupIntoTrips groups numberless legs
+      // by groupId, so this is what keeps a numberless trip as ONE card instead
+      // of one card per leg. Harmless when a trip number IS present, since the
+      // trip number wins as the grouping key.
+      const importGroupId = uid();
+      // WHICH LEGS ON THE BOARD IS THIS UPLOAD A REVISION OF?
+      //
+      // With a trip number the answer is easy. WITHOUT one -- and plenty of
+      // operators print crew briefs with no trip number at all -- we used to
+      // return [] here, which sent a numberless revision down the 'new trip'
+      // branch. That branch files an already-known leg as a DUPLICATE and
+      // drops it, so revised times/FBOs on a numberless re-upload were
+      // silently discarded. The trip did not duplicate; it simply never
+      // updated, which is worse because it is invisible.
+      //
+      // So: fall back to IDENTITY. legIdentityKey is dep|arr|date and already
+      // ignores the trip number, so if any incoming leg matches a numberless
+      // leg already on the board, that leg's whole GROUP is what we are
+      // revising. Restricted to numberless board legs deliberately -- a
+      // numberless brief must never silently reconcile against, and propose
+      // removals from, a properly numbered trip.
+      let existingLegs = tripNumber ? state.legs.filter(l => (l.tripNumber || '').trim() === tripNumber) : [];
+      let reconcileGroupId = '';
+      if(!tripNumber){
+        const incomingKeys = new Set(dedupedLegs.map(ex => legIdentityKey(buildLegFromExtraction(ex))));
+        const hit = state.legs.find(l => !(l.tripNumber || '').trim() && l.groupId && incomingKeys.has(legIdentityKey(l)));
+        if(hit){
+          reconcileGroupId = hit.groupId;
+          existingLegs = state.legs.filter(l => !(l.tripNumber || '').trim() && l.groupId === reconcileGroupId);
+        }
+      }
       if(existingLegs.length){
         // This trip number already exists on the board. Reconcile instead
         // of blindly appending duplicate legs: match incoming legs to
@@ -7989,8 +8055,12 @@ async function processImportFile(file){
         // emit the same leg twice with a blank/'?' leg number, which otherwise
         // lands as two separate adds). Merge their fields so no detail is lost.
         const incomingByIdentity = new Map();
+        // Legs joining a numberless trip already on the board must adopt THAT
+        // trip's group, not this upload's fresh one, or the revision would land
+        // as a second card beside the trip it revises.
+        const useGroupId = reconcileGroupId || importGroupId;
         dedupedLegs.forEach(ex => {
-          const built = buildLegFromExtraction(ex);
+          const built = buildLegFromExtraction(ex, useGroupId);
           const ik = legIdentityKey(built);
           if(incomingByIdentity.has(ik)) mergeLegInto(incomingByIdentity.get(ik), built);
           else incomingByIdentity.set(ik, built);
@@ -8030,7 +8100,7 @@ async function processImportFile(file){
         // off matchedExisting (not raw leg numbers) protects a "?" orphan the
         // sheet just adopted instead of deleting it.
         const toRemove = existingLegs.filter(l => !matchedExisting.has(l));
-        state.importTripReconcile = { tripNumber: tripNumber, existingCount: existingLegs.length, toAdd: toAdd, toUpdate: toUpdate, toRemove: toRemove };
+        state.importTripReconcile = { tripNumber: tripNumber, groupId: reconcileGroupId, existingCount: existingLegs.length, toAdd: toAdd, toUpdate: toUpdate, toRemove: toRemove };
       } else {
         // No existing trip to reconcile against. Build the legs, then collapse
         // any duplicates the extraction emitted for the SAME dep/arr/date
@@ -8038,7 +8108,7 @@ async function processImportFile(file){
         // already exist on the board so a re-import doesn't plant a copy.
         const builtMap = new Map();
         dedupedLegs.forEach(ex => {
-          const built = buildLegFromExtraction(ex);
+          const built = buildLegFromExtraction(ex, importGroupId);
           const key = legIdentityKey(built);
           if(builtMap.has(key)) mergeLegInto(builtMap.get(key), built);
           else builtMap.set(key, built);
@@ -8151,7 +8221,12 @@ function renderImportPreviewView(){
     if(rec.toAdd.length) summaryParts.push(rec.toAdd.length + ' leg' + (rec.toAdd.length === 1 ? '' : 's') + ' added');
     if(rec.toUpdate.length) summaryParts.push(rec.toUpdate.length + ' leg' + (rec.toUpdate.length === 1 ? '' : 's') + ' updated');
     if(rec.toRemove.length) summaryParts.push(rec.toRemove.length + ' leg' + (rec.toRemove.length === 1 ? '' : 's') + ' removed');
-    const summaryText = 'Trip ' + escapeHtml(rec.tripNumber) + ' currently has ' + rec.existingCount + ' leg' + (rec.existingCount === 1 ? '' : 's') + ' on your board. This trip sheet would result in: ' + (summaryParts.join(', ') || 'no changes') + '.';
+    // A numberless trip has no number to name it by, so name it the way a crew
+    // would say it out loud: the route and start date of its first leg.
+    const recTripLabel = rec.tripNumber
+      ? ('Trip ' + escapeHtml(rec.tripNumber))
+      : ('This trip' + (recFirstLegLabel(rec) ? (' (' + escapeHtml(recFirstLegLabel(rec)) + ')') : ''));
+    const summaryText = recTripLabel + ' currently has ' + rec.existingCount + ' leg' + (rec.existingCount === 1 ? '' : 's') + ' on your board. This trip sheet would result in: ' + (summaryParts.join(', ') || 'no changes') + '.';
 
     const recSections = [];
     if(rec.toAdd.length){
@@ -8210,7 +8285,7 @@ function renderImportPreviewView(){
           }
           await loadLegs();
           resetImportState();
-          showToast('Trip ' + rec.tripNumber + ' reconciled');
+          showToast(rec.tripNumber ? ('Trip ' + rec.tripNumber + ' reconciled') : 'Trip updated from paperwork');
           goToListView('dashboard');
         }catch(e){
           console.error('trip reconcile confirm failed', e);
@@ -8778,7 +8853,7 @@ function renderTripDetailView(){
   }
   const backLabel = state.tripDetailOrigin === 'history' ? 'Archived Trips' : 'Active Trips';
   setPageHeader({
-    title: trip.tripNumber ? ('Trip ' + trip.tripNumber) : 'Untitled trip',
+    title: trip.tripNumber ? ('Trip ' + trip.tripNumber) : unnumberedTripLabel(trip.legs),
     sub: (duplicateLegNumbers(trip).length
             ? 'CHECK LEG NUMBERS: ' + duplicateLegNumbers(trip).join(', ') + ' DUPLICATED'
             : trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's')),
@@ -8790,7 +8865,11 @@ function renderTripDetailView(){
       '" style="visibility:hidden;"></span></button>'
   });
   main.innerHTML =
-    '<div class="trip-subhead">Tap a leg to open its checklist</div>' +
+    '<div class="trip-subhead">' + (trip.tripNumber
+        ? 'Tap a leg to open its checklist'
+        // Say what happened and why, so nobody reads the missing number as a
+        // Beacon failure -- or as something they are expected to go and fix.
+        : 'No trip number on the paperwork. Beacon grouped these legs by route and date.') + '</div>' +
     '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') +
       '<button type="button" class="dash-card dash-card-add" id="addLegTile"><span class="dash-card-add-plus">+</span><span class="dash-card-add-label">Add leg</span></button>' +
     '</div>' +
