@@ -186,7 +186,10 @@
   .page-header-text{ display:flex; flex-direction:column; gap:2px; min-width:0; }
   .page-back{ background:none; border:none; padding:0; text-align:left; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; font-size:12px; cursor:pointer; min-height:16px; }
   .page-back:empty{ visibility:hidden; }
-  .page-header-title{ font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:30px; letter-spacing:0.5px; color:var(--paper-050); line-height:1.05; }
+  /* nowrap: a two-word title ("Active Trips") was wrapping to a second line on
+     narrow screens, which pushed the subtext down and made the gap between
+     title and subtext inconsistent from page to page. Titles stay on one line. */
+  .page-header-title{ font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:30px; letter-spacing:0.5px; color:var(--paper-050); line-height:1.05; white-space:nowrap; }
   .page-header-sub{ font-size:12px; color:var(--paper-050); font-family:system-ui,'Inter',sans-serif; min-height:15px; }
   /* CENTERED ACROSS THE FULL PAGE WIDTH. The header inner is a flex row - text
      block left, progress pill right - so the text block is narrower than the
@@ -1605,7 +1608,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T22:38:52Z';
+const BUILD_VERSION = '2026-08-20T22:56:40Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
