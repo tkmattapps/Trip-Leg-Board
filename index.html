@@ -935,8 +935,8 @@
      rather than as a stray bit of text. Smaller only because it sits in the
      card header, not the action row. */
   .leg-airport-notes-btn{
-    font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:500;
-    line-height:1.2; padding:5px 9px; border-radius:3px; cursor:pointer;
+    font-family:system-ui,'Inter',sans-serif; font-size:12px; font-weight:500;
+    line-height:1.2; padding:7px 12px; border-radius:3px; cursor:pointer;
     border:1px solid var(--hairline); background:transparent; color:var(--fog-300);
     transition:border-color 0.15s ease, color 0.15s ease;
     -webkit-tap-highlight-color:transparent; white-space:nowrap;
@@ -999,7 +999,14 @@
   .doc-busy{ font-size:12px; color:var(--fog-500); }
   /* paperclip badge on leg tiles */
   .leg-attach-badge{ display:inline-flex; align-items:center; gap:2px; font-size:11px; color:var(--fog-300, #B8C4D9); margin-left:6px; vertical-align:middle; }
-  .leg-attach-badge svg{ width:12px; height:12px; }
+  /* Own row above the quick-action hairline. Right-aligned to sit under the
+     airport-notes button in the opposite corner. Always occupies space. */
+  .dash-card-attach-row{ display:flex; justify-content:flex-end; align-items:center; padding-bottom:6px; flex:0 0 auto; }
+  .dash-card-attach-row .leg-attach-badge{ margin-left:0; }
+  /* Zero is stated, not shouted. */
+  .leg-attach-badge-zero{ color:var(--fog-500); }
+  .leg-attach-badge-zero .doc-icon{ color:var(--amber-500); }
+  .leg-attach-badge .doc-icon{ width:13px; height:13px; }
   /* header paperclip jump-to-documents */
   .doc-jump-btn{ margin-right:auto; display:inline-flex; align-items:center; gap:4px; background:transparent; border:1px solid var(--fog-500); color:var(--fog-300, #B8C4D9); border-radius:16px; padding:5px 10px; cursor:pointer; }
   .doc-jump-btn:hover{ border-color:var(--amber-500); color:var(--amber-500); }
@@ -1606,7 +1613,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-21T00:21:40Z';
+const BUILD_VERSION = '2026-08-21T01:09:33Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -2147,9 +2154,12 @@ async function refreshLegAttachBadge(legId){
     const rows = await fetchAttachments('leg', { legId: legId });
     const n = rows.length;
     // The leg TILE badge stays leg-only: a tile represents one leg.
+    // Always painted, never hidden: 0 is a real answer and the reserved space
+    // keeps the card from changing height when a document is added or removed.
     document.querySelectorAll('[data-attach-badge="' + legId + '"]').forEach(function(el){
-      if(n > 0){ el.innerHTML = LEG_PAPERCLIP_BADGE_SVG + n; el.style.display = ''; }
-      else { el.innerHTML = ''; el.style.display = 'none'; }
+      el.innerHTML = LEG_PAPERCLIP_BADGE_SVG + n;
+      el.style.display = '';
+      el.classList.toggle('leg-attach-badge-zero', n === 0);
     });
     // The bottom-bar jump count reflects what the Documents section shows,
     // which is this leg's documents plus the trip-wide ones.
@@ -2167,7 +2177,7 @@ async function refreshLegAttachBadge(legId){
   } catch(e){ /* non-fatal */ }
 }
 
-const LEG_PAPERCLIP_BADGE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+const LEG_PAPERCLIP_BADGE_SVG = '<svg class="doc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
 
 // Batch-fill paperclip badges for all leg tiles on the Trip Legs page.
 async function hydrateTripLegAttachBadges(trip){
@@ -2179,8 +2189,9 @@ async function hydrateTripLegAttachBadges(trip){
   trip.legs.forEach(function(l){
     const n = counts[l.id] || 0;
     document.querySelectorAll('[data-attach-badge="' + l.id + '"]').forEach(function(el){
-      if(n > 0){ el.innerHTML = LEG_PAPERCLIP_BADGE_SVG + n; el.style.display = ''; }
-      else { el.innerHTML = ''; el.style.display = 'none'; }
+      el.innerHTML = LEG_PAPERCLIP_BADGE_SVG + n;
+      el.style.display = '';
+      el.classList.toggle('leg-attach-badge-zero', n === 0);
     });
   });
 }
@@ -5733,7 +5744,6 @@ function tripBriefLegCardHTML(leg){
       // is the same question twice.
       '<span class="dash-card-top-right">' +
         '<button type="button" class="leg-airport-notes-btn" data-airport-notes="' + escapeHtml(leg.id) + '">Airport notes</button>' +
-        '<span class="leg-attach-badge" data-attach-badge="' + escapeHtml(leg.id) + '" style="display:none"></span>' +
       '</span>' +
     '</div>' +
     '<div class="ready-room-leg-row">' +
@@ -5745,6 +5755,15 @@ function tripBriefLegCardHTML(leg){
     (completeness.complete ? '' : '<div class="dash-card-pending">' + completeness.pending.length + ' item' + (completeness.pending.length === 1 ? '' : 's') + ' pending</div>') +
     (lastEditedCompact(leg) ? '<div class="dash-card-edited">' + escapeHtml(lastEditedCompact(leg)) + '</div>' : '') +
     '<div class="dash-card-spacer"></div>' +
+    // Attachment count sits on its OWN row, right-aligned, directly above the
+    // quick-action row's hairline. It is ALWAYS rendered, showing 0 when the leg
+    // has no documents: the badge used to live in the top-right stack and appear
+    // only when a document existed, which pushed the status line down and changed
+    // the card's geometry the moment anything was uploaded. Reserving the space
+    // permanently means the card never moves.
+    '<div class="dash-card-attach-row">' +
+      '<span class="leg-attach-badge" data-attach-badge="' + escapeHtml(leg.id) + '">' + LEG_PAPERCLIP_BADGE_SVG + '0</span>' +
+    '</div>' +
     '<div class="trip-quick-row">' +
       '<button type="button" class="trip-quick-btn" data-leg-quick="crew" data-leg-id="' + escapeHtml(leg.id) + '">Set crew</button>' +
       '<button type="button" class="trip-quick-btn" data-leg-quick="aircraft" data-leg-id="' + escapeHtml(leg.id) + '">Set aircraft</button>' +
