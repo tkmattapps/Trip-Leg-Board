@@ -951,7 +951,7 @@
   .leg-airport-notes-btn:active{ background:var(--panel-700); }
   .dash-card-code{ font-family:system-ui,'Inter',sans-serif; font-size:14px; font-weight:600; }
   .dash-card-leg-title{ font-family:'Big Shoulders Display','Inter',sans-serif; font-size:20px; font-weight:700; letter-spacing:0.5px; color:var(--paper-050, #F5F7FA); }
-  .dash-card-orphan-banner{ background:var(--alert-600, #E2574C); color:#fff; font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.02em; padding:6px 10px; border-radius:4px; margin-bottom:10px; text-align:center; }
+  .dash-card-orphan-banner{ background:rgba(242,169,59,0.12); color:var(--amber-500); border:1px solid rgba(242,169,59,0.35); font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.02em; padding:6px 10px; border-radius:4px; margin-bottom:10px; text-align:center; }
   .dash-status-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
   .dash-status-dot.ok{ background:var(--ok-500); }
   .dash-status-dot.pending{ background:var(--alert-600); }
@@ -1479,9 +1479,9 @@
          This one WRITES to the shared board, and it is the uncommon path: trips
          normally arrive as paperwork. Grouped under its own heading so it reads
          as an unusual action rather than another route. -->
-    <div class="drawer-group">
+    <div class="drawer-group" id="drawerManualGroup">
       <div class="drawer-group-title">Manual entry</div>
-      <button type="button" class="drawer-item" id="drawerNewLegBtn"><span class="drawer-ico di-newleg">&#43;</span><span class="drawer-label">Start a leg by hand</span></button>
+      <button type="button" class="drawer-item" id="drawerNewLegBtn"><span class="drawer-ico di-newleg">&#43;</span><span class="drawer-label">Create a trip by hand</span></button>
       <div class="drawer-group-note">Most trips arrive as paperwork. Use this only when there is none.</div>
     </div>
   </div>
@@ -1628,7 +1628,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T03:41:20Z';
+const BUILD_VERSION = '2026-08-22T04:14:10Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -11278,10 +11278,20 @@ function syncDrawerDelete(){
     }
   }
 }
+// Manual entry is DASHBOARD-ONLY. It creates a whole trip, so it only makes
+// sense from the board. On a trip page the Add leg tile is the right (and
+// correct) affordance -- offering this here would create a stray numberless
+// leg instead of adding to the trip in view.
+function syncDrawerManualEntry(){
+  const g = document.getElementById('drawerManualGroup');
+  if(!g) return;
+  g.hidden = (state.view !== 'dashboard');
+}
 function openDrawer(){
   const d = document.getElementById('drawer');
   const b = document.getElementById('drawerBackdrop');
   syncDrawerDelete();
+  syncDrawerManualEntry();
   if(d){ d.classList.add('open'); d.setAttribute('aria-hidden','false'); }
   if(b) b.classList.add('open');
 }
@@ -11382,13 +11392,17 @@ function openInstallOverlay(){
   // only the entry point moved. Flush any open editor first so this cannot
   // discard uncommitted work on the way out.
   const nlb = document.getElementById('drawerNewLegBtn');
-  if(nlb) nlb.addEventListener('click', function(){
+  if(nlb) nlb.addEventListener('click', async function(){
     closeDrawer();
     if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
     const leg = blankLeg();
     leg.legNumber = '1';
     state.legs.unshift(leg);
-    openLegEditor(leg.id);
+    // Persist before navigating so the trip survives a refresh and reaches
+    // other devices. blankLeg() already minted a per-leg groupId; that is the
+    // key groupIntoTrips will file this numberless trip under.
+    try { await saveLeg(leg); } catch(e){ /* keep the leg on screen either way */ }
+    openTripDetail('__grp_' + leg.groupId, 'dashboard');
   });
   const lb = document.getElementById('drawerLogoutBtn');
   if(lb) lb.addEventListener('click', function(){ closeDrawer(); handleLogout(); });
