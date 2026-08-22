@@ -1735,7 +1735,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T05:31:00Z';
+const BUILD_VERSION = '2026-08-22T07:58:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5831,7 +5831,7 @@ function windToggleField(leg){
         '<button type="button" class="yn-btn wind-btn' + hwActive + '" data-val="HW">HW</button>' +
         '<button type="button" class="yn-btn wind-btn' + twActive + '" data-val="TW">TW</button>' +
       '</div>' +
-      '<input type="text" id="windComponent" value="' + escapeHtml(leg.windComponent || '') + '" placeholder="-15 or +15" style="flex:1" />' +
+      '<input type="text" id="windComponent" value="' + escapeHtml(leg.windComponent || '') + '" placeholder="- or +" style="flex:1" />' +
     '</div>' +
     '<input type="hidden" id="windDirection" value="' + escapeHtml(dir) + '" />' +
   '</div>';
@@ -9446,25 +9446,25 @@ function renderMain(){
         '<div class="subpanel compact">' +
           '<div class="grid-6">' +
             // Row 1: identity and times.
-            field('Airport ID', 'depAirportId', leg.dep.airportId, {placeholder:'KTEB'}) +
+            field('Airport ID', 'depAirportId', leg.dep.airportId) +
             field('Departure date', 'date', leg.date, {type:'date', lang:'en-US'}) +
-            field('UTC offset', 'depUtcOffset', leg.dep.utcOffsetManual || '', {placeholder:'auto or -4'}) +
-            field('ETD local', 'depEtdLocal', displayLocal12h(leg.dep.etdLocal), {type:'text', placeholder:'02:30 PM'}) +
-            field('ETD Z (UTC)', 'depEtdZ', leg.dep.etdZ, {type:'text', placeholder:'1430'}) +
+            field('UTC offset', 'depUtcOffset', leg.dep.utcOffsetManual || '', {placeholder:'auto or manual'}) +
+            field('ETD local', 'depEtdLocal', displayLocal12h(leg.dep.etdLocal), {type:'text'}) +
+            field('ETD Z (UTC)', 'depEtdZ', leg.dep.etdZ, {type:'text'}) +
             field('Hours of operation', 'depHours', leg.dep.hours, {placeholder:'local time'}) +
             // Row 2: slots and who you talk to.
             ynField('Dep slot req\u2019d', 'depSlotReqd', leg.dep.slotReqd) +
             field('Slot time / number', 'depSlotTimeNumber', leg.dep.slotTimeNumber) +
-            field('Slot time allowance', 'depSlotAllowance', leg.dep.slotAllowance, {placeholder:'+30 / -60'}) +
+            field('Slot time allowance', 'depSlotAllowance', leg.dep.slotAllowance, {placeholder:'+ / -'}) +
             field('Handling agent', 'depAgent', leg.dep.agent) +
             field('Phone number', 'depAgentPhone', leg.dep.agentPhone) +
             field('ARINC Frequency', 'depFrequency', leg.dep.frequency) +
             field('Fuel vendor', 'depFuelVendor', leg.dep.fuelVendor) +
-            field('Fuel price', 'depFuelPricePerGallon', leg.dep.fuelPricePerGallon, {placeholder:'$6.25'}) +
-            field('Payment method', 'depFuelPaymentMethod', leg.dep.fuelPaymentMethod, {placeholder:'AVCARD / contract'}) +
-            field('Ramp fee', 'depRampFee', leg.dep.rampFee, {placeholder:'$150'}) +
+            field('Fuel price', 'depFuelPricePerGallon', leg.dep.fuelPricePerGallon) +
+            field('Payment method', 'depFuelPaymentMethod', leg.dep.fuelPaymentMethod) +
+            field('Ramp fee', 'depRampFee', leg.dep.rampFee) +
             ynField('Waived w/ fuel', 'depRampFeeWaived', leg.dep.rampFeeWaived) +
-            field('Min GAL to waive', 'depRampFeeMinGallons', leg.dep.rampFeeMinGallons, {placeholder:'200'}) +
+            field('Min GAL to waive', 'depRampFeeMinGallons', leg.dep.rampFeeMinGallons) +
           '</div>' +
           // Outside the grid: the hint is a full-width note, and inside a fixed
           // six-column grid it would eat a cell and shunt the row order.
@@ -9479,25 +9479,25 @@ function renderMain(){
         '<div class="subpanel compact">' +
           '<div class="grid-6">' +
             // Row 1: identity and times. Mirrors Departure deliberately.
-            field('Airport ID', 'arrAirportId', leg.arr.airportId, {placeholder:'EGGW'}) +
+            field('Airport ID', 'arrAirportId', leg.arr.airportId) +
             field('Arrival date', 'arrDate', leg.arr.date, {type:'date', lang:'en-US'}) +
-            field('UTC offset', 'arrUtcOffset', leg.arr.utcOffsetManual || '', {placeholder:'auto or -4'}) +
-            field('ETA local', 'arrEtaLocal', displayLocal12h(leg.arr.etaLocal), {type:'text', placeholder:'02:30 PM'}) +
-            field('ETA Z (UTC)', 'arrEtaZ', leg.arr.etaZ, {type:'text', placeholder:'1430'}) +
+            field('UTC offset', 'arrUtcOffset', leg.arr.utcOffsetManual || '', {placeholder:'auto or manual'}) +
+            field('ETA local', 'arrEtaLocal', displayLocal12h(leg.arr.etaLocal), {type:'text'}) +
+            field('ETA Z (UTC)', 'arrEtaZ', leg.arr.etaZ, {type:'text'}) +
             field('Hours of operation', 'arrHours', leg.arr.hours, {placeholder:'local time'}) +
             // Row 2: slots and who you talk to.
             ynField('Arr slot req\u2019d', 'arrSlotReqd', leg.arr.slotReqd) +
             field('Slot time / number', 'arrSlotTimeNumber', leg.arr.slotTimeNumber) +
-            field('Slot time allowance', 'arrSlotAllowance', leg.arr.slotAllowance, {placeholder:'+30 / -60'}) +
+            field('Slot time allowance', 'arrSlotAllowance', leg.arr.slotAllowance, {placeholder:'+ / -'}) +
             field('Handling agent', 'arrAgent', leg.arr.agent) +
             field('Phone number', 'arrAgentPhone', leg.arr.agentPhone) +
             field('ARINC Frequency', 'arrFrequency', leg.arr.frequency) +
             field('Fuel vendor', 'arrFuelVendor', leg.arr.fuelVendor) +
-            field('Fuel price', 'arrFuelPricePerGallon', leg.arr.fuelPricePerGallon, {placeholder:'$6.25'}) +
-            field('Payment method', 'arrFuelPaymentMethod', leg.arr.fuelPaymentMethod, {placeholder:'AVCARD / contract'}) +
-            field('Ramp fee', 'arrRampFee', leg.arr.rampFee, {placeholder:'$150'}) +
+            field('Fuel price', 'arrFuelPricePerGallon', leg.arr.fuelPricePerGallon) +
+            field('Payment method', 'arrFuelPaymentMethod', leg.arr.fuelPaymentMethod) +
+            field('Ramp fee', 'arrRampFee', leg.arr.rampFee) +
             ynField('Waived w/ fuel', 'arrRampFeeWaived', leg.arr.rampFeeWaived) +
-            field('Min GAL to waive', 'arrRampFeeMinGallons', leg.arr.rampFeeMinGallons, {placeholder:'200'}) +
+            field('Min GAL to waive', 'arrRampFeeMinGallons', leg.arr.rampFeeMinGallons) +
           '</div>' +
                     '<div style="margin-top:14px">' + legNotesBlockHTML('arr', airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotesLabel', 'Add a note for this stop\u2026') + '</div>' +
         '</div>' +
@@ -9517,7 +9517,7 @@ function renderMain(){
       '' + sectionTitleHTML('Enroute', 'enroute', leg) + '' +
       '<div class="grid">' +
         field('Max shear', 'maxShear', leg.maxShear) +
-        field('ETE', 'ete', leg.ete, {placeholder:'6:00'}) +
+        field('ETE', 'ete', leg.ete) +
         windToggleField(leg) +
         field('Relative time to destination', 'relativeTimeToDestination', '', {readonly:true, placeholder:'auto'}) +
       '</div>' +
@@ -9593,11 +9593,11 @@ function renderMain(){
     '<div class="section">' +
       '' + sectionTitleHTML('Next pax leg', 'nextLeg', leg) + '' +
       '<div class="grid-5">' +
-        field('Destination', 'nextLegDestination', leg.nextLegDestination, {placeholder:'EGGW'}) +
+        field('Destination', 'nextLegDestination', leg.nextLegDestination) +
         field('Date', 'nextLegDate', leg.nextLegDate, {type:'date', lang:'en-US'}) +
         field('Day', 'nextLegDay', leg.nextLegDay, {readonly:true, placeholder:'auto'}) +
-        field('ETD', 'nextLegEtd', displayLocal12h(leg.nextLegEtd), {placeholder:'02:30 PM'}) +
-        field('ETA', 'nextLegEta', displayLocal12h(leg.nextLegEta), {placeholder:'02:30 PM'}) +
+        field('ETD', 'nextLegEtd', displayLocal12h(leg.nextLegEtd), {placeholder:'local time'}) +
+        field('ETA', 'nextLegEta', displayLocal12h(leg.nextLegEta), {placeholder:'local time'}) +
       '</div>' +
     '</div>' +
 
