@@ -182,7 +182,7 @@
   }
 
   .page-header{ position:fixed; left:0; right:0; top:0; z-index:34; background:var(--ink-900); border-bottom:1px solid var(--hairline); }
-  .page-header-inner{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; max-width:1800px; margin:0 auto; padding:10px 36px 2px; padding-top:max(10px, env(safe-area-inset-top)); }
+  .page-header-inner{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; max-width:1800px; margin:0 auto; padding:10px 36px 10px; padding-top:max(10px, env(safe-area-inset-top)); }
   .page-header-text{ display:flex; flex-direction:column; gap:2px; min-width:0; }
   .page-back{ background:none; border:none; padding:0; text-align:left; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; font-size:12px; cursor:pointer; min-height:16px; }
   .page-back:empty{ visibility:hidden; }
@@ -1418,16 +1418,16 @@
     <div class="page-header-text">
       <button type="button" class="page-back" id="pageBackBtn"></button>
       <div class="page-header-title" id="pageHeaderTitle"></div>
+      <!-- SUBTEXT LIVES IN THE TITLE COLUMN. It used to sit on its own full-width
+           row below, which was needed only while it was centred. Now that it is
+           left-justified under the title, the separate row did nothing except
+           inherit the flex row's height -- and that row is as tall as the tallest
+           right-hand item (the "+ Create new trip" pill, the verify pill), which
+           left a visible dead gap under a short title. In the column it sits 2px
+           under the title on every page regardless of what the pill contains. -->
+      <div class="page-header-sub" id="pageHeaderSub"></div>
     </div>
     <div class="page-header-actions" id="pageHeaderActions"></div>
-  </div>
-  <!-- SUBTEXT SITS ON ITS OWN FULL-WIDTH ROW, deliberately OUTSIDE the flex row
-       above. Inside it, the text block only ever gets the space left over after
-       the actions pill claims its width, so "centred" landed about half a pill
-       left of the true page centre - and it moved whenever the pill's label
-       changed. On its own row it centres against the whole header and stays put. -->
-  <div class="page-header-subrow">
-    <div class="page-header-sub" id="pageHeaderSub"></div>
   </div>
 </div>
 
@@ -1608,7 +1608,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T22:56:40Z';
+const BUILD_VERSION = '2026-08-20T23:14:08Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
