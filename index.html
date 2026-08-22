@@ -324,12 +324,10 @@
     display:flex; align-items:center;
     font-family:system-ui,'Inter',sans-serif;
     font-size:12px; line-height:1.2;
-    letter-spacing:0.08em; text-transform:uppercase;
     color:var(--fog-400);
-    padding:9px 0; border-bottom:1px solid var(--hairline);
+    padding:9px 0;
     margin-bottom:18px; box-sizing:border-box;
   }
-  .trip-subhead-count{ color:var(--fog-300); font-weight:600; }
   .search::placeholder{ color:var(--fog-500); }
   .search:focus{ border-color:var(--amber-700); }
   .leg-list{ flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
@@ -1608,7 +1606,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-20T23:14:08Z';
+const BUILD_VERSION = '2026-08-20T23:31:44Z';
 const SUPABASE_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_Us5VEKRKcDITOe0pEdJAvA_xH9wpCGm';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -8759,7 +8757,7 @@ function renderTripDetailView(){
     title: trip.tripNumber ? ('Trip ' + trip.tripNumber) : 'Untitled trip',
     sub: (duplicateLegNumbers(trip).length
             ? 'CHECK LEG NUMBERS: ' + duplicateLegNumbers(trip).join(', ') + ' DUPLICATED'
-            : 'Tap a leg to open its checklist'),
+            : trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's')),
     backLabel: backLabel,
     backTo: state.tripDetailOrigin === 'history' ? 'history' : 'dashboard',
     barDocHTML: '<button type="button" class="doc-jump-btn" id="tripDocJumpBtn" title="Jump to documents" aria-label="Jump to documents">' +
@@ -8767,10 +8765,8 @@ function renderTripDetailView(){
       '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(trip.key) +
       '" style="visibility:hidden;"></span></button>'
   });
-  const legCount = trip.legs.length;
   main.innerHTML =
-    '<div class="trip-subhead"><span class="trip-subhead-count">' + legCount +
-      '</span>&nbsp;' + (legCount === 1 ? 'Leg' : 'Legs') + ' on this trip</div>' +
+    '<div class="trip-subhead">Tap a leg to open its checklist</div>' +
     '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') +
       '<button type="button" class="dash-card dash-card-add" id="addLegTile"><span class="dash-card-add-plus">+</span><span class="dash-card-add-label">Add leg</span></button>' +
     '</div>' +
