@@ -1742,7 +1742,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T09:48:00Z';
+const BUILD_VERSION = '2026-08-22T10:02:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -9314,18 +9314,22 @@ function setPageHeader(opts){
 //
 //   dashboard / tripDetail      -- shown. This is where "which department" is a
 //                                 real question you might have.
-//   archivedTrip                -- shown, same place in the tree, sealed.
+//   history                     -- shown. The archived-trips list is the same
+//                                 depth as the active board.
+//   archivedTrip / archivedLeg  -- shown. Sealed pages have the corner free.
 //   home                        -- hidden. Nothing has been chosen yet, and it
 //                                 does not sit cleanly on that page anyway.
-//   editor / archivedLeg        -- hidden. That corner carries the verify
-//                                 counter, and you arrived via the department,
-//                                 a trip and a leg to get here.
-//   settings / history          -- hidden. Their headers carry their own text.
+//   editor                      -- hidden, and this is the ONLY exclusion with a
+//                                 layout reason rather than a navigational one:
+//                                 that corner carries the live verify counter.
+//                                 An ARCHIVED leg has no counter, which is why
+//                                 it is shown there and not here.
+//   settings                    -- hidden. Its header carries its own text.
 //
 // Called from setPageHeader() so it re-evaluates on every render. It only ever
 // toggles a class -- it never writes the NAME, which is written once by
 // loadDepartmentName() and must survive every render.
-const HEADER_DEPT_VIEWS = ['dashboard', 'tripDetail', 'archivedTrip'];
+const HEADER_DEPT_VIEWS = ['dashboard', 'tripDetail', 'history', 'archivedTrip', 'archivedLeg'];
 function applyHeaderDeptVisibility(){
   const el = document.getElementById('barDeptName');
   if(!el) return;
