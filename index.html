@@ -75,6 +75,22 @@
   .bar-fixed:empty{ display:none; }
   /* Legs scroll sideways INSIDE this track. The bar never grows or wraps, so the
      paperclip / refresh / menu anchors stay in one place on every trip. */
+  /* PRIMARY NAV. Same 34px height and hairline border as the bar's other
+     controls so the strip keeps ONE height. flex:0 0 auto: the nav must never
+     shrink or wrap -- if it runs out of room the contextual slot beside it
+     gives way first. */
+  .bar-nav{ display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+  .nav-btn{ display:flex; align-items:center; justify-content:center; height:34px; padding:0 12px;
+    background:none; border:1px solid var(--hairline); border-radius:3px; color:var(--fog-300);
+    font-family:system-ui,'Inter',sans-serif; font-size:13px; font-weight:500;
+    white-space:nowrap; cursor:pointer; flex:0 0 auto; }
+  /* Unbuilt, and it should LOOK unbuilt. Dimmed rather than disabled, because
+     these are still tappable -- tapping explains itself instead of doing
+     nothing. */
+  .nav-btn-soon{ color:var(--fog-500); border-style:dashed; }
+  /* WHERE YOU ARE. Amber is Beacon's "this is yours / this is active" colour;
+     it is not an alert here, it is position. */
+  .nav-btn.nav-active{ color:var(--amber-500); border-color:var(--amber-500); }
   .bar-btn{ display:flex; align-items:center; justify-content:center; width:40px; height:34px;
     background:none; border:1px solid var(--hairline); border-radius:3px; color:var(--fog-300);
     font-size:17px; cursor:pointer; flex:0 0 auto; }
@@ -1536,6 +1552,18 @@
 
 <div class="bottom-bar" id="bottomBar">
   <div class="bottom-bar-inner" id="bottomBarInner">
+    <!-- PRIMARY NAVIGATION. Three peers: the trip board, the schedule and chat.
+         Only Trips is wired; the other two are honest about being unbuilt rather
+         than being dead controls. Labels are deliberately BARE ("Schedule", not
+         "Beacon Schedule") because Beacon is a temporary operating name -- a
+         rename should not have to touch the nav.
+         These are SIBLINGS of bottomBarSlot, never inside it: that slot is wiped
+         and rewritten by the leg editor on every render. -->
+    <div class="bar-nav" id="barNav">
+      <button type="button" class="nav-btn" id="navTripsBtn" data-nav="trips">Trips</button>
+      <button type="button" class="nav-btn nav-btn-soon" id="navScheduleBtn" data-nav="schedule">Schedule</button>
+      <button type="button" class="nav-btn nav-btn-soon" id="navChatBtn" data-nav="chat">Chat</button>
+    </div>
     <div class="bottom-bar-slot" id="bottomBarSlot"></div>
     <div class="bar-fixed" id="barDocSlot"></div>
     <button type="button" class="bar-btn" id="barRefreshBtn" data-refresh="1" title="Refresh from server" aria-label="Refresh"><span class="refresh-icon" aria-hidden="true">&#8635;</span></button>
@@ -1742,7 +1770,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T10:02:00Z';
+const BUILD_VERSION = '2026-08-22T10:26:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -9302,6 +9330,7 @@ function setPageHeader(opts){
     }
   }
   applyHeaderDeptVisibility();
+  applyNavActive();
   requestAnimationFrame(syncPageHeaderHeight);
 }
 
@@ -9329,6 +9358,54 @@ function setPageHeader(opts){
 // Called from setPageHeader() so it re-evaluates on every render. It only ever
 // toggles a class -- it never writes the NAME, which is written once by
 // loadDepartmentName() and must survive every render.
+// PRIMARY NAV WIRING.
+//
+// Trips is the only live destination. It goes to the active board, and it flushes
+// any pending editor edits FIRST -- same contract as #pageBackBtn, because
+// leaving a leg by any route must not drop a half-typed field.
+//
+// Schedule and Chat are unbuilt. They are deliberately TAPPABLE and deliberately
+// honest: a tap explains that the feature is coming rather than doing nothing,
+// which is the difference between an unfinished feature and a broken button.
+// They write NOTHING and read NOTHING -- there is no state to corrupt here.
+document.addEventListener('click', function(e){
+  const btn = e.target.closest && e.target.closest('.nav-btn');
+  if(!btn) return;
+  const dest = btn.dataset.nav || '';
+  if(dest === 'trips'){
+    if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
+    state.view = 'dashboard';
+    state.activeId = null;
+    renderMain();
+    window.scrollTo(0, 0);
+    return;
+  }
+  if(dest === 'schedule'){
+    showConfirm(
+      'The schedule is not built yet. It will show who is working, who is away, and how the days are shared out across the department.',
+      { alertOnly: true, title: 'Schedule \u2014 coming soon', okLabel: 'Got it' }
+    );
+    return;
+  }
+  if(dest === 'chat'){
+    showConfirm(
+      'Chat is not built yet. Each trip will get its own conversation, created automatically from the crew on that trip.',
+      { alertOnly: true, title: 'Chat \u2014 coming soon', okLabel: 'Got it' }
+    );
+    return;
+  }
+});
+
+// WHICH NAV BUTTON READS AS CURRENT. The trip board and everything reached from
+// it (a trip, a leg, the archive) all live under Trips, so they all light it.
+// Home and Settings light nothing -- you are not inside a section.
+const NAV_TRIPS_VIEWS = ['dashboard', 'tripDetail', 'editor', 'history', 'archivedTrip', 'archivedLeg'];
+function applyNavActive(){
+  const b = document.getElementById('navTripsBtn');
+  if(!b) return;
+  b.classList.toggle('nav-active', NAV_TRIPS_VIEWS.indexOf(state && state.view) !== -1);
+}
+
 const HEADER_DEPT_VIEWS = ['dashboard', 'tripDetail', 'history', 'archivedTrip', 'archivedLeg'];
 function applyHeaderDeptVisibility(){
   const el = document.getElementById('barDeptName');
