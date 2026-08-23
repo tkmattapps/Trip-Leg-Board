@@ -53,14 +53,17 @@
   .bottom-bar{ position:fixed; left:0; right:0; bottom:0; z-index:35; background:var(--panel-800); border-top:1px solid var(--hairline); }
   .bottom-bar-inner{ display:flex; align-items:center; justify-content:space-between; gap:12px; max-width:1800px; margin:0 auto; padding:10px 20px; padding-bottom:max(10px, env(safe-area-inset-bottom)); min-height:52px; }
   .bottom-bar-slot{ display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto; overflow:hidden; }
-  /* Deliberately quiet: this is a thing you check, not a thing that should
-     compete with the contextual controls beside it. flex:0 1 auto plus the
-     ellipsis means a long department name shrinks rather than pushing the
-     paperclip, refresh and menu buttons off the bar. */
-  .bar-dept{ flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  /* WAS .bar-dept in the bottom bar. Now sits in the header's right-hand column,
+     above whatever pill the page puts there. Same muted treatment: this is
+     orientation, not a control, so it must not compete with the title or the
+     amber pills. Hidden when empty, and hidden entirely on pages that need the
+     corner for something else -- see applyHeaderDeptVisibility(). */
+  .page-header-dept{ max-width:200px; min-width:0; overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap; text-align:right;
     font-family:system-ui,'Inter',sans-serif; font-size:12px; font-weight:500; letter-spacing:0.02em;
     color:var(--fog-500); }
-  .bar-dept:empty{ display:none; }
+  .page-header-dept:empty{ display:none; }
+  .page-header-dept.dept-hidden{ display:none; }
     .bar-fixed{ display:flex; align-items:center; flex:0 0 auto; }
   .page-header-actions .bar-action{ margin-top:4px; }
   .bar-action{ display:flex; align-items:center; justify-content:center; height:34px; padding:0 14px;
@@ -1516,19 +1519,20 @@
            under the title on every page regardless of what the pill contains. -->
       <div class="page-header-sub" id="pageHeaderSub"></div>
     </div>
+    <!-- WHICH DEPARTMENT YOU ARE SIGNED INTO. Moved here from the bottom bar so
+         that bar can become navigation. It is a SIBLING of pageHeaderActions and
+         never inside it, for exactly the reason the bottom-bar comment gave:
+         setPageHeader() wipes the actions area on EVERY render, so anything
+         living in there has to be re-injected by every caller. This element is
+         written once when the department resolves. Which PAGES show it is a
+         separate question, handled by applyHeaderDeptVisibility(). -->
+    <div class="page-header-dept" id="barDeptName"></div>
     <div class="page-header-actions" id="pageHeaderActions"></div>
   </div>
 </div>
 
 <div class="bottom-bar" id="bottomBar">
   <div class="bottom-bar-inner" id="bottomBarInner">
-    <!-- Which flight department you are signed into. A SIBLING of bottomBarSlot,
-         never inside it: setPageHeader() wipes that slot on EVERY render so a
-         leg's controls can't linger on a page with no legs. Anything living in
-         there would have to be re-injected by every caller, which is exactly the
-         fragility that rule exists to prevent. This element is written once when
-         the department resolves and is not touched by a render again. -->
-    <div class="bar-dept" id="barDeptName"></div>
     <div class="bottom-bar-slot" id="bottomBarSlot"></div>
     <div class="bar-fixed" id="barDocSlot"></div>
     <button type="button" class="bar-btn" id="barRefreshBtn" data-refresh="1" title="Refresh from server" aria-label="Refresh"><span class="refresh-icon" aria-hidden="true">&#8635;</span></button>
@@ -1735,7 +1739,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T08:26:00Z';
+const BUILD_VERSION = '2026-08-22T09:12:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -9294,7 +9298,36 @@ function setPageHeader(opts){
       backEl.dataset.pageBack = '';
     }
   }
+  applyHeaderDeptVisibility();
   requestAnimationFrame(syncPageHeaderHeight);
+}
+
+// WHICH PAGES SHOW THE DEPARTMENT NAME.
+//
+// Orientation matters most at the top of the tree and least at the bottom of it.
+// Kept as an explicit ALLOW-LIST rather than a deny-list: a new view added later
+// gets no department name until someone decides it should have one, which fails
+// quiet rather than fighting a pill for the same corner.
+//
+//   dashboard / tripDetail      -- shown. This is where "which department" is a
+//                                 real question you might have.
+//   archivedTrip                -- shown, same place in the tree, sealed.
+//   home                        -- hidden. Nothing has been chosen yet, and it
+//                                 does not sit cleanly on that page anyway.
+//   editor / archivedLeg        -- hidden. That corner carries the verify
+//                                 counter, and you arrived via the department,
+//                                 a trip and a leg to get here.
+//   settings / history          -- hidden. Their headers carry their own text.
+//
+// Called from setPageHeader() so it re-evaluates on every render. It only ever
+// toggles a class -- it never writes the NAME, which is written once by
+// loadDepartmentName() and must survive every render.
+const HEADER_DEPT_VIEWS = ['dashboard', 'tripDetail', 'archivedTrip'];
+function applyHeaderDeptVisibility(){
+  const el = document.getElementById('barDeptName');
+  if(!el) return;
+  const show = HEADER_DEPT_VIEWS.indexOf(state && state.view) !== -1;
+  el.classList.toggle('dept-hidden', !show);
 }
 
 
@@ -11834,15 +11867,22 @@ async function bootApp(){
   loadDepartmentName();
 }
 
-// Writes the signed-in flight department's name into the bottom bar, where it
-// stays visible on every screen rather than only on the home page -- a mistake
-// about which department you are in costs the most inside a leg, not on the
-// board.
+// Writes the signed-in flight department's name into the HEADER's right-hand
+// column. It used to live in the bottom bar; it moved so that bar can become
+// navigation.
+//
+// It is no longer shown on every screen. Orientation matters most at the top of
+// the tree, so it appears on the active-trips board and the trip page, and is
+// suppressed on the home page (you have not chosen anything yet) and inside a
+// leg (that corner carries the verify counter, and four levels deep nobody is
+// unsure which department they are in). That policy lives in
+// applyHeaderDeptVisibility(), not here.
 //
 // Deliberately fire-and-forget and deliberately silent on failure. This is an
 // indicator, not a gate: nothing about the app should stop working because a
-// label could not be fetched. An empty element is hidden by .bar-dept:empty, so
-// a failure looks like the bar did before this change rather than like a bug.
+// label could not be fetched. An empty element is hidden by
+// .page-header-dept:empty, so a failure looks like the header did before this
+// change rather than like a bug.
 //
 // flight_departments has a SELECT policy ("Users can view own department")
 // scoped to get_my_flight_department_ids() OR get_my_company_ids(), so a
