@@ -51,8 +51,8 @@
   
   
   .bottom-bar{ position:fixed; left:0; right:0; bottom:0; z-index:35; background:var(--panel-800); border-top:1px solid var(--hairline); }
-  .bottom-bar-inner{ position:relative; display:flex; align-items:center; justify-content:space-between; gap:10px; max-width:1800px; margin:0 auto; padding:5px 14px; padding-bottom:max(5px, env(safe-area-inset-bottom)); min-height:54px; }
-  .bottom-bar-slot{ display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto; overflow:hidden; }
+  .bottom-bar-inner{ display:flex; align-items:center; justify-content:space-between; gap:10px; max-width:1800px; margin:0 auto; padding:5px 14px; padding-bottom:max(5px, env(safe-area-inset-bottom)); min-height:54px; }
+  .bottom-bar-slot{ display:flex; align-items:center; gap:10px; min-width:0; flex:0 1 auto; overflow:hidden; }
   /* WAS .bar-dept in the bottom bar. Now sits in the header's right-hand column,
      above whatever pill the page puts there. Same muted treatment: this is
      orientation, not a control, so it must not compete with the title or the
@@ -84,13 +84,13 @@
      deliberately looks different from tools, because it is a different kind of
      thing. flex:0 0 auto: the nav never shrinks or wraps; if the bar runs out of
      room the contextual slot beside it gives way first. */
-  /* CENTRED ACROSS THE BAR. The cluster is absolutely positioned and translated
-     rather than centred by flex, so it stays put no matter what the contextual
-     slots beside it contain. A paperclip appearing on the trip page must not
-     nudge the navigation sideways -- a control that moves is a control you have
-     to look for. */
-  .bar-nav{ position:absolute; left:50%; transform:translateX(-50%);
-    display:flex; align-items:flex-end; gap:2px; flex:0 0 auto; }
+  /* SPREAD ACROSS THE AVAILABLE WIDTH. The nav takes every pixel the pinned
+     controls on the right do not, and space-evenly distributes the three
+     destinations across it. Absolute centring was tried and abandoned: taken out
+     of flow, the nav could not see the utilities and Refresh landed on top of
+     Schedule. */
+  .bar-nav{ display:flex; align-items:center; justify-content:space-evenly;
+    gap:2px; flex:1 1 auto; min-width:0; }
   .nav-btn{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
     min-width:60px; height:44px; padding:0 8px;
     background:none; border:none; border-radius:4px; color:var(--fog-300);
@@ -114,8 +114,11 @@
   /* WHERE YOU ARE. Amber is Beacon's "this is yours / this is active" colour; it
      is not an alert here, it is position. */
   .nav-btn.nav-active{ color:var(--amber-500); }
-  /* Nav on the left, tools on the right, a hairline between them. */
-  .bar-divider{ width:1px; align-self:stretch; margin:4px 2px; background:var(--hairline); flex:0 0 auto; }
+  /* Nav on the left, fixed controls on the right, a hairline between them. */
+  .bar-divider{ width:1px; align-self:stretch; margin:6px 4px; background:var(--hairline); flex:0 0 auto; }
+  /* PINNED RIGHT AND IMMOVABLE. flex:0 0 auto so this group never stretches or
+     shrinks; the nav beside it absorbs all the slack instead. */
+  .bar-utils{ display:flex; align-items:center; gap:2px; flex:0 0 auto; }
   /* .bar-btn / .menu-btn / .menu-btn-bars REMOVED: refresh and menu are now
      .nav-btn like everything else in the cluster, so the bordered 40x34 pill and
      the hand-drawn hamburger bars had no elements left. */
@@ -1061,7 +1064,10 @@
   .leg-attach-badge-zero .doc-icon{ color:var(--amber-500); }
   .leg-attach-badge .doc-icon{ width:13px; height:13px; }
   /* header paperclip jump-to-documents */
-  .doc-jump-btn{ margin-right:auto; display:inline-flex; align-items:center; gap:4px; background:transparent; border:1px solid var(--fog-500); color:var(--fog-300, #B8C4D9); border-radius:16px; padding:5px 10px; cursor:pointer; }
+  /* margin-right:auto REMOVED: a leftover from when the paperclip pushed the bar's
+     controls apart. It now sits inside the pinned .bar-utils group, where an auto
+     margin does nothing but mislead the next reader. */
+  .doc-jump-btn{ display:inline-flex; align-items:center; gap:4px; background:transparent; border:1px solid var(--fog-500); color:var(--fog-300, #B8C4D9); border-radius:16px; padding:5px 10px; cursor:pointer; }
   .doc-jump-btn:hover{ border-color:var(--amber-500); color:var(--amber-500); }
   .doc-jump-btn .doc-icon{ width:16px; height:16px; }
   .doc-jump-count{ font-size:12px; font-weight:700; min-width:8px; display:inline-block; text-align:center; }
@@ -1576,14 +1582,7 @@
 
 <div class="bottom-bar" id="bottomBar">
   <div class="bottom-bar-inner" id="bottomBarInner">
-    <!-- PRIMARY NAVIGATION. Three peers: the trip board, the schedule and chat.
-         Only Trips is wired; the other two are honest about being unbuilt rather
-         than being dead controls. Labels are deliberately BARE ("Schedule", not
-         "Beacon Schedule") because Beacon is a temporary operating name -- a
-         rename should not have to touch the nav.
-         These are SIBLINGS of bottomBarSlot, never inside it: that slot is wiped
-         and rewritten by the leg editor on every render. -->
-    <div class="bar-nav" id="barNav">
+<div class="bar-nav" id="barNav">
       <button type="button" class="nav-btn" id="navTripsBtn" data-nav="trips">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.8 19.2 16 11l3.5-3.5a2.12 2.12 0 0 0-3-3L13 8 4.8 6.2a2 2 0 0 0-1.9.5L2 7.6l7 3.9-2.5 2.5-2.3-.4-1 1L6 16.3l1.7 2.8 1-1-.4-2.3L10.8 15l3.9 7 .9-.9a2 2 0 0 0 .5-1.9Z"/></svg>
         <span class="nav-lbl">Trips</span>
@@ -1597,15 +1596,18 @@
         <span class="nav-lbl">Chat</span>
       </button>
     </div>
-      <!-- Marks where NAVIGATION ends and UTILITIES begin. Now that all five
-           buttons are one centred cluster this reads as "these two are a
-           different KIND of thing" rather than "these live somewhere else",
-           which is the honest reading either way. -->
-      <div class="bar-divider" aria-hidden="true"></div>
-      <!-- REFRESH AND MENU, same icon-over-label treatment as the nav. They keep
-           their ids and data-refresh hook: existing handlers bind by id, so the
-           rewrite must not rename anything. The refresh SVG is wrapped in the
-           .refresh-icon span the spin animation targets. -->
+    <!-- Contextual, and NOT navigation: the leg editor's hidden status select.
+         It sits between the nav and the pinned utilities so it can absorb any
+         leftover width without displacing either. -->
+    <div class="bottom-bar-slot" id="bottomBarSlot"></div>
+    <!-- Marks where NAVIGATION ends and the FIXED CONTROLS begin. -->
+    <div class="bar-divider" aria-hidden="true"></div>
+    <!-- PINNED RIGHT, IMMOVABLE. The paperclip is contextual and appears only on
+         the trip page and the leg editor, but it enters to the LEFT of refresh
+         and menu, so those two never move -- muscle memory for the two controls
+         present on every page is worth more than a tidy edge. -->
+    <div class="bar-utils">
+      <div class="bar-fixed" id="barDocSlot"></div>
       <button type="button" class="nav-btn nav-btn-util" id="barRefreshBtn" data-refresh="1" title="Refresh from server" aria-label="Refresh">
         <span class="refresh-icon nav-ico-wrap" aria-hidden="true"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span>
         <span class="nav-lbl">Refresh</span>
@@ -1615,11 +1617,6 @@
         <span class="nav-lbl">Menu</span>
       </button>
     </div>
-    <!-- Contextual, NOT navigation: the leg editor's hidden status select and the
-         paperclip jump. They sit outside the centred cluster so nothing shifts
-         position when a page adds or removes one. -->
-    <div class="bottom-bar-slot" id="bottomBarSlot"></div>
-    <div class="bar-fixed" id="barDocSlot"></div>
   </div>
 </div>
 
@@ -1820,7 +1817,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T11:34:00Z';
+const BUILD_VERSION = '2026-08-22T12:06:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
