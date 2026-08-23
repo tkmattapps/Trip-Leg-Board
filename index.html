@@ -1738,7 +1738,10 @@
      whenever the signed-in user has no acceptance row for TERMS_VERSION. -->
 <div class="terms-overlay" id="termsOverlay" role="dialog" aria-modal="true" aria-labelledby="termsTitle">
   <div class="terms-modal">
-    <div class="terms-title" id="termsTitle">Before you use Beacon</div>
+    <!-- "beta" belongs in the HEADING, not three paragraphs down. The app now
+         looks finished enough that a tester will assume it IS finished unless the
+         first line they read says otherwise. -->
+    <div class="terms-title" id="termsTitle">Before you use Beacon (in beta)</div>
     <div class="terms-version-line" id="termsVersionLine"></div>
 
     <div class="terms-callout">
@@ -1746,7 +1749,7 @@
       <p><strong>Do not upload real trip paperwork.</strong> No other operator's documents, and no passenger information. Use fabricated or sanitised documents for testing.</p>
     </div>
 
-    <p class="terms-intro">Beacon is a pre-release test application. Access is granted for evaluation only, on the terms below.</p>
+    <p class="terms-intro">Beacon is an unfinished application in beta test. Features are incomplete, will change, and can break. Access is granted for evaluation only, on the terms below.</p>
 
     <div class="terms-body" id="termsBody"></div>
 
@@ -1817,7 +1820,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T12:24:00Z';
+const BUILD_VERSION = '2026-08-22T12:58:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -1832,9 +1835,9 @@ const BUILD_VERSION = '2026-08-22T12:24:00Z';
 // The discipline is therefore on the author, not the code. That is the correct
 // trade: the alternative -- gating on a hash of the text -- means fixing a typo
 // silently forces the entire beta to re-accept.
-const TERMS_VERSION = '0.1';
+const TERMS_VERSION = '0.2';
 
-// SHA-256 of the canonical plain text of version 0.1, recorded alongside each
+// SHA-256 of the canonical plain text of the terms body, recorded alongside each
 // acceptance. This is EVIDENCE, NOT A GATE: it answers "what exactly did this
 // person agree to" long after the wording has moved on. It is never compared
 // at boot.
