@@ -1872,7 +1872,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T14:22:00Z';
+const BUILD_VERSION = '2026-08-22T14:48:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3730,6 +3730,12 @@ async function saveLeg(leg){
       if(!result) throw new Error('no result');
       if(_changes.length){ logLegChanges(leg, _changes); }
       snapshotLeg(leg);
+      // If this save is the one that gave an unnumbered trip its number, move
+      // any chat link across to the new key. Deliberately NOT awaited: the save
+      // has already succeeded and must not be held up, and reconcile swallows
+      // its own errors. Only runs when tripNumber is present, and costs one
+      // indexed read otherwise.
+      if(_changes.some(c => c.field_path === 'tripNumber')) reconcileChatLinkKey(leg);
       return true;
     }catch(e){
       console.error('save failed (attempt ' + attempt + ')', e);
@@ -11847,13 +11853,100 @@ async function deleteChatLink(tripId){
 // nobody chats about a trip that has already been sealed, and a list that grows
 // forever stops being a shortcut. Sorted by the existing trip order so the
 // sheet matches the trip board rather than inventing its own sequence.
+// THE KEY A CHAT LINK IS STORED UNDER.
+//
+// A trip number is the natural key, but a trip does not always have one --
+// paperwork arrives without it, and Scott's crew briefing is exactly that case.
+// Those legs are still a real trip: groupIntoTrips() bundles them under
+// '__grp_<groupId>', and groupId lives on the leg, so the identity is stable
+// even though it is not a number.
+//
+// So: use the trip number when there is one, otherwise the group key. Both are
+// text, which is what the trip_id column is.
+//
+// The consequence is handled by reconcileChatLinkKey() below -- when a number
+// finally arrives, the key changes, and the row has to move with it or the link
+// is silently orphaned.
+function chatTripKey(trip){
+  if(!trip) return '';
+  const tn = (trip.tripNumber || '').trim();
+  if(tn) return tn;
+  return String(trip.key || '');       // '__grp_<groupId>' or '__solo_<legId>'
+}
+
 function chatSheetTrips(){
   const trips = groupIntoTrips((state.legs || []).filter(l => !l.deletedAt));
   return trips.filter(t => {
     const tn = (t.tripNumber || '').trim();
-    if(!tn) return false;              // an unnumbered trip has no stable key to hang a link on
-    return !tripIsArchived(tn);
+    // Unnumbered trips ARE included -- they key on their group instead.
+    // Archived trips are not: nobody chats about a sealed trip, and a list that
+    // grows forever stops being a shortcut. Only a numbered trip can be
+    // archived, so an unnumbered one can never be excluded on that ground.
+    if(tn && tripIsArchived(tn)) return false;
+    return true;
   });
+}
+
+// MOVE A LINK WHEN A TRIP GAINS ITS NUMBER.
+//
+// An unnumbered trip's link is stored under '__grp_<groupId>'. The moment a
+// trip number appears -- typed into the editor, or filled in by a re-upload
+// through mergeLegInto() -- chatTripKey() starts returning the number instead,
+// and the old row becomes unreachable. The link would still be in the table and
+// would simply never be found again.
+//
+// This re-keys it: read the row under the old group key, write it under the new
+// number, delete the old. Insert-then-delete deliberately, so a failure halfway
+// leaves a DUPLICATE rather than NOTHING -- losing the link is the worse
+// outcome, and a duplicate is visible and removable.
+//
+// Called after a save, and it is cheap: it does nothing at all unless a link
+// exists under a stale group key.
+async function reconcileChatLinkKey(leg){
+  if(!leg) return;
+  const tn = (leg.tripNumber || '').trim();
+  if(!tn) return;                      // still unnumbered; nothing to move
+  const groupKey = '__grp_' + (leg.groupId || ('__solo_' + leg.id));
+  try {
+    const deptId = await getFlightDepartmentId();
+    if(!deptId) return;
+    const { data, error } = await sb.from('trip_chat_links')
+      .select('trip_id, url, provider, created_by')
+      .eq('flight_department_id', deptId)
+      .eq('trip_id', groupKey)
+      .maybeSingle();
+    if(error || !data) return;         // no stale row: the common case, costs one indexed read
+
+    // Do not clobber a link already set against the number itself. If both
+    // exist the numbered one wins, because it is the one people can currently
+    // see and use -- and the stale row is then cleared away regardless.
+    const existing = await sb.from('trip_chat_links')
+      .select('trip_id')
+      .eq('flight_department_id', deptId)
+      .eq('trip_id', tn)
+      .maybeSingle();
+
+    if(!existing.data){
+      const ins = await sb.from('trip_chat_links').upsert({
+        flight_department_id: deptId,
+        trip_id: tn,
+        url: data.url,
+        provider: data.provider,
+        created_by: data.created_by,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'flight_department_id,trip_id' }).select('trip_id');
+      if(ins.error){ console.warn('reconcileChatLinkKey insert', ins.error); return; }
+    }
+
+    await sb.from('trip_chat_links').delete()
+      .eq('flight_department_id', deptId)
+      .eq('trip_id', groupKey);
+    await loadChatLinks();
+  } catch(err){
+    // Never let this break a save. A missed re-key is recoverable by hand;
+    // a failed save is not.
+    console.warn('reconcileChatLinkKey', err);
+  }
 }
 
 function chatSheetBodyHTML(){
@@ -11864,12 +11957,17 @@ function chatSheetBodyHTML(){
   let h = '<div class="chat-sheet-intro">Opens the group in the other app. '
         + 'Messages stay there \u2014 they are not part of the trip record.</div>';
   trips.forEach(t => {
+    const key   = chatTripKey(t);
     const tn    = (t.tripNumber || '').trim();
-    const link  = chatLinkFor(tn);
+    // An unnumbered trip is named the way the rest of the app names it, so the
+    // row is recognisable: 'Unnumbered trip - 19 AUG 2026' rather than a
+    // synthetic group id, which would mean nothing to a pilot.
+    const title = tn ? ('Trip ' + tn) : unnumberedTripLabel(t.legs);
+    const link  = chatLinkFor(key);
     const dates = tripCardDateRange(t.legs);
-    h += '<div class="chat-row" data-chat-trip="' + escapeHtml(tn) + '">'
+    h += '<div class="chat-row" data-chat-trip="' + escapeHtml(key) + '">'
        +   '<div class="chat-row-text">'
-       +     '<div class="chat-row-title">Trip ' + escapeHtml(tn) + '</div>'
+       +     '<div class="chat-row-title">' + escapeHtml(title) + '</div>'
        +     '<div class="chat-row-sub">' + escapeHtml(dates) + '</div>'
        +   '</div>'
        +   '<div class="chat-row-act">';
@@ -11877,10 +11975,10 @@ function chatSheetBodyHTML(){
       const label = CHAT_PROVIDER_LABEL[link.provider] || 'chat';
       h += '<a class="btn btn-primary chat-open" href="' + escapeHtml(link.url) + '" '
          +    'target="_blank" rel="noopener noreferrer">Open ' + escapeHtml(label) + '</a>'
-         +  '<button type="button" class="chat-unlink" data-chat-unlink="' + escapeHtml(tn) + '" '
+         +  '<button type="button" class="chat-unlink" data-chat-unlink="' + escapeHtml(key) + '" '
          +    'aria-label="Remove link">Remove</button>';
     } else {
-      h += '<button type="button" class="btn chat-link-btn" data-chat-add="' + escapeHtml(tn) + '">Link a chat</button>';
+      h += '<button type="button" class="btn chat-link-btn" data-chat-add="' + escapeHtml(key) + '">Link a chat</button>';
     }
     h += '</div></div>';
   });
@@ -11984,8 +12082,13 @@ document.addEventListener('click', async function(e){
   const unlink = t.closest('[data-chat-unlink]');
   if(unlink){
     const tripId = unlink.getAttribute('data-chat-unlink');
+    // Name the trip the way the row does. tripId may be a synthetic group key,
+    // which would be meaningless in a sentence.
+    const row   = unlink.closest('.chat-row');
+    const tEl   = row && row.querySelector('.chat-row-title');
+    const label = tEl ? tEl.textContent : ('trip ' + tripId);
     const ok = await showConfirm(
-      'Remove the chat link from trip ' + tripId + '? The group itself is untouched \u2014 this only removes the shortcut.',
+      'Remove the chat link from ' + label + '? The group itself is untouched \u2014 this only removes the shortcut.',
       { title: 'Remove chat link', okLabel: 'Remove' }
     );
     if(!ok) return;
