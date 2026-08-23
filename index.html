@@ -1872,7 +1872,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T15:41:00Z';
+const BUILD_VERSION = '2026-08-22T16:12:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4375,20 +4375,7 @@ function field(label, id, value, opts){
   if(type === 'textarea'){
     return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label><textarea id="' + id + '" placeholder="' + escapeHtml(ph) + '"' + ro + '>' + escapeHtml(value) + '</textarea></div>';
   }
-  // DATE FIELDS CARRY THEIR RENDERED VALUE.
-  //
-  // iOS commits a date into an empty date input merely because the picker was
-  // opened and dismissed -- no selection made. focusout then fires, the 500ms
-  // autosave runs, and today's date is written to the leg as though a human had
-  // chosen it, carrying human provenance with nothing marking it suspect.
-  //
-  // data-rendered records what the field held when it was drawn. dateVal()
-  // reads it: a field that started empty is never committed by the blur
-  // autosave, which is the only path that can write a value nobody looked at.
-  const dateAttrs = (type === 'date')
-    ? ' data-date-field="1" data-rendered="' + escapeHtml(value || '') + '"'
-    : '';
-  return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label><input type="' + type + '" id="' + id + '" value="' + escapeHtml(value) + '" placeholder="' + escapeHtml(ph) + '"' + ro + langAttr + dateAttrs + ' /></div>';
+  return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label><input type="' + type + '" id="' + id + '" value="' + escapeHtml(value) + '" placeholder="' + escapeHtml(ph) + '"' + ro + langAttr + ' /></div>';
 }
 
 // A <select> that reuses field()'s wrapper, so provenance classes,
@@ -11262,62 +11249,6 @@ function setupTZAutofill(cfg){
 
 function val(id){ const el = document.getElementById(id); return el ? el.value : ''; }
 
-// READ A DATE FIELD, REFUSING VALUES THE USER NEVER CHOSE.
-//
-// The rule: a date is only a value if a human committed it. On iOS, opening a
-// date picker over an EMPTY field and dismissing it leaves today's date in the
-// box without any selection being made. Writing that is the app signing a
-// human's name to its own arithmetic -- and it is not harmless: the scheduler
-// counts days, so a phantom arrival date silently makes a trip a day longer and
-// corrupts the fairness ledger.
-//
-// So a date reports its value only when EITHER
-//   - it rendered with a value already (an existing date, being kept), OR
-//   - a real 'change' event has fired on it this editor session (a choice).
-// Otherwise it reports empty, exactly as the pilot left it. Silence in the
-// document is not a question to put to the pilot.
-//
-// Falls back to a plain read if the element is missing its markers, so any
-// future date field that skips field() still behaves as it did before.
-function dateVal(id, opts){
-  opts = opts || {};
-  const el = document.getElementById(id);
-  if(!el) return '';
-  if(el.getAttribute('data-date-field') !== '1') return el.value || '';
-  const rendered = el.getAttribute('data-rendered') || '';
-
-  // A field that rendered with a date behaves exactly as it always has: edits
-  // and deliberate clears are both honoured. The phantom only ever appears in a
-  // field that started EMPTY.
-  if(rendered) return el.value || '';
-
-  // AN EMPTY DATE IS NEVER COMMITTED BY A BLUR.
-  //
-  // The first attempt at this trusted the 'change' event as proof of intent --
-  // if no selection was made, no change should fire. That was WRONG on iOS,
-  // confirmed on device: dismissing the picker leaves today's date in the box
-  // AND fires change, so the guard approved a value nobody chose.
-  //
-  // Rather than hunt for a sharper discriminator, this refuses the whole path.
-  // Any such discriminator -- comparing against today, timing the event, reading
-  // its ordering -- would rest on undocumented iOS behaviour that Apple can
-  // change in a point release, and it would fail SILENTLY, which is the worst
-  // outcome for a value the scheduler counts days with.
-  //
-  // The cost is real and small: a date typed into a previously empty field is
-  // not persisted by the 500ms blur autosave. It IS persisted by every other
-  // path -- Save, navigating away, refresh, verifying a section -- because those
-  // are moments a human chose, and the value is on screen to be seen.
-  // Fall back to what the LEG already holds, not to empty. leg.arr is rebuilt
-  // wholesale on every collect, so returning '' here would not merely decline to
-  // write the phantom -- it would erase a good date. In practice a stored date
-  // means the field rendered with it and we returned above; this is belt and
-  // braces against a render path that ever skips data-rendered.
-  if(opts.fromBlur) return (opts.fallback == null ? '' : opts.fallback);
-
-  return el.value || '';
-}
-
 function collectOverflightRows(){
   const rows = [];
   document.querySelectorAll('#overflightList .ovf-row').forEach(rowEl => {
@@ -11397,7 +11328,7 @@ async function collectAndSave(id, opts){
   leg.status = val('statusSelect');
   leg.tripNumber = val('tripNumber');
   leg.legNumber = val('legNumber');
-  leg.date = dateVal('date', { fromBlur: !!opts.fromBlur, fallback: leg.date });
+  leg.date = val('date');
   leg.cityPair = val('cityPair');
   leg.tailNumber = val('tailNumber');
   // Crew is read from the rendered pickers. The list slots are read by walking
@@ -11417,7 +11348,7 @@ async function collectAndSave(id, opts){
     notes: (leg.dep.notes || '')
   };
   leg.arr = {
-    airportId: val('arrAirportId'), tz: leg.arr.tz || '', date: dateVal('arrDate', { fromBlur: !!opts.fromBlur, fallback: (leg.arr && leg.arr.date) }), etaLocal: val('arrEtaLocal'), etaZ: val('arrEtaZ'),
+    airportId: val('arrAirportId'), tz: leg.arr.tz || '', date: val('arrDate'), etaLocal: val('arrEtaLocal'), etaZ: val('arrEtaZ'),
     hours: val('arrHours'), slotReqd: val('arrSlotReqd'), slotTimeNumber: val('arrSlotTimeNumber'),
     slotAllowance: val('arrSlotAllowance'), agent: val('arrAgent'), agentPhone: val('arrAgentPhone'), frequency: val('arrFrequency'),
     fuelVendor: val('arrFuelVendor'), fuelPaymentMethod: val('arrFuelPaymentMethod'), fuelPricePerGallon: val('arrFuelPricePerGallon'), rampFee: val('arrRampFee'), rampFeeWaived: val('arrRampFeeWaived'), rampFeeMinGallons: val('arrRampFeeMinGallons'), groundTransportReqd: val('arrGroundTransportReqd'), groundTransportDetails: val('arrGroundTransportDetails'), utcOffsetManual: val('arrUtcOffset'), notes: (leg.arr.notes || ''),
@@ -11435,7 +11366,7 @@ async function collectAndSave(id, opts){
   leg.paxTotalNotes = val('paxTotalNotes');
   leg.crewHotelCarNotes = val('crewHotelCarNotes');
   leg.nextLegDestination = val('nextLegDestination');
-  leg.nextLegDate = dateVal('nextLegDate', { fromBlur: !!opts.fromBlur, fallback: leg.nextLegDate });
+  leg.nextLegDate = val('nextLegDate');
   leg.nextLegDay = val('nextLegDay');
   leg.nextLegEtd = val('nextLegEtd');
   leg.nextLegEta = val('nextLegEta');
@@ -11503,19 +11434,15 @@ function wireFieldBlurAutosave(){
     if(!t || !t.matches || !t.matches('input, select, textarea')) return;
     if(_fieldBlurTimer) clearTimeout(_fieldBlurTimer);
     _fieldBlurTimer = setTimeout(function(){
-      // fromBlur: this save was triggered by focus leaving a field, not by a
-      // human deciding to save. Date fields are held back on this path -- see
-      // dateVal().
-      autoSaveIfEditing({ fromBlur: true });
+      autoSaveIfEditing();
       refreshHistoryPanelIfOpen();
     }, 500);
   });
 }
-function autoSaveIfEditing(opts){
-  opts = opts || {};
+function autoSaveIfEditing(){
   if(state.view === 'editor' && state.activeId && !autosaveInFlight){
     autosaveInFlight = true;
-    collectAndSave(state.activeId, { silent: true, skipRender: true, fromBlur: !!opts.fromBlur })
+    collectAndSave(state.activeId, { silent: true, skipRender: true })
       .catch(e => console.error('autosave error', e))
       .finally(() => { autosaveInFlight = false; });
   }
