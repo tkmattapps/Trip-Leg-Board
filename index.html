@@ -111,9 +111,14 @@
   /* Unbuilt, and it should LOOK unbuilt -- but still tappable, because a tap
      that explains itself beats a control that does nothing. */
   .nav-btn-soon{ color:var(--fog-500); opacity:0.65; }
-  /* WHERE YOU ARE. Amber is Beacon's "this is yours / this is active" colour; it
-     is not an alert here, it is position. */
-  .nav-btn.nav-active{ color:var(--amber-500); }
+  /* NO ACTIVE STATE, BY DECISION. Trips used to turn amber while you were
+     anywhere beneath it. Removed: with only two live destinations and a whole
+     hierarchy (trip, leg, archive) sitting under Trips, the moment of change was
+     unpredictable -- it read as a glitch rather than as position. An active state
+     you cannot predict is worse than none.
+     The only distinction the bar now draws is the one that is actually true:
+     BUILT (fog-300) versus NOT BUILT (.nav-btn-soon). Reinstate this if the nav
+     ever grows enough peers for "where am I" to be a real question. */
   /* Nav on the left, fixed controls on the right, a hairline between them. */
   .bar-divider{ width:1px; align-self:stretch; margin:6px 4px; background:var(--hairline); flex:0 0 auto; }
   /* PINNED RIGHT AND IMMOVABLE. flex:0 0 auto so this group never stretches or
@@ -1622,7 +1627,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
         <span class="nav-lbl">Schedule</span>
       </button>
-      <button type="button" class="nav-btn nav-btn-soon" id="navChatBtn" data-nav="chat">
+      <button type="button" class="nav-btn" id="navChatBtn" data-nav="chat">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>
         <span class="nav-lbl">Chat</span>
       </button>
@@ -1867,7 +1872,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T14:05:00Z';
+const BUILD_VERSION = '2026-08-22T14:22:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -9531,15 +9536,17 @@ document.addEventListener('click', function(e){
   }
 });
 
-// WHICH NAV BUTTON READS AS CURRENT. The trip board and everything reached from
-// it (a trip, a leg, the archive) all live under Trips, so they all light it.
-// Home and Settings light nothing -- you are not inside a section.
-const NAV_TRIPS_VIEWS = ['dashboard', 'tripDetail', 'editor', 'history', 'archivedTrip', 'archivedLeg'];
-function applyNavActive(){
-  const b = document.getElementById('navTripsBtn');
-  if(!b) return;
-  b.classList.toggle('nav-active', NAV_TRIPS_VIEWS.indexOf(state && state.view) !== -1);
-}
+// NO NAV BUTTON READS AS CURRENT ANY MORE.
+//
+// Trips used to light amber for every view beneath it (a trip, a leg, the
+// archive). Removed by decision: the jump from white to amber was unpredictable
+// in use -- with a whole hierarchy under one button, you could not tell what had
+// triggered it, so it read as a glitch rather than as position.
+//
+// Kept as a no-op rather than deleted, because setPageHeader() calls this on
+// every render. Removing the function would mean editing that call site too, and
+// this stub is the smaller change. If a real active state returns, it goes here.
+function applyNavActive(){ /* intentionally does nothing -- see above */ }
 
 const HEADER_DEPT_VIEWS = ['dashboard', 'tripDetail', 'history', 'archivedTrip', 'archivedLeg'];
 function applyHeaderDeptVisibility(){
