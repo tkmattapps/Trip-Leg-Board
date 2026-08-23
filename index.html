@@ -1141,7 +1141,38 @@
   .install-qr-box{ background:#fff; padding:12px; border-radius:10px; line-height:0; }
   .install-qr-box img, .install-qr-box canvas{ display:block; }
   .install-qr-caption{ font-family:system-ui,'Inter',sans-serif; font-size:11px; color:var(--fog-500); text-align:center; }
-  .feedback-overlay{
+  
+/* TRIP CHAT SHEET. Rows reuse the modal shell; only the row internals are new. */
+.chat-sheet-intro{
+  font-size:12px; color:var(--fog-500); line-height:1.45;
+  padding:2px 0 12px; border-bottom:1px solid var(--hairline); margin-bottom:6px;
+}
+.chat-sheet-empty{ font-size:13px; color:var(--fog-500); padding:14px 0; }
+.chat-row{
+  display:flex; align-items:center; gap:12px;
+  padding:11px 0; border-bottom:1px solid var(--hairline);
+}
+.chat-row:last-child{ border-bottom:0; }
+.chat-row-text{ flex:1 1 auto; min-width:0; }
+.chat-row-title{ font-size:15px; color:var(--paper-050); }
+.chat-row-sub{ font-size:12px; color:var(--fog-500); margin-top:2px; }
+.chat-row-act{ flex:0 0 auto; display:flex; align-items:center; gap:8px; }
+/* The open control is a real anchor, not a button: a universal link must be a
+   link so iOS hands off to the app instead of opening a browser tab. */
+a.chat-open{ text-decoration:none; display:inline-block; }
+.chat-unlink{
+  background:none; border:0; padding:4px 2px;
+  font-size:12px; color:var(--fog-500); cursor:pointer;
+}
+.chat-paste-wrap{ display:flex; flex-direction:column; gap:8px; align-items:stretch; }
+.chat-paste-input{
+  min-width:190px; font-size:16px; /* 16px or iOS zooms the page on focus */
+  padding:8px 10px; border-radius:8px;
+  border:1px solid var(--hairline); background:var(--panel-800); color:var(--paper-050);
+}
+.chat-paste-btns{ display:flex; gap:8px; justify-content:flex-end; }
+
+.feedback-overlay{
     display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:70;
     align-items:center; justify-content:center; padding:20px;
   }
@@ -1680,6 +1711,22 @@
   </div>
 </div>
 
+<!-- TRIP CHAT SHEET.
+     Raised by the Chat button in the bottom bar. Lists the department's live
+     trips; each row either OPENS an external group chat or offers to LINK one.
+     The bar button is global while a chat link is per trip, so rather than the
+     bar guessing which trip you mean, it asks. That list is also the right
+     shape for later: when real in-app chat exists, these rows become rooms. -->
+<div class="feedback-overlay" id="chatOverlay">
+  <div class="feedback-modal">
+    <div class="feedback-modal-head">
+      <span class="feedback-modal-title">Trip chat</span>
+      <button class="feedback-close-btn" id="chatCloseBtn" aria-label="Close">&times;</button>
+    </div>
+    <div id="chatSheetBody"></div>
+  </div>
+</div>
+
 <div class="feedback-overlay" id="legendOverlay">
   <div class="feedback-modal">
     <div class="feedback-modal-head">
@@ -1820,7 +1867,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T13:22:00Z';
+const BUILD_VERSION = '2026-08-22T14:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -9475,10 +9522,11 @@ document.addEventListener('click', function(e){
     return;
   }
   if(dest === 'chat'){
-    showConfirm(
-      'Chat is not built yet. Each trip will get its own conversation, created automatically from the crew on that trip.',
-      { alertOnly: true, title: 'Chat \u2014 coming soon', okLabel: 'Got it' }
-    );
+    // No longer a coming-soon note. It raises the trip list, and each row
+    // either opens an external group or offers to link one. In-app chat is
+    // still unbuilt; this is a shortcut to where the conversation already
+    // happens, which is honest about what it does.
+    openChatSheet();
     return;
   }
 });
@@ -11682,12 +11730,270 @@ function legendBodyHTML(){
     '<p class="lg-note">Verification is a human decision. Opening a leg to read it never removes a sign-off &mdash; only a real edit does.</p>'
   ].join('');
 }
+// ===========================================================================
+// TRIP CHAT LINKS
+// ===========================================================================
+// An external group chat (today: WhatsApp) linked to a trip. This is a
+// SHORTCUT, NOT A CHAT: tapping hands off to the other app entirely. WhatsApp
+// exposes no API for reading or sending personal messages, so an embedded
+// conversation is not merely hard, it is not buildable. The honest framing is
+// a link out.
+//
+// NOT ARCHIVED, BY DECISION. A trip chat is casual -- "see you in the bar in
+// five" answered with emoji -- and sealing it would make people write
+// differently, knowing it was permanent and readable by their employer. The
+// room would go stilted and the real conversation would return to WhatsApp:
+// the feature would fail by succeeding at the wrong thing. A record people are
+// afraid to write in is not a record.
+//
+// AND THE RULE THAT PROTECTS THE NORTH STAR: a decision made in chat is not a
+// decision in the record. Nothing here writes to a leg. Someone still has to
+// open the leg and change the field.
+
+let chatLinksCache = [];
+
+async function loadChatLinks(){
+  const deptId = await getFlightDepartmentId();
+  if(!deptId){ chatLinksCache = []; return chatLinksCache; }
+  const { data, error } = await sb.from('trip_chat_links')
+    .select('trip_id, url, provider, created_by, updated_at')
+    .eq('flight_department_id', deptId);
+  if(error){ console.warn('loadChatLinks', error); chatLinksCache = []; return chatLinksCache; }
+  chatLinksCache = data || [];
+  return chatLinksCache;
+}
+
+function chatLinkFor(tripId){
+  const key = String(tripId == null ? '' : tripId).trim();
+  if(!key) return null;
+  return (chatLinksCache || []).find(r => String(r.trip_id) === key) || null;
+}
+
+// Strip WhatsApp's own attribution parameters. A copied invite arrives as
+//   https://chat.whatsapp.com/CODE?s=cl&p=i&mlu=4
+// where everything after the "?" records that it came from "copy link". Two
+// people pasting the same group from different places would otherwise store
+// two different-looking strings for one group.
+//
+// Returns '' when the URL is not a recognised invite. The database enforces
+// this too, via a check constraint -- the app can be bypassed and the database
+// cannot -- but rejecting it here gives the user an actual explanation.
+function normalizeChatUrl(raw){
+  const s = String(raw == null ? '' : raw).trim();
+  if(!s) return '';
+  let u;
+  try { u = new URL(s); } catch(e){ return ''; }
+  if(u.protocol !== 'https:') return '';
+  const host = u.hostname.toLowerCase();
+  if(host === 'chat.whatsapp.com'){
+    const code = u.pathname.replace(/^\/+/, '').replace(/\/+$/, '');
+    if(!/^[A-Za-z0-9]+$/.test(code)) return '';
+    return 'https://chat.whatsapp.com/' + code;
+  }
+  if(host === 'signal.group') return 'https://signal.group/' + u.hash.replace(/^#/, '');
+  if(host === 't.me')         return 'https://t.me/' + u.pathname.replace(/^\/+/, '');
+  return '';
+}
+
+function chatProviderFor(url){
+  const h = (url || '').toLowerCase();
+  if(h.indexOf('chat.whatsapp.com') !== -1) return 'whatsapp';
+  if(h.indexOf('signal.group') !== -1)      return 'signal';
+  if(h.indexOf('t.me') !== -1)              return 'telegram';
+  return 'other';
+}
+
+const CHAT_PROVIDER_LABEL = { whatsapp:'WhatsApp', signal:'Signal', telegram:'Telegram', other:'chat' };
+
+async function saveChatLink(tripId, rawUrl){
+  const url = normalizeChatUrl(rawUrl);
+  if(!url) throw new Error('unrecognised');
+  const deptId = await getFlightDepartmentId();
+  const prof   = currentUserProfile || await loadCurrentUserProfile();
+  const row = {
+    flight_department_id: deptId,
+    trip_id: String(tripId).trim(),
+    url: url,
+    provider: chatProviderFor(url),
+    created_by: prof ? prof.id : null,
+    updated_at: new Date().toISOString()
+  };
+  const { error } = await sb.from('trip_chat_links')
+    .upsert(row, { onConflict: 'flight_department_id,trip_id' });
+  if(error) throw error;
+  await loadChatLinks();
+}
+
+// Deletion is ALLOWED here, unlike anything in the archive, and that is the
+// point of difference. A stale invite is worse than none: it silently sends
+// people to a group nobody is reading.
+async function deleteChatLink(tripId){
+  const deptId = await getFlightDepartmentId();
+  const { error } = await sb.from('trip_chat_links').delete()
+    .eq('flight_department_id', deptId)
+    .eq('trip_id', String(tripId).trim());
+  if(error) throw error;
+  await loadChatLinks();
+}
+
+// Which trips appear. LIVE ONES ONLY -- archived trips are excluded, because
+// nobody chats about a trip that has already been sealed, and a list that grows
+// forever stops being a shortcut. Sorted by the existing trip order so the
+// sheet matches the trip board rather than inventing its own sequence.
+function chatSheetTrips(){
+  const trips = groupIntoTrips((state.legs || []).filter(l => !l.deletedAt));
+  return trips.filter(t => {
+    const tn = (t.tripNumber || '').trim();
+    if(!tn) return false;              // an unnumbered trip has no stable key to hang a link on
+    return !tripIsArchived(tn);
+  });
+}
+
+function chatSheetBodyHTML(){
+  const trips = chatSheetTrips();
+  if(!trips.length){
+    return '<div class="chat-sheet-empty">No live trips. A chat can be linked once a trip exists.</div>';
+  }
+  let h = '<div class="chat-sheet-intro">Opens the group in the other app. '
+        + 'Messages stay there \u2014 they are not part of the trip record.</div>';
+  trips.forEach(t => {
+    const tn    = (t.tripNumber || '').trim();
+    const link  = chatLinkFor(tn);
+    const dates = tripCardDateRange(t.legs);
+    h += '<div class="chat-row" data-chat-trip="' + escapeHtml(tn) + '">'
+       +   '<div class="chat-row-text">'
+       +     '<div class="chat-row-title">Trip ' + escapeHtml(tn) + '</div>'
+       +     '<div class="chat-row-sub">' + escapeHtml(dates) + '</div>'
+       +   '</div>'
+       +   '<div class="chat-row-act">';
+    if(link){
+      const label = CHAT_PROVIDER_LABEL[link.provider] || 'chat';
+      h += '<a class="btn btn-primary chat-open" href="' + escapeHtml(link.url) + '" '
+         +    'target="_blank" rel="noopener noreferrer">Open ' + escapeHtml(label) + '</a>'
+         +  '<button type="button" class="chat-unlink" data-chat-unlink="' + escapeHtml(tn) + '" '
+         +    'aria-label="Remove link">Remove</button>';
+    } else {
+      h += '<button type="button" class="btn chat-link-btn" data-chat-add="' + escapeHtml(tn) + '">Link a chat</button>';
+    }
+    h += '</div></div>';
+  });
+  return h;
+}
+
+function renderChatSheet(){
+  const body = document.getElementById('chatSheetBody');
+  if(body) body.innerHTML = chatSheetBodyHTML();
+}
+
+async function openChatSheet(){
+  const ov = document.getElementById('chatOverlay');
+  const body = document.getElementById('chatSheetBody');
+  if(body) body.innerHTML = '<div class="chat-sheet-empty">Loading\u2026</div>';
+  if(ov) ov.classList.add('open');
+  await loadChatLinks();
+  renderChatSheet();
+}
+
+function closeChatSheet(){
+  const ov = document.getElementById('chatOverlay');
+  if(ov) ov.classList.remove('open');
+}
+
+// Swap a row into a paste field in place, rather than raising a second overlay
+// on top of the first. The Paste button asks iOS for the clipboard, which shows
+// its own confirmation -- that is the OS being honest about a read, and is left
+// alone rather than worked around.
+function chatRowToInput(tripId){
+  const row = document.querySelector('[data-chat-trip="' + (window.CSS && CSS.escape ? CSS.escape(tripId) : tripId) + '"]');
+  if(!row) return;
+  const act = row.querySelector('.chat-row-act');
+  if(!act) return;
+  act.innerHTML = '<div class="chat-paste-wrap">'
+    + '<input type="url" class="chat-paste-input" id="chatPasteInput" '
+    +   'placeholder="Paste group invite link" autocomplete="off" '
+    +   'autocapitalize="off" spellcheck="false">'
+    + '<div class="chat-paste-btns">'
+    +   '<button type="button" class="btn" id="chatPasteBtn">Paste</button>'
+    +   '<button type="button" class="btn btn-primary" id="chatPasteSave" data-chat-save="' + escapeHtml(tripId) + '">Save</button>'
+    + '</div></div>';
+  const inp = document.getElementById('chatPasteInput');
+  if(inp) inp.focus();
+}
+
 function openLegendOverlay(){
   const body = document.getElementById('legendBody');
   if(body) body.innerHTML = legendBodyHTML();
   const ov = document.getElementById('legendOverlay');
   if(ov) ov.classList.add('open');
 }
+// Chat sheet interactions, delegated so they survive re-render of the body.
+document.addEventListener('click', async function(e){
+  const t = e.target;
+  if(!t || !t.closest) return;
+
+  if(t.closest('#chatCloseBtn')){ closeChatSheet(); return; }
+
+  const add = t.closest('[data-chat-add]');
+  if(add){ chatRowToInput(add.getAttribute('data-chat-add')); return; }
+
+  if(t.closest('#chatPasteBtn')){
+    const inp = document.getElementById('chatPasteInput');
+    try {
+      const txt = await navigator.clipboard.readText();
+      if(inp && txt) inp.value = txt.trim();
+    } catch(err){
+      // Clipboard read refused or unsupported. Not an error worth shouting
+      // about -- the field is right there and can be pasted into by hand.
+      if(inp) inp.focus();
+    }
+    return;
+  }
+
+  const save = t.closest('[data-chat-save]');
+  if(save){
+    const tripId = save.getAttribute('data-chat-save');
+    const inp = document.getElementById('chatPasteInput');
+    const raw = inp ? inp.value : '';
+    if(!normalizeChatUrl(raw)){
+      showConfirm(
+        'That does not look like a group invite link. In WhatsApp, open the group, tap the group name, then Invite via link \u2014 and copy the link it gives you.',
+        { alertOnly: true, title: 'Link not recognised', okLabel: 'OK' }
+      );
+      return;
+    }
+    save.disabled = true;
+    try {
+      await saveChatLink(tripId, raw);
+      renderChatSheet();
+      showToast('Chat linked');
+    } catch(err){
+      console.warn('saveChatLink', err);
+      save.disabled = false;
+      showToast('Could not save the link');
+    }
+    return;
+  }
+
+  const unlink = t.closest('[data-chat-unlink]');
+  if(unlink){
+    const tripId = unlink.getAttribute('data-chat-unlink');
+    const ok = await showConfirm(
+      'Remove the chat link from trip ' + tripId + '? The group itself is untouched \u2014 this only removes the shortcut.',
+      { title: 'Remove chat link', okLabel: 'Remove' }
+    );
+    if(!ok) return;
+    try {
+      await deleteChatLink(tripId);
+      renderChatSheet();
+      showToast('Link removed');
+    } catch(err){
+      console.warn('deleteChatLink', err);
+      showToast('Could not remove the link');
+    }
+    return;
+  }
+});
+
 function closeLegendOverlay(){
   const ov = document.getElementById('legendOverlay');
   if(ov) ov.classList.remove('open');
