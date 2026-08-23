@@ -58,17 +58,20 @@
      orientation, not a control, so it must not compete with the title or the
      amber pills. Hidden when empty, and hidden entirely on pages that need the
      corner for something else -- see applyHeaderDeptVisibility(). */
-  .page-header-dept{ max-width:200px; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  /* Sits on the SAME LINE as the page title, hard right. The header inner is
+     align-items:flex-start, so without the top margin this floats up level with
+     the back button -- one line above the title and visibly adrift. The margin
+     drops it onto the title's line; margin-left:auto pins it to the right edge
+     so it never drifts with the width of the pill beside it. This is advisory
+     text, so it should read as an annotation to the title, not as a control. */
+  .page-header-dept{ margin-left:auto; margin-top:16px; max-width:200px; min-width:0;
+    overflow:hidden; text-overflow:ellipsis;
     white-space:nowrap; text-align:right;
     font-family:system-ui,'Inter',sans-serif; font-size:12px; font-weight:500; letter-spacing:0.02em;
     color:var(--fog-500); }
   .page-header-dept:empty{ display:none; }
   .page-header-dept.dept-hidden{ display:none; }
     .bar-fixed{ display:flex; align-items:center; flex:0 0 auto; }
-  .page-header-actions .bar-action{ margin-top:4px; }
-  .bar-action{ display:flex; align-items:center; justify-content:center; height:34px; padding:0 14px;
-    background:none; border:1px solid var(--hairline); border-radius:3px; color:var(--fog-300);
-    font-family:system-ui,'Inter',sans-serif; font-size:13px; font-weight:500; white-space:nowrap; cursor:pointer; flex:0 0 auto; }
   .bar-fixed:empty{ display:none; }
   /* Legs scroll sideways INSIDE this track. The bar never grows or wraps, so the
      paperclip / refresh / menu anchors stay in one place on every trip. */
@@ -1739,7 +1742,7 @@
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-22T09:12:00Z';
+const BUILD_VERSION = '2026-08-22T09:48:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
