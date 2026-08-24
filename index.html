@@ -869,6 +869,15 @@
   .import-reconcile-summary{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; margin-bottom:20px; font-size:14px; color:var(--paper-050); }
   .import-leg-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; }
   .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
+  /* What the paperwork called this leg, once a human has renumbered it.
+     NEVER BLIND: the override is visible beside the new value, not hidden. */
+  .import-leg-was{ font-weight:400; color:var(--fog-500); font-size:12px; }
+  .import-renumber{ display:flex; align-items:flex-start; gap:10px; cursor:pointer;
+    padding:12px 14px; margin-bottom:12px; border:1px solid var(--hairline);
+    border-radius:6px; background:var(--panel-800); }
+  .import-renumber input{ margin-top:2px; flex:0 0 auto; width:16px; height:16px; }
+  .import-renumber-label{ display:block; font-size:14px; font-weight:600; color:var(--paper-050); }
+  .import-renumber-sub{ display:block; font-size:12px; color:var(--fog-500); margin-top:3px; line-height:1.45; }
   .import-leg-date{ font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--fog-500); }
   .import-leg-body{ display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--fog-300); line-height:1.5; }
   .home-nodept{ max-width:420px; }
@@ -1946,7 +1955,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-25T13:20:00Z';
+const BUILD_VERSION = '2026-08-25T15:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3026,6 +3035,10 @@ function normalizeLeg(leg){
     }))
     .filter(x => x.name);
   if(leg.tailNumber === undefined) leg.tailNumber = '';
+  // Legs saved before renumbering existed have no key at all. Coerce to a
+  // string so callers can test it without guarding for undefined.
+  if(leg.sourceLegNumber === undefined || leg.sourceLegNumber === null) leg.sourceLegNumber = '';
+  else leg.sourceLegNumber = String(leg.sourceLegNumber).trim();
   if(leg.windDirection === undefined) leg.windDirection = '';
   if(leg.windComponent === undefined) leg.windComponent = '';
   if(leg.nextLegDestination === undefined) leg.nextLegDestination = '';
@@ -3044,6 +3057,12 @@ function blankLeg(){
     updatedAt: Date.now(),
     status: 'planning',
     tripNumber: '', legNumber: '', date: '', cityPair: '', tailNumber: '',
+    // What the DOCUMENT numbered this leg, kept only when a human renumbered
+    // the trip on import. A HUMAN OVERRIDE OUTRANKS EXTRACTED TEXT -- OUTRANKS,
+    // NOT ERASES. Carrying it does three jobs at once: re-import can still
+    // match a renumbered leg, the paperwork stays quotable, and the presence of
+    // this field IS the record that the trip was renumbered. No flag needed.
+    sourceLegNumber: '',
     // pic/sic hold a single user id; acm/fa are ARRAYS of user ids.
     crew: { pic:'', sic:'', acm:[], fa:[] },
     // crewRaw is what the DOCUMENT said, kept verbatim and never rewritten:
@@ -8512,7 +8531,11 @@ function importLegCardHTML(leg, index){
   if(gtBits.length) rows.push('<div><strong>Ground transport:</strong> ' + gtBits.join(' &middot; ') + '</div>');
   return '<div class="import-leg-card" data-index="' + index + '">' +
     '<div class="import-leg-card-head">' +
-      '<span class="import-leg-title">Leg ' + escapeHtml(leg.legNumber) + ' &mdash; ' + escapeHtml(leg.cityPair) + '</span>' +
+      '<span class="import-leg-title">Leg ' + escapeHtml(leg.legNumber) +
+        (String(leg.sourceLegNumber || '').trim()
+          ? '<span class="import-leg-was"> (was ' + escapeHtml(String(leg.sourceLegNumber)) + ')</span>'
+          : '') +
+        ' &mdash; ' + escapeHtml(leg.cityPair) + '</span>' +
       '<span class="import-leg-date">' + escapeHtml(formatISODateDisplay(leg.date) || leg.date) + '</span>' +
     '</div>' +
     '<div class="import-leg-body">' + rows.join('') + '</div>' +
@@ -8566,6 +8589,18 @@ const RECONCILE_FIELD_LABELS = {
   'arr.rampFeeMinGallons': 'Arrival ramp waiver min gal'
 };
 
+// TRUE when the incoming number is the one the PAPERWORK gave a leg a human has
+// already renumbered. Without this, re-uploading the same document would report
+// "Leg number: 1 -> 20575335" and then write it back, silently undoing the
+// human's decision on every revision.
+//
+// A HUMAN OVERRIDE OUTRANKS EXTRACTED TEXT. That has to hold on the SECOND
+// import as well as the first, or it is not an override -- it is a delay.
+function legNumberIsHumanOverride(leg, builtNum){
+  const src = String((leg && leg.sourceLegNumber) || '').trim();
+  return !!src && src === String(builtNum || '').trim();
+}
+
 function describeLegChanges(leg, built){
   const changes = [];
   const check = (path, oldVal, newVal) => {
@@ -8577,7 +8612,8 @@ function describeLegChanges(leg, built){
   };
   const dlcBuiltNum = String(built.legNumber || '').trim();
   const dlcLegNum = String(leg.legNumber || '').trim();
-  if(dlcBuiltNum && dlcBuiltNum !== '?' && dlcBuiltNum !== dlcLegNum){
+  if(dlcBuiltNum && dlcBuiltNum !== '?' && dlcBuiltNum !== dlcLegNum &&
+     !legNumberIsHumanOverride(leg, dlcBuiltNum)){
     changes.push({ label: 'Leg number', oldVal: dlcLegNum || '(unassigned)', newVal: dlcBuiltNum });
   }
   check('date', leg.date, built.date);
@@ -8628,6 +8664,30 @@ function importUnmatchedCardHTML(item, index){
   '</div>';
 }
 
+// Renumber the incoming legs to 1..N in the order the document presented them,
+// keeping what the paperwork called each one in sourceLegNumber. Reversible:
+// toggling off restores the original from that same field, so the human can
+// look at it both ways before committing.
+//
+// INCOMING ORDER, not sorted. Where a document numbers legs with its own record
+// IDs those are sequential anyway, so document order and numeric order agree.
+// Sorting here would be inventing an ordering rule nobody stated.
+function applyImportRenumber(legs){
+  legs.forEach((l, i) => {
+    if(!String(l.sourceLegNumber || '').trim()){
+      l.sourceLegNumber = String(l.legNumber || '').trim();
+    }
+    l.legNumber = String(i + 1);
+  });
+}
+
+function undoImportRenumber(legs){
+  legs.forEach(l => {
+    const src = String(l.sourceLegNumber || '').trim();
+    if(src){ l.legNumber = src; l.sourceLegNumber = ''; }
+  });
+}
+
 function resetImportState(){
   state.importPhase = 'upload';
   state.importDocType = null;
@@ -8637,6 +8697,10 @@ function resetImportState(){
   state.importUnmatched = [];
   state.importDuplicateOfBoard = [];
   state.importTripReconcile = null;
+  // OFF BY DEFAULT, deliberately. The document's number is what the paperwork
+  // says; renumbering is the DEVIATION, and the deviation must be the
+  // deliberate act. See beacon-leg-renumbering-design.md section 3.
+  state.importRenumber = false;
 }
 
 async function processImportFile(file){
@@ -8661,6 +8725,10 @@ async function processImportFile(file){
     state.importUnmatched = [];
     state.importDuplicateOfBoard = [];
     state.importTripReconcile = null;
+    // Each document is its own decision. Without this, renumbering one trip
+    // would leave the box ticked for the NEXT upload, which is exactly the kind
+    // of sticky default that gets a leg renumbered by nobody in particular.
+    state.importRenumber = false;
     const extractedLegs = Array.isArray(data.legs) ? data.legs : [];
     if(state.importDocType === 'trip_sheet'){
       // Defensive dedup: some source documents repeat a leg reference in a
@@ -8716,6 +8784,16 @@ async function processImportFile(file){
         // left out of the summary entirely so unchanged legs don't get
         // listed (or re-saved) for no reason.
         const existingByLegNum = new Map(existingLegs.map(l => [String(l.legNumber || '').trim(), l]));
+        // Legs a human renumbered still remember what the PAPERWORK called them.
+        // Without this, renumbering would throw away the strong match key and
+        // leave only dep/arr/date -- which fails precisely when the revision
+        // MOVES a date or an airport, i.e. the revision you most want to land as
+        // an update rather than a duplicate.
+        const existingBySourceNum = new Map(
+          existingLegs
+            .filter(l => String(l.sourceLegNumber || '').trim())
+            .map(l => [String(l.sourceLegNumber).trim(), l])
+        );
         const existingByIdentity = new Map(existingLegs.map(l => [legIdentityKey(l), l]));
         const incomingLegNums = new Set(dedupedLegs.map(ex => String(ex.legNumber || '').trim()));
         const fieldsDiffer = (leg, built) => describeLegChanges(leg, built).length > 0;
@@ -8753,7 +8831,10 @@ async function processImportFile(file){
           // otherwise fall back to dep/arr/date identity so a numberless
           // ITPS brief still lands on the right existing leg instead of
           // being appended as a duplicate.
+          // Three keys, strongest first:
+          //   leg number -> source leg number -> dep/arr/date identity
           let existing = (numKey && numKey !== '?') ? existingByLegNum.get(numKey) : null;
+          if(!existing && numKey && numKey !== '?') existing = existingBySourceNum.get(numKey);
           if(!existing) existing = existingByIdentity.get(legIdentityKey(built));
           if(existing){
             matchedExisting.add(existing);
@@ -8764,6 +8845,30 @@ async function processImportFile(file){
             toAdd.push(built);
           }
         });
+        // CONTINUE WHAT THE TRIP ESTABLISHED. If the existing legs carry a
+        // sourceLegNumber, a human renumbered this trip on an earlier import,
+        // and a leg arriving now should join THAT numbering rather than
+        // reintroducing the document's own. The decision is READ BACK OUT OF
+        // THE DATA -- there is no flag, no setting, and nothing to keep in sync.
+        //
+        // Deliberately NOT handled here: a leg belonging in the MIDDLE. It gets
+        // the next number like any other, and if the sequence then reads out of
+        // order that is offered as a separate, visible renumber -- the same
+        // shape as offerRenumberAfterDelete. Silently rewriting legs this
+        // upload was not about, on a board other people are looking at, is the
+        // thing to avoid.
+        const tripWasRenumbered = existingLegs.some(l => String(l.sourceLegNumber || '').trim());
+        if(tripWasRenumbered && toAdd.length){
+          let nextNum = Math.max(0, ...existingLegs.map(l => parseInt(l.legNumber, 10) || 0));
+          toAdd.forEach(built => {
+            if(!String(built.sourceLegNumber || '').trim()){
+              built.sourceLegNumber = String(built.legNumber || '').trim();
+            }
+            nextNum += 1;
+            built.legNumber = String(nextNum);
+          });
+        }
+
         // Only remove existing legs that NO incoming leg matched. Keying this
         // off matchedExisting (not raw leg numbers) protects a "?" orphan the
         // sheet just adopted instead of deleting it.
@@ -8946,7 +9051,7 @@ function renderImportPreviewView(){
             const leg = item.existingLeg;
             const built = item.built;
             const builtNum = String(built.legNumber || '').trim();
-            if(builtNum && builtNum !== '?') leg.legNumber = builtNum;
+            if(builtNum && builtNum !== '?' && !legNumberIsHumanOverride(leg, builtNum)) leg.legNumber = builtNum;
             leg.date = built.date;
             leg.cityPair = built.cityPair;
             Object.assign(leg.dep, built.dep);
@@ -8991,6 +9096,20 @@ function renderImportPreviewView(){
   }
   if(state.importNewLegs.length){
     sections.push('<div class="view-subtitle" style="margin-bottom:8px;">New legs to add (' + state.importNewLegs.length + ')</div>');
+    // OFFERED EVERY TIME, never conditionally. Any rule for detecting an
+    // "unusual" leg number is a guess about what a leg number is ALLOWED to
+    // look like -- an operator numbering legs 101, 102, 103 has a perfectly
+    // sensible convention. Asking the human dissolves the threshold problem.
+    sections.push(
+      '<label class="import-renumber">' +
+        '<input type="checkbox" id="importRenumberToggle"' + (state.importRenumber ? ' checked' : '') + ' />' +
+        '<span>' +
+          '<span class="import-renumber-label">Renumber these legs 1&ndash;' + state.importNewLegs.length + '</span>' +
+          '<span class="import-renumber-sub">Use Beacon\u2019s own numbering instead of the document\u2019s. ' +
+            'What the paperwork called each leg is kept, so a revised sheet still lands on the right leg.</span>' +
+        '</span>' +
+      '</label>'
+    );
     sections.push('<div class="import-leg-list">' + state.importNewLegs.map((l, i) => importLegCardHTML(l, i)).join('') + '</div>');
   }
   if(state.importEnrichments.length){
@@ -9023,6 +9142,16 @@ function renderImportPreviewView(){
     resetImportState();
     goToListView('home');
   });
+
+  const renumberToggle = document.getElementById('importRenumberToggle');
+  if(renumberToggle){
+    renumberToggle.addEventListener('change', (e) => {
+      state.importRenumber = !!e.target.checked;
+      if(state.importRenumber) applyImportRenumber(state.importNewLegs);
+      else undoImportRenumber(state.importNewLegs);
+      renderMain();
+    });
+  }
 
   document.querySelectorAll('[data-unmatched-select]').forEach(sel => {
     sel.addEventListener('change', (e) => {
