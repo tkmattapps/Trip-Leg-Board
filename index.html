@@ -1284,6 +1284,14 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   .changes-by{ font-size:12px; color:var(--fog-300); margin:0 0 12px; line-height:1.5; }
   .changes-row{ padding:8px 0; border-top:1px solid var(--hairline); }
   .changes-row:first-child{ border-top:none; }
+  /* Trip grouping, used only by the boot-time advisory. The per-leg dialog
+     shows one leg's changes and needs no heading; this one can list several
+     trips, and the pilot has to know WHICH trip moved before reading what
+     moved. The rule stays 'a first row has no top border' -- so the group
+     boundary carries the divider, and rows inside a group reset. */
+  .changes-trip-group + .changes-trip-group{ margin-top:16px; padding-top:14px; border-top:1px solid var(--hairline); }
+  .changes-trip-head{ font-size:13px; font-weight:600; color:var(--paper-050); letter-spacing:0.02em; margin-bottom:2px; }
+  .changes-trip-group .changes-row:first-child{ border-top:1px solid var(--hairline); }
   .changes-field{ font-size:11px; color:var(--fog-500); text-transform:uppercase; letter-spacing:0.04em; }
   .changes-val{ font-size:14px; color:var(--paper-050); line-height:1.45; margin-top:2px; word-break:break-word; }
   /* A value that was REPLACED reads differently from one newly filled in, so
@@ -1884,7 +1892,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-23T15:05:00Z';
+const BUILD_VERSION = '2026-08-23T16:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3494,6 +3502,260 @@ async function checkLegChangesAdvisory(legId){
     await showChangesAdvisory(entries);
     await markLegSeen(legId);
   }catch(e){ console.warn('checkLegChangesAdvisory failed', e); }
+}
+
+/* ============================================================
+   TRIP CHANGE ADVISORY AT APP OPEN
+   ------------------------------------------------------------
+   The per-leg advisory above only fires when you happen to open a leg, so you
+   learn a trip moved by stumbling into it. This surfaces the same information
+   at the front door, for trips you are ASSIGNED TO, so you do not have to go
+   hunting.
+
+   THREE RULES, and they are the whole design:
+
+   1. ADVISORY ONLY. Tapping through marks things SEEN. It does not verify, it
+      does not confirm, and it never writes to the shared record. leg_seen is
+      private even from an admin. A section you had verified stays verified --
+      you meet the change properly inside the leg. This is deliberate: it keeps
+      "a passive read must never produce a write to the shared record" intact,
+      and it avoids automating a demotion.
+
+   2. ASSIGNED ONLY. If your id is not in a seat, it is not your trip and you
+      do not get told. No new schema for this -- crew are already bare user ids
+      on the leg.
+
+   3. ONE QUERY EACH. Two round trips total, not two per leg. The per-leg path
+      does a select per leg for the read position and another for the changes;
+      doing that across a whole board at boot would be felt on a phone.
+   ============================================================ */
+
+// Is this person in a seat on this leg? PIC, SIC, and any list seat all count.
+// Reads the coerced shape from normalizeLeg, so the arrays are safe.
+function legHasCrewMember(leg, userId){
+  if(!leg || !userId) return false;
+  const c = leg.crew || {};
+  if((c.pic || '') === userId) return true;
+  if((c.sic || '') === userId) return true;
+  for(const slot of CREW_LIST_SLOTS){
+    const list = Array.isArray(c[slot]) ? c[slot] : [];
+    if(list.indexOf(userId) !== -1) return true;
+  }
+  return false;
+}
+
+// Every read position this person holds, in ONE query, as legId -> seen_at.
+// A failed read returns null (not an empty map) so callers can tell "nothing
+// marked" from "we do not know" -- treating a network error as "you have seen
+// nothing" would fire an advisory for the entire board.
+async function fetchAllLegSeen(){
+  const me = currentUserProfile ? currentUserProfile.id : null;
+  if(!me) return null;
+  try{
+    const { data, error } = await sb.from('leg_seen')
+      .select('leg_id, seen_at')
+      .eq('user_id', me);
+    if(error) return null;
+    const map = new Map();
+    (data || []).forEach(r => map.set(r.leg_id, r.seen_at));
+    return map;
+  }catch(e){ return null; }
+}
+
+// Mark a batch of legs seen in one upsert. Best-effort, like markLegSeen: a
+// failure means the advisory returns next open, which is the safe direction.
+async function markLegsSeen(legIds){
+  const me = currentUserProfile ? currentUserProfile.id : null;
+  if(!me || !legIds || !legIds.length) return;
+  const now = new Date().toISOString();
+  const rows = legIds.map(id => ({ user_id: me, leg_id: id, seen_at: now, updated_at: now }));
+  try{
+    const { error } = await sb.from('leg_seen')
+      .upsert(rows, { onConflict: 'user_id,leg_id' });
+    if(error) console.warn('leg_seen batch upsert failed', error);
+  }catch(e){ console.warn('markLegsSeen failed', e); }
+}
+
+// THE FLOOR. Without this, the first launch after shipping surfaces every
+// change ever logged on every leg you are seated on -- weeks of history, all at
+// once, which is not an advisory, it is a wall.
+//
+// So on first run we mark every assigned leg seen WITHOUT showing anything, and
+// only changes from that moment forward surface. The alternative was a
+// hardcoded ship date in the source, which rots silently the moment it is
+// forgotten.
+//
+// Keyed in localStorage per DEVICE and per USER. Per device is a deliberate
+// tradeoff: a second device gets its own quiet first run rather than
+// immediately dumping the backlog. Per user because two people share iPads.
+const TRIP_ADVISORY_FLOOR_KEY = 'beacon.tripAdvisory.floor.';
+
+function tripAdvisoryFloorDone(){
+  const me = currentUserProfile ? currentUserProfile.id : null;
+  if(!me) return true;                 // no profile: do nothing at all
+  try{ return localStorage.getItem(TRIP_ADVISORY_FLOOR_KEY + me) === '1'; }
+  catch(e){ return true; }             // storage blocked: stay silent forever
+}
+
+function setTripAdvisoryFloorDone(){
+  const me = currentUserProfile ? currentUserProfile.id : null;
+  if(!me) return;
+  try{ localStorage.setItem(TRIP_ADVISORY_FLOOR_KEY + me, '1'); }catch(e){}
+}
+
+// Group the unseen changes by TRIP, because that is the unit the pilot thinks
+// in. Returns [{ tripLabel, legIds, entries }], newest activity first.
+// Collapsing happens per trip, not per leg: one advisory listing a trip's
+// changes reads better than four dialogs.
+function tripAdvisoryGroups(rows, legById){
+  const byTrip = new Map();
+  rows.forEach(r => {
+    const leg = legById.get(r.leg_id);
+    if(!leg) return;
+    const num = (leg.tripNumber || '').trim();
+    const key = num || ('__leg_' + r.leg_id);
+    if(!byTrip.has(key)) byTrip.set(key, { key, tripNumber: num, legIds: new Set(), rows: [] });
+    const g = byTrip.get(key);
+    g.legIds.add(r.leg_id);
+    g.rows.push(r);
+  });
+  const out = [];
+  byTrip.forEach(g => {
+    const entries = collapseChanges(g.rows);
+    // A trip whose every change collapsed to nothing still needs its legs
+    // marked, or we re-examine the same rows on every launch forever.
+    out.push({
+      tripNumber: g.tripNumber,
+      legIds: Array.from(g.legIds),
+      entries: entries,
+      latest: g.rows.reduce((m, r) => (r.created_at > m ? r.created_at : m), '')
+    });
+  });
+  out.sort((a, b) => (b.latest || '').localeCompare(a.latest || ''));
+  return out;
+}
+
+// Show one advisory covering every assigned trip that moved. Resolves when it
+// is dismissed; the marks move only after that, so an unread dialog leaves the
+// changes pending -- same contract as the per-leg advisory.
+//
+// Reuses #changesOverlay rather than inventing a second dialog: it is the same
+// information at a different scope, and it should look the same.
+function showTripAdvisory(groups){
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('changesOverlay');
+    const list = document.getElementById('changesList');
+    const okBtn = document.getElementById('changesOkBtn');
+    const titleEl = document.getElementById('changesTitle');
+    if(!overlay || !list || !okBtn){ resolve(); return; }
+    const nTrips = groups.length;
+    if(titleEl) titleEl.textContent = nTrips === 1
+      ? 'Changed since you last looked'
+      : 'Changes on your trips';
+    // The trip heading is what makes this different from the per-leg dialog:
+    // the pilot needs to know WHICH trip moved before reading what moved.
+    const body = groups.map(g => {
+      const label = g.tripNumber
+        ? ('Trip ' + escapeHtml(g.tripNumber))
+        : 'Unnumbered trip';
+      const n = g.entries.length;
+      return '<div class="changes-trip-group">' +
+          '<div class="changes-trip-head">' + label + '</div>' +
+          '<p class="changes-by">' + n + (n === 1 ? ' change' : ' changes') + '</p>' +
+          g.entries.map(changesRowHTML).join('') +
+        '</div>';
+    }).join('');
+    list.innerHTML = body;
+    overlay.classList.add('open');
+    function done(){
+      overlay.removeEventListener('click', onOverlay);
+      okBtn.removeEventListener('click', onOk);
+      overlay.classList.remove('open');
+      resolve();
+    }
+    function onOk(){ done(); }
+    function onOverlay(ev){ if(ev.target === overlay) done(); }
+    okBtn.addEventListener('click', onOk);
+    overlay.addEventListener('click', onOverlay);
+  });
+}
+
+// Entry point, called at boot AFTER loadLegs(). Fire-and-forget: the board
+// renders first and this arrives when it arrives. It must never delay or block
+// the app opening, and it must never throw into boot.
+//
+// Archived legs are excluded -- a sealed trip cannot change, so an advisory
+// about one would be nonsense.
+async function checkTripChangesAdvisory(){
+  try{
+    const me = currentUserProfile ? currentUserProfile.id : null;
+    if(!me) return;
+
+    const mine = (state.legs || []).filter(lg =>
+      lg && !lg.deleted_at && legHasCrewMember(lg, me) && !legIsSealed(lg));
+    if(!mine.length) return;
+
+    const legIds = mine.map(lg => lg.id);
+
+    // THE FLOOR: first run is silent. Mark and leave.
+    if(!tripAdvisoryFloorDone()){
+      await markLegsSeen(legIds);
+      setTripAdvisoryFloorDone();
+      return;
+    }
+
+    const seenMap = await fetchAllLegSeen();
+    if(seenMap === null) return;              // read failed: say nothing
+
+    // A leg with no mark at all post-floor is new to this person (added to the
+    // crew after the floor ran). Mark it silently rather than reporting its
+    // whole history -- being seated on a trip is not the same as having missed
+    // changes to it.
+    const unmarked = legIds.filter(id => !seenMap.has(id));
+    if(unmarked.length) await markLegsSeen(unmarked);
+
+    const marked = legIds.filter(id => seenMap.has(id));
+    if(!marked.length) return;
+
+    // ONE query for the changes across every assigned leg. The floor for the
+    // range is the OLDEST read position; per-leg positions are then applied
+    // client-side, which is cheaper than a query per leg and gives the same
+    // answer.
+    const oldest = marked.reduce((m, id) => {
+      const s = seenMap.get(id);
+      return (!m || s < m) ? s : m;
+    }, null);
+    if(!oldest) return;
+
+    const { data, error } = await sb.from('leg_changes')
+      .select('leg_id, field_path, field_label, old_value, new_value, changed_by, changed_by_name, created_at')
+      .in('leg_id', marked)
+      .gt('created_at', oldest)
+      .neq('changed_by', me)
+      .order('created_at', { ascending: true });
+    if(error) return;
+
+    const rows = (data || []).filter(r => {
+      const s = seenMap.get(r.leg_id);
+      return s && r.created_at > s;         // per-leg read position
+    });
+    if(!rows.length) return;
+
+    const legById = new Map(mine.map(lg => [lg.id, lg]));
+    const groups = tripAdvisoryGroups(rows, legById);
+    const touched = [];
+    groups.forEach(g => g.legIds.forEach(id => touched.push(id)));
+
+    const withEntries = groups.filter(g => g.entries.length);
+    if(!withEntries.length){
+      // Everything collapsed to nothing. Mark so we stop re-reading it.
+      await markLegsSeen(touched);
+      return;
+    }
+
+    await showTripAdvisory(withEntries);
+    await markLegsSeen(touched);
+  }catch(e){ console.warn('checkTripChangesAdvisory failed', e); }
 }
 
 /* ---- Leg History view (reads leg_changes) ---- */
@@ -12470,6 +12732,12 @@ async function bootApp(){
   loadRoster();
   // And the department name for the bottom bar.
   loadDepartmentName();
+
+  // Trip changes at the front door, for trips you are seated on. LAST, and
+  // deliberately NOT awaited: the board is already on screen, and an advisory
+  // must never be the reason the app feels slow to open. Needs state.legs, so
+  // it cannot run before loadLegs() above.
+  checkTripChangesAdvisory();
 }
 
 // Writes the signed-in flight department's name into the HEADER's right-hand
