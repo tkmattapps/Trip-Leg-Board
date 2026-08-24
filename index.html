@@ -1106,7 +1106,12 @@
   /* AMBER IS INFORMATION, RED IS AN ALERT. Nothing here is wrong yet, so this
      must not read as an error. Left rule rather than a filled panel, so it sits
      beside the flow instead of interrupting it. */
-  .upload-caution{ display:block; margin:16px 0 0; padding:12px 0 0;
+  /* Bottom margin matters on the ATTACHMENT sheets, where the document list
+     starts immediately below this and was running tight against it. On the
+     import screen the retention block follows with its own 16px top margin;
+     adjacent siblings collapse to the larger of the two, so this does not
+     open a second gap there. */
+  .upload-caution{ display:block; margin:16px 0 14px; padding:12px 0 0;
     text-align:center; border-top:1px solid var(--hairline); }
   .upload-caution-title{ display:block; font-size:12px; font-weight:700;
     letter-spacing:0.04em; text-transform:uppercase; color:var(--amber-500); }
@@ -1986,7 +1991,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-25T23:05:00Z';
+const BUILD_VERSION = '2026-08-25T23:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
