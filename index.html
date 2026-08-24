@@ -323,6 +323,25 @@
     #loginOverlay #loginEmail, #loginOverlay #loginPassword{ padding:10px 14px !important; }
     #loginOverlay #loginSubmitBtn{ font-size:18px !important; margin-top:12px !important; }
   }
+  /* Password reveal toggle on the login field.
+     The input is styled INLINE (width:100%), and two media queries override its
+     padding with !important, so the icon is positioned against the WRAPPER, not
+     the input -- it cannot drift when those overrides fire. The input carries
+     extra right padding so typed text never runs under the icon.
+     Hidden is the default; the toggle never persists across a reload. */
+  .pw-wrap{ position:relative; margin-top:10px; }
+  .pw-wrap #loginPassword{ padding-right:46px !important; }
+  .pw-toggle{
+    position:absolute; top:0; right:0; height:100%; width:44px;
+    display:flex; align-items:center; justify-content:center;
+    background:none; border:0; padding:0; cursor:pointer;
+    color:var(--fog-500); -webkit-tap-highlight-color:transparent;
+  }
+  .pw-toggle:hover{ color:var(--fog-300); }
+  .pw-toggle svg{ width:20px; height:20px; display:block; }
+  /* Suppress the platform's own reveal control so there is only ever one eye. */
+  #loginPassword::-ms-reveal, #loginPassword::-ms-clear{ display:none; }
+  #loginPassword::-webkit-textfield-decoration-container{ visibility:hidden; }
   .home-btn{
     background:var(--panel-800); border:1px solid var(--hairline); color:var(--paper-050);
     border-radius:8px; padding:28px 36px; min-width:220px; cursor:pointer;
@@ -1586,7 +1605,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
     <div class="home-btn" style="cursor:default;">
       <span class="home-btn-title" style="margin-bottom:6px;">Credentials</span>
       <input type="email" id="loginEmail" placeholder="Email" autocomplete="username" style="width:100%;padding:12px 14px;border-radius:8px;border:1px solid var(--hairline);background:#0b1622;color:#fff;font-size:16px;margin-top:8px;">
-      <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" style="width:100%;padding:12px 14px;border-radius:8px;border:1px solid var(--hairline);background:#0b1622;color:#fff;font-size:16px;margin-top:10px;">
+      <div class="pw-wrap"><input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" style="width:100%;padding:12px 14px;border-radius:8px;border:1px solid var(--hairline);background:#0b1622;color:#fff;font-size:16px;"><button type="button" id="loginPwToggle" class="pw-toggle" aria-label="Show password" aria-pressed="false"></button></div>
       <button type="button" id="loginSubmitBtn" style="width:100%;padding:12px 14px;border-radius:8px;border:1px solid var(--amber-500);background:var(--amber-500);color:#0E1A2B;font-family:'Big Shoulders Display',sans-serif;font-size:20px;font-weight:700;cursor:pointer;margin-top:14px;">Sign In</button>
       <div id="loginError" style="color:#f87171;font-size:13px;text-align:center;min-height:18px;margin-top:8px;"></div>
     </div>
@@ -1899,7 +1918,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-23T17:20:00Z';
+const BUILD_VERSION = '2026-08-24T03:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12841,6 +12860,31 @@ async function handleLoginSubmit(){
   }
   hideLoginOverlay();
 }
+
+/* ---- Password reveal toggle (login field only) ----
+   House icon style: viewBox 0 0 24 24, stroke-width 2, matching DOC_PAPERCLIP_SVG.
+   Always starts HIDDEN. Nothing is persisted -- a reload returns to hidden. */
+const PW_EYE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+const PW_EYE_OFF_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+
+function wirePasswordToggle(){
+  const btn = document.getElementById('loginPwToggle');
+  const inp = document.getElementById('loginPassword');
+  if(!btn || !inp) return;
+  btn.innerHTML = PW_EYE_SVG;
+  btn.addEventListener('click', function(){
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    btn.innerHTML = show ? PW_EYE_OFF_SVG : PW_EYE_SVG;
+    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+    /* Keep the caret where it was; tapping the icon must not lose your place. */
+    const pos = inp.value.length;
+    inp.focus();
+    try { inp.setSelectionRange(pos, pos); } catch(e) {}
+  });
+}
+wirePasswordToggle();
 
 document.getElementById('loginSubmitBtn').addEventListener('click', handleLoginSubmit);
 document.getElementById('loginPassword').addEventListener('keydown', function(e){
