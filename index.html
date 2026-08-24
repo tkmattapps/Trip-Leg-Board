@@ -1101,6 +1101,25 @@
   .doc-section-head .section-title{ margin:0; }
   .doc-add-btn{ display:inline-flex; align-items:center; gap:6px; background:var(--amber-500); border:none; color:var(--ink-900); font-weight:700; font-size:13px; padding:8px 14px; border-radius:18px; cursor:pointer; white-space:nowrap; }
   .doc-add-btn:disabled{ opacity:0.55; cursor:default; }
+  /* AMBER IS INFORMATION, RED IS AN ALERT. Nothing here is wrong yet, so this
+     must not read as an error. Left rule rather than a filled panel, so it sits
+     beside the flow instead of interrupting it. */
+  .upload-caution{ display:block; margin:0 0 12px; padding:9px 0 9px 12px;
+    border-left:2px solid var(--amber-500); }
+  .upload-caution-title{ display:block; font-size:12px; font-weight:700;
+    letter-spacing:0.04em; text-transform:uppercase; color:var(--amber-500); }
+  .upload-caution-body{ display:block; font-size:12px; line-height:1.5;
+    color:var(--fog-300); margin-top:3px; max-width:60ch; }
+  /* NEUTRAL, not amber. The caution directly above already carries an amber
+     rule; a second coloured rule stacked under it would compete and turn the
+     whole block into a wall of warning. This is a statement of fact, not an
+     alert, and should read like one. */
+  .upload-retention{ display:block; margin:0 0 14px; padding:10px 0 0;
+    border-top:1px solid var(--hairline); }
+  .upload-retention-title{ display:block; font-size:12px; font-weight:700;
+    letter-spacing:0.04em; text-transform:uppercase; color:var(--fog-300); }
+  .upload-retention-body{ display:block; font-size:12px; line-height:1.5;
+    color:var(--fog-500); margin-top:3px; max-width:60ch; }
   .doc-subhead{ font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--fog-500); margin:16px 0 8px; }
   .doc-list{ display:flex; flex-direction:column; gap:8px; }
   .doc-empty{ color:var(--fog-500); font-size:13px; padding:6px 0; }
@@ -1955,7 +1974,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-25T15:05:00Z';
+const BUILD_VERSION = '2026-08-25T18:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -2367,6 +2386,63 @@ function escHtml(str){
 }
 
 // Static shell — the two lists are filled in by hydrateLegAttachments().
+// The terms already prohibit all of this (section 2.1), and comprehensively.
+// This is not a second copy of the terms -- it does a DIFFERENT job.
+//
+// Terms are accepted ONCE, at first login, in a wall of legal text. The upload
+// happens weeks later in a different frame of mind, and clause 2.1 is not in
+// anyone's head at that moment. The live proof is already in the data: a
+// beta tester uploaded a complete crew briefing belonging to ANOTHER OPERATOR,
+// having accepted these terms. They did not stop him.
+//
+// *** THE TERMS PROTECT THE PROVIDER. THIS PROTECTS THE DATA. ***
+//
+// Deliberately NOT a blocking dialog. Anything requiring dismissal becomes a
+// reflex within three uploads, and a warning nobody reads is worse than none --
+// it buys the appearance of care without the substance.
+function uploadCautionHTML(kind){
+  const extra = (kind === 'attach')
+    // The heavier case: attachment keeps the WHOLE document, unread and
+    // unfiltered. Import at least discards everything it does not extract.
+    ? 'The whole file is kept, not just the parts Beacon reads.'
+    : 'Beacon keeps only the fields it extracts \u2014 the file itself is not stored.';
+  return '<div class="upload-caution">' +
+    '<span class="upload-caution-title">Before you upload</span>' +
+    '<span class="upload-caution-body">' +
+      'Use your own flight department\u2019s paperwork only. No passenger details, ' +
+      'no other operator\u2019s documents, nothing you\u2019re not free to share. ' +
+      escapeHtml(extra) +
+    '</span>' +
+  '</div>';
+}
+
+// The counterpart to uploadCautionHTML: that one says what NOT to upload, this
+// says what happens to what you do. Import only -- it describes extraction, and
+// none of it is true of a manual attachment, which keeps the whole file.
+//
+// EVERY CLAUSE IS CHECKABLE AGAINST THE CODE. The extraction prompt refuses
+// passenger names and phone numbers outright, and carries an absolute
+// prohibition on passport/visa numbers, dates of birth, addresses and
+// nationality even when customs paperwork inside a trip package contains them.
+// The import path never calls uploadAttachment, so the file really is not kept.
+//
+// *** WHAT THIS MUST NEVER IMPLY: THAT THE DOCUMENT DOES NOT LEAVE. *** It goes
+// to Anthropic to be read, and the terms disclose that at 3.2. Reassuring about
+// retention while going quiet about transmission would contradict our own terms
+// -- which is why Claude is NAMED in the first sentence rather than hidden.
+function uploadRetentionHTML(){
+  return '<div class="upload-retention">' +
+    '<span class="upload-retention-title">What Beacon keeps</span>' +
+    '<span class="upload-retention-body">' +
+      'Claude reads your document and returns trip logistics \u2014 airports, times, ' +
+      'handlers, fuel, crew names. Passenger details are not extracted. Passport ' +
+      'and visa numbers, dates of birth and addresses are never extracted, even ' +
+      'when the paperwork contains them. The file itself isn\u2019t stored; only ' +
+      'the fields above are kept.' +
+    '</span>' +
+  '</div>';
+}
+
 function legAttachmentsBlockHTML(leg){
   return '' +
     '<div class="section" id="docSection">' +
@@ -2375,6 +2451,7 @@ function legAttachmentsBlockHTML(leg){
         '<button type="button" class="doc-add-btn" id="docAddBtn">+ Add document</button>' +
         '<input type="file" id="docFileInput" accept="application/pdf,image/*" style="display:none" />' +
       '</div>' +
+      uploadCautionHTML('attach') +
       '<div class="doc-list" id="docLegList"><div class="doc-empty">Loading\u2026</div></div>' +
       '<div id="docTripWrap"></div>' +
     '</div>';
@@ -2609,6 +2686,7 @@ function tripDocsBlockHTML(trip){
         '<button type="button" class="doc-add-btn" id="tripDocAddBtn">+ Add document</button>' +
         '<input type="file" id="tripDocFileInput" accept="application/pdf,image/*" style="display:none" />' +
       '</div>' +
+      uploadCautionHTML('attach') +
       '<div class="doc-list" id="tripDocList"><div class="doc-empty">Loading\u2026</div></div>' +
       '<div id="tripDocRollup"></div>' +
     '</div>';
@@ -8949,6 +9027,8 @@ function renderImportPreviewView(){
           'Beacon reads your paperwork with Claude. You receive a draft, not a decision. ' +
           'Nothing lands on your board until you say so.' +
         '</div>' +
+        uploadCautionHTML('import') +
+        uploadRetentionHTML() +
         // Official ivory lockup, inlined so the single-file deploy keeps
         // working. Sized small on purpose -- see .import-powered.
         '<div class="import-powered">' +
