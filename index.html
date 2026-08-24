@@ -745,6 +745,20 @@
   .field{ display:flex; flex-direction:column; gap:6px; }
   .field label{ font-size:11px; color:var(--fog-300); font-family:system-ui,'Inter',sans-serif; letter-spacing:0.2px; }
   .field label.crit-attn, .field > label.crit-attn{ color:var(--amber-500); font-weight:600; }
+  /* A provisional date: shown, but not yet collected and not yet written.
+     AMBER, not red -- this is information, not an alert. Nothing is wrong; the
+     app simply does not yet know whether a human meant it. */
+  .field.date-provisional input[type=date]{
+    border-color:var(--amber-500); color:var(--amber-500);
+  }
+  .date-confirm{
+    margin-top:6px; width:100%; padding:8px 10px; border-radius:3px;
+    background:rgba(242,169,59,0.12); border:1px solid var(--amber-500);
+    color:var(--amber-500); font-family:system-ui,'Inter',sans-serif;
+    font-size:12px; font-weight:600; letter-spacing:0.2px; cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .date-confirm:hover{ background:rgba(242,169,59,0.2); }
   .field input[type=text], .field input[type=date], .field input[type=number], .field select, .field textarea{
     background:var(--panel-800); border:1px solid var(--hairline); color:var(--paper-050);
     font-family:system-ui,'Inter',sans-serif; font-size:13px; height:36px; line-height:normal; padding:0 10px; border-radius:3px;
@@ -1921,7 +1935,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-24T04:22:00Z';
+const BUILD_VERSION = '2026-08-24T04:48:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4258,6 +4272,7 @@ function sortLegsByTripStack(legs){
 }
 
 function openLegEditor(legId){
+  clearProvisionalDates();
   autoSaveIfEditing();
   // A spare crew seat belongs to the leg you were just looking at.
   crewPendingSlot = null;
@@ -10924,6 +10939,7 @@ function renderMain(){
     });
   }
 
+  setupProvisionalDates();
   setupTZAutofill({ airportInputId:'depAirportId', localInputId:'depEtdLocal', zInputId:'depEtdZ', offsetInputId:'depUtcOffset', leg:leg, subObjKey:'dep' });
   setupTZAutofill({ airportInputId:'arrAirportId', localInputId:'arrEtaLocal', zInputId:'arrEtaZ', offsetInputId:'arrUtcOffset', dateInputId:'arrDate', leg:leg, subObjKey:'arr' });
 
@@ -11625,6 +11641,85 @@ function clearSectionVerifyForField(leg, fid){
   }
 }
 
+/* ---- Provisional dates -------------------------------------------------------
+   THE PROBLEM: on iPhone the native date picker will write a value into the
+   field merely by being opened and dismissed -- over an EMPTY field it leaves
+   today's date -- and the resulting 'change' event is indistinguishable from a
+   deliberate pick. Attempts to tell them apart by event shape (see
+   beacon-ios-date-picker-NEXT-SESSION.md) failed twice, and an attempt to
+   control where the picker opens failed a third time.
+
+   THE RULE: any date change made through the editor's own controls is
+   PROVISIONAL until a human confirms it. It is displayed, but it is NOT
+   collected and NOT written. If the editor is closed without confirming, the
+   stored date is unchanged -- which is the truthful outcome, because nobody
+   actually chose anything.
+
+   WHY THIS IS ENFORCED HERE AND NOT ON THE INPUT: a rule attached to a control
+   is not a rule. The guard lives at the point of collection, so a phantom date
+   cannot reach the database even if every visual cue is missed.
+
+   NOT AFFECTED: extraction. Paperwork writes dates directly to the leg and
+   carries its own verification step. This guard is for hand-editing only. */
+const PROVISIONAL_DATE_IDS = ['date', 'arrDate', 'nextLegDate'];
+let _provisionalDates = {};   /* fieldId -> the unconfirmed value. Memory only. */
+
+function isDateProvisional(fieldId){
+  return Object.prototype.hasOwnProperty.call(_provisionalDates, fieldId);
+}
+function clearProvisionalDates(){ _provisionalDates = {}; }
+
+/* Read a date field for collection. Returns the LAST CONFIRMED value, never a
+   provisional one. `stored` is what the leg currently holds. */
+function confirmedDateVal(fieldId, stored){
+  return isDateProvisional(fieldId) ? (stored || '') : val(fieldId);
+}
+
+/* Mark a date provisional and paint the field. Called on the input's own
+   change event -- which is the one event iOS gives us for BOTH a deliberate
+   pick and a dismissal, hence the confirmation rather than a guess. */
+function markDateProvisional(fieldId){
+  const el = document.getElementById(fieldId);
+  if(!el) return;
+  const wrap = el.closest('.field');
+  if(!wrap) return;
+  _provisionalDates[fieldId] = el.value;
+  wrap.classList.add('date-provisional');
+  let bar = wrap.querySelector('.date-confirm');
+  if(!bar){
+    bar = document.createElement('button');
+    bar.type = 'button';
+    bar.className = 'date-confirm';
+    bar.addEventListener('click', () => confirmProvisionalDate(fieldId));
+    wrap.appendChild(bar);
+  }
+  /* A placeholder must tell you something the label cannot: name the date. */
+  const shown = el.value ? formatISODateDisplay(el.value) : 'no date';
+  bar.textContent = 'Confirm ' + shown;
+}
+
+function confirmProvisionalDate(fieldId){
+  const el = document.getElementById(fieldId);
+  const wrap = el ? el.closest('.field') : null;
+  delete _provisionalDates[fieldId];
+  if(wrap){
+    wrap.classList.remove('date-provisional');
+    const bar = wrap.querySelector('.date-confirm');
+    if(bar) bar.remove();
+  }
+  /* Now that a human has actually asserted it, let the normal save path run. */
+  if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
+}
+
+function setupProvisionalDates(){
+  PROVISIONAL_DATE_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if(!el || el.dataset.provWired === '1') return;
+    el.dataset.provWired = '1';
+    el.addEventListener('change', () => markDateProvisional(id));
+  });
+}
+
 async function collectAndSave(id, opts){
   opts = opts || {};
   const leg = state.legs.find(l => l.id === id);
@@ -11637,7 +11732,7 @@ async function collectAndSave(id, opts){
   leg.status = val('statusSelect');
   leg.tripNumber = val('tripNumber');
   leg.legNumber = val('legNumber');
-  leg.date = val('date');
+  leg.date = confirmedDateVal('date', leg.date);
   leg.cityPair = val('cityPair');
   leg.tailNumber = val('tailNumber');
   // Crew is read from the rendered pickers. The list slots are read by walking
@@ -11657,7 +11752,7 @@ async function collectAndSave(id, opts){
     notes: (leg.dep.notes || '')
   };
   leg.arr = {
-    airportId: val('arrAirportId'), tz: leg.arr.tz || '', date: val('arrDate'), etaLocal: val('arrEtaLocal'), etaZ: val('arrEtaZ'),
+    airportId: val('arrAirportId'), tz: leg.arr.tz || '', date: confirmedDateVal('arrDate', (leg.arr && leg.arr.date)), etaLocal: val('arrEtaLocal'), etaZ: val('arrEtaZ'),
     hours: val('arrHours'), slotReqd: val('arrSlotReqd'), slotTimeNumber: val('arrSlotTimeNumber'),
     slotAllowance: val('arrSlotAllowance'), agent: val('arrAgent'), agentPhone: val('arrAgentPhone'), frequency: val('arrFrequency'),
     fuelVendor: val('arrFuelVendor'), fuelPaymentMethod: val('arrFuelPaymentMethod'), fuelPricePerGallon: val('arrFuelPricePerGallon'), rampFee: val('arrRampFee'), rampFeeWaived: val('arrRampFeeWaived'), rampFeeMinGallons: val('arrRampFeeMinGallons'), groundTransportReqd: val('arrGroundTransportReqd'), groundTransportDetails: val('arrGroundTransportDetails'), utcOffsetManual: val('arrUtcOffset'), notes: (leg.arr.notes || ''),
@@ -11675,7 +11770,7 @@ async function collectAndSave(id, opts){
   leg.paxTotalNotes = val('paxTotalNotes');
   leg.crewHotelCarNotes = val('crewHotelCarNotes');
   leg.nextLegDestination = val('nextLegDestination');
-  leg.nextLegDate = val('nextLegDate');
+  leg.nextLegDate = confirmedDateVal('nextLegDate', leg.nextLegDate);
   leg.nextLegDay = val('nextLegDay');
   leg.nextLegEtd = val('nextLegEtd');
   leg.nextLegEta = val('nextLegEta');
