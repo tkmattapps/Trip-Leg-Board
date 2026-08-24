@@ -1986,7 +1986,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-25T21:40:00Z';
+const BUILD_VERSION = '2026-08-25T22:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -2439,17 +2439,30 @@ function uploadCautionHTML(kind){
     // Nothing about retention on import: the retention note immediately below
     // says it properly, and saying it twice a few lines apart reads as nerves.
     : '';
+  // OWNERSHIP, not permission to view. Terms 2.3 is explicit that being
+  // authorized to SEE a document is not authorization to UPLOAD it, and the one
+  // real incident proves the point: the tester who put another operator's crew
+  // briefing in here was entirely authorized to view it -- it was his own trip.
+  // Viewing keeps a document inside the operator that produced it; uploading
+  // moves it onto infrastructure we own. Different act, different permission.
+  //
+  // "The department you're uploading INTO" rather than "your own department":
+  // contractors hold portable accounts and may legitimately have memberships in
+  // several, so "your own" has no single answer for them. This phrasing permits
+  // that case and still excludes carrying one department's sheet into another.
+  //
+  // The sensitivity clause ("nothing you wouldn't share with your own crew")
+  // now appears ONLY on attachments. On import the extraction already refuses
+  // passenger names, passport and visa numbers, dates of birth and addresses,
+  // so asking the user to police it as well is length without protection.
+  const share = (kind === 'attach')
+    ? ' Nothing you wouldn\u2019t share with your own crew.'
+    : '';
   return '<div class="upload-caution">' +
     '<span class="upload-caution-title">Before you upload</span>' +
     '<span class="upload-caution-body">' +
-      // "Not free to share" sets the bar at PUBLISHABLE, which no trip sheet
-      // ever is -- so the rule reads as "never upload anything", and the user
-      // either stops or ignores it. The correct bar is the one the lawyer
-      // already gave us: trip sheets carrying privileged information ALREADY
-      // circulate throughout the flight department. Uploading is sharing with
-      // your own crew, so that is the test to state.
-      'Use your own flight department\u2019s paperwork only \u2014 nothing belonging ' +
-      'to another operator, and nothing you wouldn\u2019t share with your own crew.' +
+      'Only upload paperwork belonging to the department you\u2019re uploading into.' +
+      escapeHtml(share) +
       (extra ? ' ' + escapeHtml(extra) : '') +
     '</span>' +
   '</div>';
