@@ -1723,6 +1723,16 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 <div class="bottom-bar" id="bottomBar">
   <div class="bottom-bar-inner" id="bottomBarInner">
 <div class="bar-nav" id="barNav">
+      <!-- FIRST, and a plain glyph rather than the Beacon mark. A colour logo
+           cannot use currentColor, so it would sit at fixed colour while its
+           three neighbours respond to state -- in a row of four, the one that
+           does not react reads as broken rather than as branding. The name is
+           also still a placeholder, and a mark in the nav is a firmer
+           commitment to it than a word would be. -->
+      <button type="button" class="nav-btn" id="navHomeBtn" data-nav="home">
+        <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
+        <span class="nav-lbl">Home</span>
+      </button>
       <button type="button" class="nav-btn" id="navTripsBtn" data-nav="trips">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.8 19.2 16 11l3.5-3.5a2.12 2.12 0 0 0-3-3L13 8 4.8 6.2a2 2 0 0 0-1.9.5L2 7.6l7 3.9-2.5 2.5-2.3-.4-1 1L6 16.3l1.7 2.8 1-1-.4-2.3L10.8 15l3.9 7 .9-.9a2 2 0 0 0 .5-1.9Z"/></svg>
         <span class="nav-lbl">Trips</span>
@@ -1976,7 +1986,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-25T20:05:00Z';
+const BUILD_VERSION = '2026-08-25T21:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -10110,6 +10120,16 @@ document.addEventListener('click', function(e){
   // relying on every branch below happening to miss an empty string.
   const dest = btn.dataset.nav || '';
   if(!dest) return;
+  if(dest === 'home'){
+    // Same flush-then-navigate shape as trips: leaving the editor by any route
+    // must not discard uncommitted work.
+    if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
+    state.view = 'home';
+    state.activeId = null;
+    renderMain();
+    window.scrollTo(0, 0);
+    return;
+  }
   if(dest === 'trips'){
     if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
     state.view = 'dashboard';
