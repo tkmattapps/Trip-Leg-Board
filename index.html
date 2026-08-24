@@ -1986,7 +1986,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-25T22:15:00Z';
+const BUILD_VERSION = '2026-08-25T23:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -2413,31 +2413,32 @@ function escHtml(str){
 // reflex within three uploads, and a warning nobody reads is worse than none --
 // it buys the appearance of care without the substance.
 function uploadCautionHTML(kind){
-  // *** THE WORDING MUST SPLIT HERE, AND THE FIRST VERSION GOT IT WRONG. ***
+  // TWO SURFACES, TWO DIFFERENT JOBS. Getting this wrong cost several passes,
+  // so the reasoning is recorded rather than the conclusions alone.
   //
-  // "No passenger details" is impossible advice on IMPORT: every real trip
-  // sheet carries them. It also contradicts the retention note directly below,
-  // which correctly says passenger details are not extracted. A user reading
-  // both learns the app does not know its own rules and starts skipping both.
+  //   IMPORT -- Beacon READS the document and keeps only extracted fields.
+  //             Passenger data is THE SYSTEM'S problem and already solved: the
+  //             extraction refuses names, passport and visa numbers, dates of
+  //             birth and addresses. Do not ask the user to police it too.
   //
-  // The distinction that matters:
-  //   IMPORT  -- passenger data is THE SYSTEM'S problem, and already solved.
-  //              The extraction refuses it. So do not ask the user for it.
-  //   ATTACH  -- passenger data is THE USER'S problem, because the whole file
-  //              lands unread. So say so plainly, and mean it.
+  //   ATTACH -- A PAPERCLIP. Beacon reads NOTHING here. Hotel confirmations,
+  //             car rentals, permits, trip sheets: they are filed against a leg
+  //             so the crew can open them.
+  //
+  // *** REMOVED FROM ATTACH: "the whole file is kept here, not just the parts
+  // Beacon reads." It raised extraction only to deny it, on a surface where
+  // extraction never happens. Nobody clipping a hotel confirmation wonders
+  // whether Beacon read it -- the file being kept is the obvious and entire
+  // point of a paperclip. ***
+  //
+  // The general test, earned the hard way: A SENTENCE THAT ASKS THE USER TO
+  // POLICE SOMETHING THE SURFACE ALREADY HANDLES, OR THAT ARGUES AGAINST THE
+  // PURPOSE OF THE SURFACE IT SITS ON, DOES NOT BELONG THERE.
   const extra = (kind === 'attach')
-    // TRIMMED. "Including anything Beacon doesn't read" already covers the
-    // examples that used to follow it, and listing them turned a statement of
-    // fact into an instruction to go audit your own PDF. These sheets sit on
-    // the leg and trip pages, which are dense already.
-    //
-    // What must NOT be cut: that the whole file is kept. Someone arriving from
-    // the import screen has just been told Beacon keeps only extracted fields,
-    // and would reasonably assume the same applies here. It does not, and this
-    // is the only surface where retention actually happens.
-    ? 'The whole file is kept here, not just the parts Beacon reads.'
-    // Nothing about retention on import: the retention note immediately below
-    // says it properly, and saying it twice a few lines apart reads as nerves.
+    // Attachment IS sharing with the crew, so this is the right test to state:
+    // whatever lands here, the department can open. Not needed on import, where
+    // the document itself is never shared -- only the extracted fields are.
+    ? 'Nothing you wouldn\u2019t share with your own crew.'
     : '';
   // OWNERSHIP, not permission to view. Terms 2.3 is explicit that being
   // authorized to SEE a document is not authorization to UPLOAD it, and the one
@@ -2450,19 +2451,10 @@ function uploadCautionHTML(kind){
   // contractors hold portable accounts and may legitimately have memberships in
   // several, so "your own" has no single answer for them. This phrasing permits
   // that case and still excludes carrying one department's sheet into another.
-  //
-  // The sensitivity clause ("nothing you wouldn't share with your own crew")
-  // now appears ONLY on attachments. On import the extraction already refuses
-  // passenger names, passport and visa numbers, dates of birth and addresses,
-  // so asking the user to police it as well is length without protection.
-  const share = (kind === 'attach')
-    ? ' Nothing you wouldn\u2019t share with your own crew.'
-    : '';
   return '<div class="upload-caution">' +
     '<span class="upload-caution-title">Before you upload</span>' +
     '<span class="upload-caution-body">' +
       'Only upload paperwork belonging to the department you\u2019re uploading into.' +
-      escapeHtml(share) +
       (extra ? ' ' + escapeHtml(extra) : '') +
     '</span>' +
   '</div>';
