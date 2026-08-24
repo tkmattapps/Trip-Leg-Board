@@ -896,13 +896,17 @@
   .import-crew-out.is-moved{ color:var(--amber-500); }
   .import-crew-out.is-warn{ color:var(--amber-500); }
   .import-actions{ display:flex; gap:10px; justify-content:flex-end; }
-  .import-upload-box{ background:var(--panel-800); border:1px dashed var(--hairline); border-radius:6px; padding:32px 20px; text-align:center; margin-bottom:24px; }
+  /* LEFT, not centred. Everything in this box is prose, and the blocks below
+     used margin:auto which tabbed a 520px column toward the middle on a wide
+     Mac window -- left-aligned text that does not start at the left edge reads
+     as a mistake rather than a choice. */
+  .import-upload-box{ background:var(--panel-800); border:1px dashed var(--hairline); border-radius:6px; padding:32px 24px; text-align:left; margin-bottom:24px; }
   /* Sits between the choose button and the file-type line. Left-aligned inside
      a centred box on purpose: it is a short paragraph of prose, and centred prose
      is harder to read than centred labels. Capped so it does not sprawl on a
      wide iPad. */
   .import-ai-note{
-    max-width:520px; margin:16px auto 0; text-align:left;
+    max-width:520px; margin:16px 0 0; text-align:left;
     color:var(--fog-300); font-size:13px; line-height:1.5;
     border-left:2px solid var(--amber-500); padding-left:12px;
   }
@@ -913,7 +917,7 @@
      edge (12px border+padding) so the two read as one block. The wordmark
      already says "Claude", so the text beside it must not say it again. */
   .import-powered{
-    max-width:520px; margin:10px auto 0; padding-left:14px; text-align:left;
+    max-width:520px; margin:10px 0 0; padding-left:14px; text-align:left;
     display:flex; align-items:center; gap:6px;
     color:var(--fog-500); font-size:11px; letter-spacing:0.02em;
   }
@@ -1104,7 +1108,8 @@
   /* AMBER IS INFORMATION, RED IS AN ALERT. Nothing here is wrong yet, so this
      must not read as an error. Left rule rather than a filled panel, so it sits
      beside the flow instead of interrupting it. */
-  .upload-caution{ display:block; margin:0 0 12px; padding:9px 0 9px 12px;
+  .upload-caution{ display:block; margin:16px 0 0; padding:9px 0 9px 12px;
+    max-width:520px; text-align:left;
     border-left:2px solid var(--amber-500); }
   .upload-caution-title{ display:block; font-size:12px; font-weight:700;
     letter-spacing:0.04em; text-transform:uppercase; color:var(--amber-500); }
@@ -1114,7 +1119,8 @@
      rule; a second coloured rule stacked under it would compete and turn the
      whole block into a wall of warning. This is a statement of fact, not an
      alert, and should read like one. */
-  .upload-retention{ display:block; margin:0 0 14px; padding:10px 0 0;
+  .upload-retention{ display:block; margin:16px 0 0; padding:10px 0 0;
+    max-width:520px; text-align:left;
     border-top:1px solid var(--hairline); }
   .upload-retention-title{ display:block; font-size:12px; font-weight:700;
     letter-spacing:0.04em; text-transform:uppercase; color:var(--fog-300); }
@@ -1974,7 +1980,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-25T19:15:00Z';
+const BUILD_VERSION = '2026-08-25T19:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
