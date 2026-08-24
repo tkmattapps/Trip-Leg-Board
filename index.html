@@ -1035,6 +1035,17 @@
   .dash-card-add-plus{ font-size:32px; font-weight:300; line-height:1; }
   .dash-card-add-label{ font-size:14px; font-weight:600; letter-spacing:0.5px; }
   .dash-card-top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; gap:8px; }
+    /* YOU-ARE-ON-THIS badge. Sits in the existing space-between row, so no
+       absolute positioning and nothing to collide with .dash-card-flag.
+       CYAN, deliberately: amber is status (planning) and green is condition
+       (ready / verified). A green or amber badge here would read as a claim
+       about the TRIP. Cyan is already the provenance colour -- "here is where
+       this came from" -- which is much closer to "this is about you". */
+    .dash-card-assigned{ flex:0 0 auto; font-size:10px; font-weight:700;
+      letter-spacing:0.08em; color:var(--extract-cyan, #5FD0E8);
+      border:1px solid rgba(95,208,232,0.45); border-radius:3px;
+      padding:2px 5px; line-height:1.2; white-space:nowrap;
+      background:rgba(95,208,232,0.10); }
   /* Airport notes sits top-right with the paperclip below it, rather than the
      two competing for the same row: the badge is a passive indicator and the
      button is a target, so stacking keeps the tap area clear of it. */
@@ -1935,7 +1946,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-24T04:48:00Z';
+const BUILD_VERSION = '2026-08-25T13:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -2195,12 +2206,13 @@ let currentUserProfile = null;
 async function loadCurrentUserProfile(){
   const { data: { user } } = await sb.auth.getUser();
   if(!user){ currentUserProfile = null; return null; }
-  let displayName = '', role = '';
+  let displayName = '', role = '', crewAbbrev = '';
   try {
     const { data } = await sb.from('users').select('*').eq('id', user.id).single();
     if(data){
       displayName = data.display_name || '';
       role = data.role || data.author_role || '';
+      crewAbbrev = data.crew_abbrev || '';
       // NOTE: department deliberately NOT taken from the users row any more.
       // getFlightDepartmentId() resolves it from memberships.
     }
@@ -2214,7 +2226,12 @@ async function loadCurrentUserProfile(){
     // field prefilled with that fallback would invite you to press Save and
     // store a name you never typed. An empty field must look empty.
     displayNameRaw: displayName,
-    role: role || ''
+    role: role || '',
+    // Kept from the row we already fetch, purely so the trip board can badge
+    // the trips you are crewed on WITHOUT a second query or a roster
+    // dependency on the dashboard. NO FALLBACK: a person with no abbrev set
+    // gets no badge rather than a guessed one.
+    crewAbbrev: crewAbbrev || ''
   };
   return currentUserProfile;
 }
@@ -3585,6 +3602,29 @@ function legHasCrewMember(leg, userId){
     if(list.indexOf(userId) !== -1) return true;
   }
   return false;
+}
+
+// "If your name is in a seat, it is your leg." The trip-board badge deliberately
+// asks the SIMPLEST question -- are you on ANY leg of this trip -- and does not
+// distinguish being on all of it from being on one leg of it. Kyle's call:
+// at a glance, on it or not on it is the whole of what you need.
+//
+// Reuses legHasCrewMember rather than re-reading the crew blob, so there is
+// exactly ONE definition of "your name is in a seat" in the app.
+function tripHasCrewMember(trip, userId){
+  if(!trip || !userId) return false;
+  const legs = Array.isArray(trip.legs) ? trip.legs : [];
+  return legs.some(l => legHasCrewMember(l, userId));
+}
+
+// The badge itself. Renders NOTHING unless we can name the person -- no abbrev
+// means no badge, rather than a guessed one or a bare dot with no meaning.
+function assignedBadgeHTML(isAssigned){
+  if(!isAssigned) return '';
+  const ab = (currentUserProfile && currentUserProfile.crewAbbrev) || '';
+  if(!ab) return '';
+  return '<span class="dash-card-assigned" title="You are crewed on this trip">' +
+    escapeHtml(ab) + '</span>';
 }
 
 // Every read position this person holds, in ONE query, as legId -> seen_at.
@@ -6465,6 +6505,9 @@ function tripCardHTML(trip){
   // or it becomes the same rot in a new place.
   const awaitingArchive = tripIsFullyFlown(trip) && !tripIsArchived(trip.tripNumber);
   const archived = tripIsArchived(trip.tripNumber);
+  const assignedBadge = assignedBadgeHTML(
+    tripHasCrewMember(trip, currentUserProfile ? currentUserProfile.id : null)
+  );
 
   return '<div class="dash-card' + (awaitingArchive ? ' dash-card-awaiting' : '') +
       '" data-trip-key="' + escapeHtml(trip.key) + '">' +
@@ -6474,6 +6517,7 @@ function tripCardHTML(trip){
       // read as one family. .dash-card-code is left alone because
       // dashboardCardHTML (single unassigned legs) still shares it.
       '<span class="dash-card-leg-title">Trip ' + escapeHtml(trip.tripNumber) + '</span>' +
+      assignedBadge +
     '</div>' +
     '<div class="dash-card-route">' + escapeHtml(route) + '</div>' +
     '<div class="leg-status-strip"><span class="leg-status-dots">' + legStatusDots + '</span></div>' +
