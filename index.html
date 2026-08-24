@@ -1921,7 +1921,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-24T04:05:00Z';
+const BUILD_VERSION = '2026-08-24T04:22:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -10924,7 +10924,6 @@ function renderMain(){
     });
   }
 
-  setupDatePickerPositioning();
   setupTZAutofill({ airportInputId:'depAirportId', localInputId:'depEtdLocal', zInputId:'depEtdZ', offsetInputId:'depUtcOffset', leg:leg, subObjKey:'dep' });
   setupTZAutofill({ airportInputId:'arrAirportId', localInputId:'arrEtaLocal', zInputId:'arrEtaZ', offsetInputId:'arrUtcOffset', dateInputId:'arrDate', leg:leg, subObjKey:'arr' });
 
@@ -11397,51 +11396,6 @@ function attachTime12InputFormatting(id){
     if(!v) return;
     const hhmm = parse12hToHHMM(v);
     if(hhmm) el.value = formatHHMMTo12h(hhmm);
-  });
-}
-
-/* ---- iOS date picker positioning -------------------------------------------
-   ATTEMPT 3 at the date-picker problem. Attempts 1 and 2 are documented in
-   beacon-ios-date-picker-NEXT-SESSION.md and were both reverted.
-
-   THE PROBLEM: on iPhone the native date picker anchors to the input. If there
-   is room it opens above or below with a pointer; if there is NOT room it sits
-   DIRECTLY OVER the field, so you cannot see the value you are editing. On
-   iPad and desktop this never happens.
-
-   THE APPROACH: the editor scrolls inside .main (flex:1; overflow-y:auto), NOT
-   the document. So on focus we scroll .main to put the field about a third of
-   the way down its visible height, guaranteeing room below for the picker to
-   open downward. We are choosing the field's position rather than trying to
-   control the picker's, which is not controllable.
-
-   KNOWN RISK: iOS Safari performs its OWN scroll to reveal a focused input and
-   may fight this. If it does, this is reverted rather than patched with
-   escalating timeouts -- a fix that reverse-engineers undocumented platform
-   behaviour is not durable. */
-const DATE_FIELD_IDS = ['date', 'arrDate', 'nextLegDate'];
-
-function positionDateFieldForPicker(el){
-  const main = document.querySelector('.main');
-  if(!main || !el) return;
-  const mRect = main.getBoundingClientRect();
-  const eRect = el.getBoundingClientRect();
-  /* Target: one third down the visible area of .main. */
-  const target = mRect.top + (mRect.height * 0.33);
-  const delta = eRect.top - target;
-  if(Math.abs(delta) < 8) return;   /* already close enough; do not jitter */
-  main.scrollTo({ top: main.scrollTop + delta, behavior: 'smooth' });
-}
-
-function setupDatePickerPositioning(){
-  /* Touch devices only. Desktop and iPad do not exhibit the overlap, and
-     scrolling the view under a mouse user would be an unexplained jump. */
-  if(!window.matchMedia || !window.matchMedia('(pointer: coarse)').matches) return;
-  DATE_FIELD_IDS.forEach(id => {
-    const el = document.getElementById(id);
-    if(!el || el.dataset.pickerPositioned === '1') return;
-    el.dataset.pickerPositioned = '1';
-    el.addEventListener('focus', () => positionDateFieldForPicker(el));
   });
 }
 
