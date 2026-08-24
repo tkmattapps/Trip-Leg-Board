@@ -329,7 +329,10 @@
      the input -- it cannot drift when those overrides fire. The input carries
      extra right padding so typed text never runs under the icon.
      Hidden is the default; the toggle never persists across a reload. */
-  .pw-wrap{ position:relative; margin-top:10px; }
+  /* display:block + width:100% so the input measures its width against the
+     same box the email field does. Without this the wrapper shrink-wraps
+     and the two fields end up different widths on narrow screens. */
+  .pw-wrap{ position:relative; display:block; width:100%; margin-top:10px; box-sizing:border-box; }
   .pw-wrap #loginPassword{ padding-right:46px !important; }
   .pw-toggle{
     position:absolute; top:0; right:0; height:100%; width:44px;
@@ -1918,7 +1921,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-24T03:10:00Z';
+const BUILD_VERSION = '2026-08-24T03:28:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
