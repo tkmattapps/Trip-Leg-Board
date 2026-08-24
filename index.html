@@ -1205,13 +1205,20 @@ a.chat-open{ text-decoration:none; display:inline-block; }
      Deliberately NOT .feedback-overlay. That class carries a close button and
      a click-outside-to-dismiss handler, and A NOTICE YOU CAN SWIPE PAST IS NOT
      NOTICE. This overlay has no dismissal path at all: the only way out is the
-     checkbox and the button. z-index sits above every other overlay so nothing
-     can be raised over it.
+     checkbox and the button.
+
+     Z-INDEX MUST OUTRANK #loginOverlay (99999, set inline at the element).
+     It previously sat at 200, which was above every overlay that existed when
+     this was written but BELOW the login screen. The gate therefore opened
+     behind it: bootApp() awaited a Continue button nobody could see or reach,
+     hideLoginOverlay() never ran, and anyone who had not yet accepted was
+     stranded on the credentials screen with no error of any kind. Found live.
+     Anything added above this must be checked against it.
 
      Same visual language as the rest of the app so it reads as part of Beacon
      rather than as an interruption bolted on. */
   .terms-overlay{
-    display:none; position:fixed; inset:0; background:var(--panel-900); z-index:200;
+    display:none; position:fixed; inset:0; background:var(--panel-900); z-index:100000;
     align-items:center; justify-content:center; padding:20px;
   }
   .terms-overlay.open{ display:flex; }
@@ -1892,7 +1899,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-23T16:40:00Z';
+const BUILD_VERSION = '2026-08-23T17:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12818,7 +12825,20 @@ async function handleLoginSubmit(){
     return;
   }
   state.view = 'home';
-  await bootApp();
+  // GUARDED. bootApp() does real work -- a terms gate, several network reads --
+  // and any failure in it used to leave the user sitting on the credentials
+  // screen with no error at all, because hideLoginOverlay() below never ran.
+  // Authentication had SUCCEEDED; it simply looked like the button was dead.
+  //
+  // A boot failure must say so. The session is left signed in, so a reload
+  // resumes rather than making them type the password again.
+  try {
+    await bootApp();
+  } catch(err){
+    console.error('bootApp failed after sign in', err);
+    errEl.textContent = 'Signed in, but the app could not finish loading. Pull down to reload, or try again.';
+    return;
+  }
   hideLoginOverlay();
 }
 
