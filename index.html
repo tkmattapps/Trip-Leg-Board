@@ -1986,7 +1986,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-25T21:10:00Z';
+const BUILD_VERSION = '2026-08-25T21:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -2426,8 +2426,16 @@ function uploadCautionHTML(kind){
   //   ATTACH  -- passenger data is THE USER'S problem, because the whole file
   //              lands unread. So say so plainly, and mean it.
   const extra = (kind === 'attach')
-    ? 'The whole file is kept here, including anything Beacon doesn\u2019t read, ' +
-      'so check what\u2019s inside it \u2014 passenger details, contacts, anything personal.'
+    // TRIMMED. "Including anything Beacon doesn't read" already covers the
+    // examples that used to follow it, and listing them turned a statement of
+    // fact into an instruction to go audit your own PDF. These sheets sit on
+    // the leg and trip pages, which are dense already.
+    //
+    // What must NOT be cut: that the whole file is kept. Someone arriving from
+    // the import screen has just been told Beacon keeps only extracted fields,
+    // and would reasonably assume the same applies here. It does not, and this
+    // is the only surface where retention actually happens.
+    ? 'The whole file is kept here, not just the parts Beacon reads.'
     // Nothing about retention on import: the retention note immediately below
     // says it properly, and saying it twice a few lines apart reads as nerves.
     : '';
