@@ -268,7 +268,19 @@
      title's left edge. It also stays IN FLOW so syncPageHeaderHeight() keeps
      measuring it -- see the note above the subrow rule. */
   .page-header-sub{ text-align:left; }
-  .page-header-actions{ display:flex; align-items:center; gap:8px; flex:0 0 auto; margin-top:18px; }
+  /* The right-hand STACK. margin-top lives here now rather than on the actions
+     row, so the whole column drops together and the two rows keep a fixed
+     relationship to each other regardless of which of them is populated. */
+  .page-header-right{ display:flex; flex-direction:column; align-items:flex-end;
+    gap:6px; flex:0 0 auto; margin-top:6px; }
+  /* margin-top REMOVED -- it moved to .page-header-right. Leaving it here as
+     well would double the offset on every page that has actions. */
+  .page-header-actions{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+  /* Collapses completely when empty, so pages with no documents do not carry a
+     6px gap under the pill for a row that renders nothing. */
+  .page-header-docs{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+  .page-header-docs:empty{ display:none; }
+  .page-header-actions:empty{ display:none; }
   body:not(.authed) .page-header{ display:none; }
   body.view-home .page-header{ display:none; }
 
@@ -1721,7 +1733,16 @@ a.chat-open{ text-decoration:none; display:inline-block; }
          written once when the department resolves. Which PAGES show it is a
          separate question, handled by applyHeaderDeptVisibility(). -->
     <div class="page-header-dept" id="barDeptName"></div>
-    <div class="page-header-actions" id="pageHeaderActions"></div>
+    <!-- TWO ROWS, RIGHT-ALIGNED. The verify pill sits TOP, the paperclip BOTTOM.
+         They used to be on different surfaces entirely -- pill in the header,
+         paperclip pinned in the bottom bar -- which read as two unrelated
+         controls for two things that are both "about this leg".
+         Both children are wiped by setPageHeader() on every render, so nothing
+         in here may be written once at boot. -->
+    <div class="page-header-right">
+      <div class="page-header-actions" id="pageHeaderActions"></div>
+      <div class="page-header-docs" id="pageHeaderDocSlot"></div>
+    </div>
   </div>
 </div>
 
@@ -1757,12 +1778,11 @@ a.chat-open{ text-decoration:none; display:inline-block; }
     <div class="bottom-bar-slot" id="bottomBarSlot"></div>
     <!-- Marks where NAVIGATION ends and the FIXED CONTROLS begin. -->
     <div class="bar-divider" aria-hidden="true"></div>
-    <!-- PINNED RIGHT, IMMOVABLE. The paperclip is contextual and appears only on
-         the trip page and the leg editor, but it enters to the LEFT of refresh
-         and menu, so those two never move -- muscle memory for the two controls
-         present on every page is worth more than a tidy edge. -->
+    <!-- PINNED RIGHT, IMMOVABLE. Nothing contextual enters this group any more:
+         the paperclip moved to the page header so it sits with the verify pill,
+         beside the leg it belongs to. Refresh and menu are now the only two
+         things here and they never move. -->
     <div class="bar-utils">
-      <div class="bar-fixed" id="barDocSlot"></div>
       <button type="button" class="nav-btn nav-btn-util" id="barRefreshBtn" data-refresh="1" title="Refresh from server" aria-label="Refresh">
         <span class="refresh-icon nav-ico-wrap" aria-hidden="true"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span>
         <span class="nav-lbl">Refresh</span>
@@ -1991,7 +2011,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-25T23:25:00Z';
+const BUILD_VERSION = '2026-08-26T01:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -10080,7 +10100,9 @@ function setPageHeader(opts){
   // leg's controls can never linger on a page that has no legs.
   const slotEl = document.getElementById('bottomBarSlot');
   if(slotEl) slotEl.innerHTML = o.barSlotHTML || '';
-  const docSlotEl = document.getElementById('barDocSlot');
+  // barDocHTML now lands in the HEADER, not the bottom bar. Option name kept so
+  // every existing caller keeps working unchanged.
+  const docSlotEl = document.getElementById('pageHeaderDocSlot');
   if(docSlotEl) docSlotEl.innerHTML = o.barDocHTML || '';
   if(backEl){
     if(o.backLabel){
@@ -10309,7 +10331,7 @@ function renderMain(){
   // these consts before their dependencies exist.
   const _barSlotEl = document.getElementById('bottomBarSlot');
   if(_barSlotEl) _barSlotEl.innerHTML = legBarSlotHTML;
-  const _barDocEl = document.getElementById('barDocSlot');
+  const _barDocEl = document.getElementById('pageHeaderDocSlot');
   if(_barDocEl) _barDocEl.innerHTML = legBarDocHTML;
 
   main.innerHTML =
