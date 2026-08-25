@@ -2145,7 +2145,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T07:35:00Z';
+const BUILD_VERSION = '2026-08-26T07:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7524,11 +7524,32 @@ async function loadRoster(){
     // is_department_admin() so the roster agrees with what RLS will actually
     // allow. current_date is UTC on Supabase, so the string is built in UTC.
     const _today = new Date().toISOString().slice(0, 10);
-    const { data, error } = await sb.from('memberships')
-      .select('user_id, membership_role, is_admin, roster_order, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname)')
-      .eq('flight_department_id', deptId)
-      .lte('starts_on', _today)
-      .or('ends_on.is.null,ends_on.gt.' + _today);
+    // *** AN OPTIONAL DISPLAY COLUMN MUST NEVER TAKE OUT THE ROSTER. ***
+    //
+    // roster_order (migration 21) only affects the ORDER of rows on the
+    // schedule grid. But PostgREST rejects the entire select if any named
+    // column is missing, so on a database where migration 21 has not run, this
+    // query failed outright -- and rosterCache also feeds every crew picker in
+    // the app. One cosmetic column took down core function.
+    //
+    // So the column is asked for, and if the server says it does not know it,
+    // the query is retried without it. The grid then falls back to the
+    // alphabetical sort below, which is exactly what a department that has
+    // never set an order gets anyway.
+    const _base = 'user_id, membership_role, is_admin, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname)';
+    const _withOrder = 'user_id, membership_role, is_admin, roster_order, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname)';
+    function _rosterQuery(cols){
+      return sb.from('memberships')
+        .select(cols)
+        .eq('flight_department_id', deptId)
+        .lte('starts_on', _today)
+        .or('ends_on.is.null,ends_on.gt.' + _today);
+    }
+    let { data, error } = await _rosterQuery(_withOrder);
+    if(error && /roster_order/i.test(String(error.message || ''))){
+      console.warn('memberships.roster_order absent (migration 21 not run); ordering alphabetically');
+      ({ data, error } = await _rosterQuery(_base));
+    }
     if(error) throw error;
     rosterCache = (data || [])
       .filter(m => m.users)
