@@ -888,18 +888,11 @@
   .trip-log-compose .field{ margin-bottom:0; }
   .trip-log-compose .leg-note-textarea{ min-height:60px; }
   .trip-log-actions{ display:flex; justify-content:flex-end; margin-top:8px; }
-  /* Same treatment as .home-btn-action: amber outline on panel, amber text, no
-     fill. A solid pill read as the loudest thing in the section when the section
-     is a quiet log. The radius is 3px to match the textarea it commits -- the
-     button and the field it belongs to should look like one control, not two. */
-  .trip-log-post{
-    background:var(--panel-800); border:1px solid var(--amber-500); color:var(--amber-500);
-    font-family:system-ui,'Inter',sans-serif; font-size:13px; font-weight:600;
-    letter-spacing:0.2px; padding:8px 20px; border-radius:3px; cursor:pointer;
-    -webkit-tap-highlight-color:transparent;
-    transition:filter 0.15s ease, opacity 0.15s ease;
-  }
-  .trip-log-post:hover:not(:disabled){ filter:brightness(1.08); }
+  /* Back to the established amber pill (.doc-add-btn). The outline version was
+     tried and rejected: it read as a second field rather than a commit. The
+     pill is only loud when it is present, and it is only present once there is
+     text to post. */
+  .trip-log-actions[hidden]{ display:none; }
   .trip-log-post:disabled{ opacity:0.45; cursor:default; }
   .trip-log-list{ margin-top:14px; display:flex; flex-direction:column; gap:10px; }
   .trip-log-empty{ font-size:12px; color:var(--fog-500); }
@@ -2039,7 +2032,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T03:30:00Z';
+const BUILD_VERSION = '2026-08-26T04:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -2941,6 +2934,45 @@ async function appendTripNote(tripId, content, isPublic){
   return data ? data.id : null;
 }
 
+// ---- Unposted trip note drafts ------------------------------------------
+// A log entry is only filed by a deliberate act, which means text can be
+// sitting in the box when someone navigates away. The draft is kept so that
+// leaving is never destructive -- the deliberate act stays deliberate, but
+// changing your mind about WHEN to post costs nothing.
+//
+// localStorage rather than a variable: this must survive a full reload, which
+// is exactly when the app is most likely to have thrown the text away.
+function tripNoteDraftKey(tripId){ return 'tlb_trip_note_draft_' + tripId; }
+
+function readTripNoteDraft(tripId){
+  if(!tripId) return '';
+  try { return localStorage.getItem(tripNoteDraftKey(tripId)) || ''; }
+  catch(e){ return ''; }
+}
+
+function writeTripNoteDraft(tripId, text){
+  if(!tripId) return;
+  try {
+    if(text && text.trim()) localStorage.setItem(tripNoteDraftKey(tripId), text);
+    else localStorage.removeItem(tripNoteDraftKey(tripId));
+  } catch(e){ /* storage full or blocked: the draft is a courtesy, not a record */ }
+}
+
+function clearTripNoteDraft(tripId){ writeTripNoteDraft(tripId, ''); }
+
+// Called on every navigation, from autoSaveIfEditing. Captures whatever is in
+// the composer and says so once, so nobody discovers days later that the note
+// they thought they left was never filed.
+function stashTripNoteDraft(){
+  const ta = document.getElementById('tripNoteTextarea');
+  if(!ta) return;
+  const tripId = ta.dataset.tripId || '';
+  const text = ta.value || '';
+  if(!tripId || !text.trim()) return;
+  writeTripNoteDraft(tripId, text);
+  if(typeof showToast === 'function') showToast('Note kept as a draft \u2014 not posted yet');
+}
+
 async function deleteTripNoteEntry(noteId){
   // RLS restricts this to the author's own rows; no client-side check needed.
   const { error } = await sb.from('trip_notes').delete().eq('id', noteId);
@@ -2991,13 +3023,27 @@ function tripNotesBlockHTML(trip){
           '<div class="field">' +
             '<textarea id="tripNoteTextarea" class="leg-note-textarea" placeholder="Add a note for this trip\u2026"></textarea>' +
           '</div>' +
-          '<div class="trip-log-actions">' +
-            '<button type="button" class="trip-log-post" id="tripNotePostBtn" disabled>Post</button>' +
+          '<div class="trip-log-actions" id="tripNoteActions" hidden>' +
+            '<button type="button" class="doc-add-btn trip-log-post" id="tripNotePostBtn" disabled>Post</button>' +
           '</div>' +
         '</div>' +
         '<div class="trip-log-list" id="tripNotesList"></div>' +
       '</div>' +
     '</div>';
+}
+
+// The commit only exists once there is something to commit. A permanently
+// greyed button is visual weight the section carries all day to be useful for
+// a few seconds; revealing it on the first keystroke keeps the log quiet at
+// rest without hiding what the deliberate act is.
+function syncTripNoteCompose(){
+  const ta = document.getElementById('tripNoteTextarea');
+  const row = document.getElementById('tripNoteActions');
+  const btn = document.getElementById('tripNotePostBtn');
+  if(!ta || !row) return;
+  const has = !!ta.value.trim();
+  row.hidden = !has;
+  if(btn) btn.disabled = !has;
 }
 
 async function postTripNoteFromDOM(tripId){
@@ -3011,12 +3057,15 @@ async function postTripNoteFromDOM(tripId){
     // text on a failed save, which is the one outcome the person cannot undo.
     ta.value = '';
     ta.dataset.userEdited = '';
+    // The draft existed only to protect unposted text. It is now in the log.
+    clearTripNoteDraft(tripId);
+    syncTripNoteCompose();
     await hydrateTripNotes({ tripNumber: tripId });
   } catch(e){
     console.error('trip note post', e);
     showToast('Note not saved \u2014 try again');
   }
-  if(btn) btn.disabled = !ta.value.trim();
+  syncTripNoteCompose();
 }
 
 function wireTripNotes(trip){
@@ -3028,14 +3077,23 @@ function wireTripNotes(trip){
     ta.placeholder = 'Give this trip a trip number to add trip notes.';
     ta.disabled = true;
     if(btn) btn.disabled = true;
+    const row0 = document.getElementById('tripNoteActions');
+    if(row0) row0.hidden = true;
     return;
   }
   // NO BLUR AUTOSAVE. A log entry is committed by a deliberate act -- posting
   // on blur would file half-written thoughts every time focus moved, and a log
   // cannot be quietly corrected the way an overwritten field could.
+  // dataset.tripId lets stashTripNoteDraft find the trip without reaching into
+  // app state -- the composer knows what it belongs to.
+  ta.dataset.tripId = tripId;
+  const draft = readTripNoteDraft(tripId);
+  if(draft){ ta.value = draft; ta.dataset.userEdited = '1'; }
+  syncTripNoteCompose();
   ta.addEventListener('input', function(){
     ta.dataset.userEdited = '1';
-    if(btn) btn.disabled = !ta.value.trim();
+    writeTripNoteDraft(tripId, ta.value);
+    syncTripNoteCompose();
   });
   if(btn){
     btn.addEventListener('click', function(){ postTripNoteFromDOM(tripId); });
@@ -12302,6 +12360,11 @@ function wireFieldBlurAutosave(){
   });
 }
 function autoSaveIfEditing(){
+  // Every navigation path in the app calls this before leaving. That makes it
+  // the one reliable place to catch unposted trip note text, even though the
+  // name only advertises the editor autosave. Kept here deliberately rather
+  // than added to nineteen call sites, where it would drift out of step.
+  stashTripNoteDraft();
   if(state.view === 'editor' && state.activeId && !autosaveInFlight){
     autosaveInFlight = true;
     collectAndSave(state.activeId, { silent: true, skipRender: true })
