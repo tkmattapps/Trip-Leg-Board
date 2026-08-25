@@ -970,6 +970,28 @@
   .sched-note{ font-size:11px; color:var(--fog-500); }
   .sched-empty{ font-size:13px; color:var(--fog-500); padding:24px 0; }
   .sched-nav{ min-width:44px; }
+  /* ENTRY PANEL. Pinned right, not centred: the grid behind it is the reason
+     the decision is being made here rather than on a form. */
+  .sched-entry-overlay{ position:fixed; inset:0; z-index:64; display:none; }
+  .sched-entry-overlay.open{ display:block; }
+  .sched-entry-panel{ position:absolute; top:0; right:0; bottom:0; width:min(380px, 92vw);
+    background:var(--panel-800); border-left:1px solid var(--hairline);
+    box-shadow:-18px 0 40px rgba(6,12,22,0.45);
+    display:flex; flex-direction:column; padding:0 20px 20px; overflow-y:auto; }
+  .sched-entry-who{ font-family:'Big Shoulders Display',sans-serif; font-size:22px;
+    color:var(--paper-050); margin-bottom:12px; }
+  .sched-entry-cats{ display:flex; flex-direction:column; gap:6px; margin-bottom:16px; }
+  .sched-cat{ display:flex; align-items:center; gap:9px; text-align:left;
+    background:var(--panel-700); border:1px solid var(--hairline); border-radius:4px;
+    color:var(--fog-300); font-family:system-ui,'Inter',sans-serif; font-size:13px;
+    padding:9px 12px; cursor:pointer; }
+  .sched-cat-on{ border-color:var(--amber-500); color:var(--paper-050); }
+  .sched-entry-span{ font-size:12px; color:var(--fog-500); margin-top:10px; }
+  .sched-entry-span-bad{ color:var(--alert-600); }
+  .sched-entry-foot{ display:flex; justify-content:flex-end; gap:10px; margin-top:auto; padding-top:18px; }
+  /* Only an admin sees a cell as touchable. */
+  .sched-can-edit .sched-cell{ cursor:pointer; }
+  .sched-can-edit .sched-cell:hover{ box-shadow:inset 0 0 0 1px var(--fog-500); }
   /* Quick note sheet. Borrows .chat-row wholesale -- same list, same question. */
   .qn-row-off{ opacity:0.5; }
   .qn-row-open{ border-bottom:none; }
@@ -2005,6 +2027,25 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   </div>
 </div>
 
+<!-- SCHEDULE ENTRY.
+     Deliberately NOT a .feedback-modal centred on screen: this one is pinned to
+     the side so the grid behind it stays readable. You are deciding against the
+     surrounding month, and a dialog that covers the month removes the only
+     reason to have drawn it. -->
+<div class="sched-entry-overlay" id="schedEntryOverlay">
+  <div class="sched-entry-panel" role="dialog" aria-label="Schedule entry">
+    <div class="feedback-modal-head">
+      <span class="feedback-modal-title">Add to schedule</span>
+      <button class="feedback-close-btn" id="schedEntryCloseBtn" aria-label="Close">&times;</button>
+    </div>
+    <div id="schedEntryBody"></div>
+    <div class="sched-entry-foot">
+      <button type="button" class="btn" id="schedEntryCancelBtn">Cancel</button>
+      <button type="button" class="btn btn-primary" id="schedEntrySaveBtn">Add</button>
+    </div>
+  </div>
+</div>
+
 <div class="feedback-overlay" id="legendOverlay">
   <div class="feedback-modal">
     <div class="feedback-modal-head">
@@ -2145,7 +2186,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T07:55:00Z';
+const BUILD_VERSION = '2026-08-26T08:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13264,13 +13305,14 @@ function indexBusyDays(rows, ownerKey, sourceKey){
   return out;
 }
 
-function schedCellHTML(entries, dayISO, ownerId, isToday, isWeekend, outside){
+function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, outside){
   let cls = 'sched-cell';
   if(isWeekend) cls += ' sched-cell-wknd';
   if(outside)   cls += ' sched-cell-out';
   if(isToday)   cls += ' sched-cell-today';
   if(schedIsClash(entries)) cls += ' sched-cell-clash';
-  const attrs = ' data-sched-day="' + dayISO + '" data-sched-owner="' + escapeHtml(ownerId) + '"';
+  const attrs = ' data-sched-day="' + dayISO + '" data-sched-owner="' + escapeHtml(ownerId) + '"' +
+                ' data-sched-kind="' + escapeHtml(ownerKind) + '"';
   if(!entries || !entries.length){
     return '<div class="' + cls + '"' + attrs + '></div>';
   }
@@ -13286,6 +13328,172 @@ function schedCellHTML(entries, dayISO, ownerId, isToday, isWeekend, outside){
     return '<span class="sched-blk" style="background:' + col + '" title="' + escapeHtml(title) + '">' + short + '</span>';
   }).join('');
   return '<div class="' + cls + ' sched-cell-filled"' + attrs + '>' + blocks + '</div>';
+}
+
+// ---- SCHEDULE ENTRY -------------------------------------------------------
+// Opens OVER the grid, never instead of it. Kyle's ruling: the value of the
+// spreadsheet is ADJACENCY -- you decide against the surrounding picture, so
+// the picture must stay on screen while you decide.
+
+const SCHED_CREW_CATS = ['training','pto','quarterly_call','soft_day','other'];
+const SCHED_AC_CATS   = ['maintenance','away_from_base','other'];
+
+let schedEntry = null;   // { ownerId, ownerKind, ownerLabel, category, start, end, reason }
+
+function schedOwnerLabel(ownerId, kind){
+  if(kind === 'aircraft'){
+    const a = (aircraftCache || []).find(function(x){ return x.id === ownerId; });
+    return a ? (a.tail_number || 'Aircraft') : 'Aircraft';
+  }
+  const p = (rosterCache || []).find(function(x){ return x.id === ownerId; });
+  return p ? (p.name || p.email || 'Crew') : 'Crew';
+}
+
+function openSchedEntry(ownerId, ownerKind, dayISO){
+  if(!rosterViewerIsAdmin()){
+    // Stated, not silent. A control that does nothing reads as broken; a
+    // control that explains itself reads as a rule.
+    showToast('Only a department admin can change the schedule');
+    return;
+  }
+  schedEntry = {
+    ownerId: ownerId,
+    ownerKind: ownerKind,
+    ownerLabel: schedOwnerLabel(ownerId, ownerKind),
+    // Tapping a cell IS the start date. It was chosen by pointing at it on a
+    // calendar, which is a more deliberate act than typing one, so it does not
+    // inherit the provisional-date treatment -- there is no ambiguity about
+    // whether a human meant it.
+    category: ownerKind === 'aircraft' ? 'maintenance' : 'pto',
+    start: dayISO,
+    end: dayISO,
+    reason: ''
+  };
+  renderSchedEntry();
+  const ov = document.getElementById('schedEntryOverlay');
+  if(ov) ov.classList.add('open');
+}
+
+function closeSchedEntry(){
+  const ov = document.getElementById('schedEntryOverlay');
+  if(ov) ov.classList.remove('open');
+  schedEntry = null;
+}
+
+function renderSchedEntry(){
+  const body = document.getElementById('schedEntryBody');
+  if(!body || !schedEntry) return;
+  const e = schedEntry;
+  const cats = e.ownerKind === 'aircraft' ? SCHED_AC_CATS : SCHED_CREW_CATS;
+  // 'other' REQUIRES a reason, enforced by a BEFORE trigger on the table. The
+  // form says so out loud rather than letting the database refuse a save the
+  // person thought was fine -- but the trigger remains the rule, not this note.
+  const needsReason = e.category === 'other';
+  let h = '<div class="sched-entry-who">' + escapeHtml(e.ownerLabel) + '</div>';
+  h += '<div class="sched-entry-cats">';
+  cats.forEach(function(c){
+    const on = c === e.category;
+    h += '<button type="button" class="sched-cat' + (on ? ' sched-cat-on' : '') + '" data-sched-cat="' + c + '">' +
+           '<span class="sched-key-dot" style="background:' + SCHED_COLORS[c] + '"></span>' +
+           escapeHtml(SCHED_LABELS[c]) +
+         '</button>';
+  });
+  h += '</div>';
+  h += '<div class="field-row-inline sched-entry-dates">' +
+         '<div class="field"><label>Start</label>' +
+           '<input type="date" id="schedStart" value="' + escapeHtml(e.start) + '">' +
+         '</div>' +
+         '<div class="field"><label>End</label>' +
+           '<input type="date" id="schedEnd" value="' + escapeHtml(e.end) + '">' +
+         '</div>' +
+       '</div>';
+  h += '<div class="field"><label>Reason' + (needsReason ? '' : ' (optional)') + '</label>' +
+         '<input type="text" id="schedReason" maxlength="120" value="' + escapeHtml(e.reason) + '" ' +
+         'placeholder="' + (needsReason ? 'Required for Other' : 'e.g. FAA medical') + '">' +
+       '</div>';
+  h += '<div class="sched-entry-span" id="schedSpan"></div>';
+  body.innerHTML = h;
+  updateSchedSpan();
+}
+
+// Says how many days will be written, in words, before anything is written.
+// A start and an end date are two facts; the DURATION is the thing being
+// decided, and it is the one number the form does not otherwise show.
+function updateSchedSpan(){
+  const el = document.getElementById('schedSpan');
+  if(!el || !schedEntry) return;
+  const s = schedEntry.start, e = schedEntry.end;
+  if(!s || !e){ el.textContent = ''; return; }
+  const d1 = new Date(s + 'T00:00:00'), d2 = new Date(e + 'T00:00:00');
+  if(isNaN(d1) || isNaN(d2)){ el.textContent = ''; return; }
+  if(d2 < d1){
+    el.textContent = 'The end date is before the start date.';
+    el.className = 'sched-entry-span sched-entry-span-bad';
+    return;
+  }
+  const n = Math.round((d2 - d1) / 86400000) + 1;
+  el.textContent = n === 1 ? '1 day' : (n + ' days');
+  el.className = 'sched-entry-span';
+}
+
+async function saveSchedEntry(){
+  if(!schedEntry) return;
+  const e = schedEntry;
+  const startEl = document.getElementById('schedStart');
+  const endEl = document.getElementById('schedEnd');
+  const reasonEl = document.getElementById('schedReason');
+  const start = startEl ? startEl.value : e.start;
+  const end = endEl ? endEl.value : e.end;
+  const reason = reasonEl ? reasonEl.value.trim() : '';
+  if(!start || !end){ showToast('A start and an end date are needed'); return; }
+  if(end < start){ showToast('The end date is before the start date'); return; }
+  if(e.category === 'other' && !reason){ showToast('Other needs a reason'); return; }
+
+  const deptId = await getFlightDepartmentId();
+  const prof = currentUserProfile || await loadCurrentUserProfile();
+  const btn = document.getElementById('schedEntrySaveBtn');
+  if(btn) btn.disabled = true;
+  try {
+    if(e.ownerKind === 'aircraft'){
+      const { error } = await sb.from('aircraft_availability').insert({
+        flight_department_id: deptId,
+        aircraft_id: e.ownerId,
+        status: e.category,
+        start_date: start,
+        end_date: end,
+        reason: reason || null,
+        created_by: prof ? prof.id : null
+      }).select('id').single();
+      if(error) throw error;
+    } else {
+      const { error } = await sb.from('crew_exceptions').insert({
+        flight_department_id: deptId,
+        user_id: e.ownerId,
+        category: e.category,
+        start_date: start,
+        end_date: end,
+        reason: reason || null,
+        created_by: prof ? prof.id : null
+      }).select('id').single();
+      if(error) throw error;
+    }
+    closeSchedEntry();
+    showToast('Added to the schedule');
+    // Re-read rather than patching the local copy. The grid is a rendering of
+    // a SQL derivation, not of a client-side list, and inventing the rows the
+    // derivation would have returned is how the two drift apart.
+    schedData = null;
+    await openScheduleView();
+  } catch(err){
+    console.error('schedule entry save', err);
+    // The 'other requires a reason' trigger and the date-order constraint both
+    // report through here. Their own words are more use than a generic message.
+    const msg = (err && err.message) ? String(err.message) : '';
+    showToast(/reason/i.test(msg) ? 'That category needs a reason'
+            : /dates_ordered/i.test(msg) ? 'The end date is before the start date'
+            : 'Could not save that \u2014 try again');
+    if(btn) btn.disabled = false;
+  }
 }
 
 function renderScheduleView(){
@@ -13332,7 +13540,7 @@ function renderScheduleView(){
   });
   head += '</div>';
 
-  function bandHTML(label, rows, idx, nameOf, subOf){
+  function bandHTML(label, rows, idx, kind, nameOf, subOf){
     if(!rows.length) return '';
     let h = '<div class="sched-band">' + escapeHtml(label) + '</div>';
     rows.forEach(function(r){
@@ -13345,7 +13553,7 @@ function renderScheduleView(){
       days.forEach(function(dt){
         const iso = schedISO(dt);
         const dow = dt.getDay();
-        h += schedCellHTML(owned[iso], iso, r.id, iso === todayISO,
+        h += schedCellHTML(owned[iso], iso, r.id, kind, iso === todayISO,
                            dow === 0 || dow === 6,
                            dt.getMonth() !== w.monthFirst.getMonth());
       });
@@ -13375,10 +13583,10 @@ function renderScheduleView(){
   });
   const acRows   = (aircraftCache || []).map(function(a){ return { id: a.id, tail: a.tail_number || '', type: a.model || a.aircraft_type || '' }; });
 
-  let body = bandHTML('Crew', crewRows, crewIdx,
+  let body = bandHTML('Crew', crewRows, crewIdx, 'crew',
                       function(r){ return r.name || r.email; },
                       function(r){ return r.abbrev || ''; });
-  body += bandHTML('Aircraft', acRows, acIdx,
+  body += bandHTML('Aircraft', acRows, acIdx, 'aircraft',
                    function(r){ return r.tail; },
                    function(r){ return r.type; });
 
@@ -13400,7 +13608,10 @@ function renderScheduleView(){
          'Flying on a protected day</span>';
   key += '</div>';
 
-  main.innerHTML = '<div class="sched-wrap">' +
+  // A non-admin gets the same grid with no pointer affordance. The RLS policies
+  // are the actual gate -- this only avoids offering something that would fail.
+  const editCls = rosterViewerIsAdmin() ? ' sched-can-edit' : '';
+  main.innerHTML = '<div class="sched-wrap' + editCls + '">' +
       '<div class="sched-scroll">' + head + body + '</div>' +
       key +
       '<div class="sched-note">Flight duty is read from the trips themselves and cannot be edited here. ' +
@@ -13550,6 +13761,18 @@ async function postQuickNote(){
 }
 
 // Chat sheet interactions, delegated so they survive re-render of the body.
+// The day count follows the date inputs live, so the duration being decided is
+// visible before the write rather than after it.
+document.addEventListener('input', function(e){
+  const t = e.target;
+  if(!t || !t.id) return;
+  if(t.id === 'schedStart' || t.id === 'schedEnd'){
+    if(schedEntry){ schedEntry.start = document.getElementById('schedStart').value;
+                    schedEntry.end   = document.getElementById('schedEnd').value; }
+    updateSchedSpan();
+  }
+});
+
 document.addEventListener('click', async function(e){
   const t = e.target;
   if(!t || !t.closest) return;
@@ -13557,6 +13780,28 @@ document.addEventListener('click', async function(e){
   if(t.closest('#chatCloseBtn')){ closeChatSheet(); return; }
 
   if(t.closest('#quickNoteCloseBtn')){ closeQuickNoteSheet(); return; }
+
+  if(t.closest('#schedEntryCloseBtn') || t.closest('#schedEntryCancelBtn')){ closeSchedEntry(); return; }
+  if(t.closest('#schedEntrySaveBtn')){ saveSchedEntry(); return; }
+  const schedCat = t.closest('[data-sched-cat]');
+  if(schedCat && schedEntry){
+    // Keep whatever has already been typed. Re-rendering the form must not
+    // silently discard a date the person just picked.
+    const sEl = document.getElementById('schedStart'), eEl = document.getElementById('schedEnd'),
+          rEl = document.getElementById('schedReason');
+    if(sEl) schedEntry.start = sEl.value;
+    if(eEl) schedEntry.end = eEl.value;
+    if(rEl) schedEntry.reason = rEl.value;
+    schedEntry.category = schedCat.getAttribute('data-sched-cat');
+    renderSchedEntry();
+    return;
+  }
+  const schedCell = t.closest('[data-sched-day]');
+  if(schedCell){
+    openSchedEntry(schedCell.getAttribute('data-sched-owner'), schedCell.getAttribute('data-sched-kind'),
+                   schedCell.getAttribute('data-sched-day'));
+    return;
+  }
 
   const schedStep = t.closest('[data-sched-step]');
   if(schedStep){ schedStepMonth(parseInt(schedStep.getAttribute('data-sched-step'), 10) || 0); return; }
