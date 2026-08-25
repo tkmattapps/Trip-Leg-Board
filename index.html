@@ -124,6 +124,22 @@
   /* PINNED RIGHT AND IMMOVABLE. flex:0 0 auto so this group never stretches or
      shrinks; the nav beside it absorbs all the slack instead. */
   .bar-utils{ display:flex; align-items:center; gap:2px; flex:0 0 auto; }
+  /* PHONE WIDTHS. Five nav buttons plus two utilities do not fit an iPhone at
+     the desk-screen sizing. .nav-btn is white-space:nowrap and flex:0 0 auto by
+     design -- a label must never be clipped to half a word -- so the cluster
+     cannot absorb the overflow by shrinking. It spills instead, which is why
+     the divider appeared to the LEFT of Trip notes and the labels collided:
+     nothing was mispositioned, there was simply more bar than screen.
+     Tightening the metrics is the fix; the layout rules stay as they are.
+     Scoped to 700px, not 820px -- iPad portrait has the room and should keep
+     the full sizing. */
+  @media (max-width:700px){
+    .nav-btn{ min-width:0; padding:0 4px; }
+    .nav-lbl{ font-size:9px; letter-spacing:0; }
+    .nav-ico{ width:19px; height:19px; }
+    .bar-divider{ margin:6px 2px; }
+    .bar-nav{ gap:0; }
+  }
   /* .bar-btn / .menu-btn / .menu-btn-bars REMOVED: refresh and menu are now
      .nav-btn like everything else in the cluster, so the bordered 40x34 pill and
      the hand-drawn hamburger bars had no elements left. */
@@ -2068,7 +2084,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T05:15:00Z';
+const BUILD_VERSION = '2026-08-26T05:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
