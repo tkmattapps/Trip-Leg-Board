@@ -893,6 +893,13 @@
      pill is only loud when it is present, and it is only present once there is
      text to post. */
   .trip-log-actions[hidden]{ display:none; }
+  /* Quick note sheet. Borrows .chat-row wholesale -- same list, same question. */
+  .qn-row-off{ opacity:0.5; }
+  .qn-row-open{ border-bottom:none; }
+  .qn-compose{ padding:0 0 14px; }
+  .qn-compose .field{ margin-bottom:0; }
+  .qn-compose .leg-note-textarea{ min-height:88px; }
+  .qn-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:10px; }
   .trip-log-post:disabled{ opacity:0.45; cursor:default; }
   .trip-log-list{ margin-top:14px; display:flex; flex-direction:column; gap:10px; }
   .trip-log-empty{ font-size:12px; color:var(--fog-500); }
@@ -1804,6 +1811,10 @@ a.chat-open{ text-decoration:none; display:inline-block; }
          beside the leg it belongs to. Refresh and menu are now the only two
          things here and they never move. -->
     <div class="bar-utils">
+      <button type="button" class="nav-btn nav-btn-util" id="barNoteBtn" aria-label="Quick note" title="Quick note">
+        <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        <span class="nav-lbl">Note</span>
+      </button>
       <button type="button" class="nav-btn nav-btn-util" id="barRefreshBtn" data-refresh="1" title="Refresh from server" aria-label="Refresh">
         <span class="refresh-icon nav-ico-wrap" aria-hidden="true"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span>
         <span class="nav-lbl">Refresh</span>
@@ -1889,6 +1900,22 @@ a.chat-open{ text-decoration:none; display:inline-block; }
       <button class="feedback-close-btn" id="chatCloseBtn" aria-label="Close">&times;</button>
     </div>
     <div id="chatSheetBody"></div>
+  </div>
+</div>
+
+<!-- QUICK NOTE SHEET.
+     Raised by the Note button in the bottom bar. Same shape as the chat sheet
+     and for the same reason: the bar button is global while a note belongs to
+     one trip, so rather than the bar guessing which trip you mean, it asks.
+     Choosing a trip opens the field IN PLACE -- this exists so a note can be
+     filed without navigating away from whatever you were doing. -->
+<div class="feedback-overlay" id="quickNoteOverlay">
+  <div class="feedback-modal">
+    <div class="feedback-modal-head">
+      <span class="feedback-modal-title">Quick note</span>
+      <button class="feedback-close-btn" id="quickNoteCloseBtn" aria-label="Close">&times;</button>
+    </div>
+    <div id="quickNoteBody"></div>
   </div>
 </div>
 
@@ -2032,7 +2059,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T04:00:00Z';
+const BUILD_VERSION = '2026-08-26T04:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12910,6 +12937,61 @@ function chatSheetBodyHTML(){
   return h;
 }
 
+// ---- Quick note sheet ---------------------------------------------------
+// Deliberately reuses chatSheetTrips(): the two sheets answer the same
+// question -- which live trip do you mean -- so they should offer the same
+// list. If one silently showed a trip the other did not, the difference would
+// be read as a fact about the trip rather than an inconsistency in the app.
+function quickNoteSheetTrips(){ return chatSheetTrips(); }
+
+function quickNoteBodyHTML(activeTripId){
+  const trips = quickNoteSheetTrips();
+  if(!trips.length){
+    return '<div class="chat-sheet-empty">No live trips. A note needs a trip to belong to.</div>';
+  }
+  let h = '<div class="chat-sheet-intro">Notes are shared with everyone on the trip '
+        + 'and appear in the trip\u2019s notes log.</div>';
+  trips.forEach(t => {
+    const tn = (t.tripNumber || '').trim();
+    const dates = tripCardDateRange(t.legs);
+    // An unnumbered trip is refused here because the trip page keys its notes
+    // on the trip NUMBER. Posting against the group key instead would file a
+    // note that the trip page could never show -- a silent divergence, which is
+    // worse than an honest refusal.
+    if(!tn){
+      h += '<div class="chat-row qn-row-off">'
+         +   '<div class="chat-row-text">'
+         +     '<div class="chat-row-title">' + escapeHtml(unnumberedTripLabel(t.legs)) + '</div>'
+         +     '<div class="chat-row-sub">Needs a trip number before notes can be added</div>'
+         +   '</div>'
+         + '</div>';
+      return;
+    }
+    const isOpen = activeTripId === tn;
+    h += '<div class="chat-row qn-row' + (isOpen ? ' qn-row-open' : '') + '" data-qn-trip="' + escapeHtml(tn) + '">'
+       +   '<div class="chat-row-text">'
+       +     '<div class="chat-row-title">Trip ' + escapeHtml(tn) + '</div>'
+       +     '<div class="chat-row-sub">' + escapeHtml(dates) + '</div>'
+       +   '</div>'
+       +   '<div class="chat-row-act">'
+       +     (isOpen ? '' : '<button type="button" class="btn chat-link-btn" data-qn-open="' + escapeHtml(tn) + '">Add note</button>')
+       +   '</div>'
+       + '</div>';
+    if(isOpen){
+      h += '<div class="qn-compose">'
+         +   '<div class="field">'
+         +     '<textarea id="quickNoteText" class="leg-note-textarea" placeholder="Add a note for this trip\u2026"></textarea>'
+         +   '</div>'
+         +   '<div class="qn-actions">'
+         +     '<button type="button" class="btn" data-qn-cancel="1">Cancel</button>'
+         +     '<button type="button" class="doc-add-btn trip-log-post" id="quickNotePostBtn" disabled>Post</button>'
+         +   '</div>'
+         + '</div>';
+    }
+  });
+  return h;
+}
+
 function renderChatSheet(){
   const body = document.getElementById('chatSheetBody');
   if(body) body.innerHTML = chatSheetBodyHTML();
@@ -12956,12 +13038,101 @@ function openLegendOverlay(){
   const ov = document.getElementById('legendOverlay');
   if(ov) ov.classList.add('open');
 }
+// Which trip the quick note sheet currently has open. Module-level rather than
+// read back off the DOM so the sheet can re-render without losing its place.
+let quickNoteActiveTrip = null;
+
+function renderQuickNoteSheet(){
+  const body = document.getElementById('quickNoteBody');
+  if(!body) return;
+  body.innerHTML = quickNoteBodyHTML(quickNoteActiveTrip);
+  const ta = document.getElementById('quickNoteText');
+  if(!ta) return;
+  // The same draft the trip page uses. A note half-typed here and finished
+  // there is one note, not two -- the draft belongs to the TRIP, not to the
+  // surface it was started on.
+  const draft = readTripNoteDraft(quickNoteActiveTrip);
+  if(draft) ta.value = draft;
+  syncQuickNoteCompose();
+  ta.focus();
+  ta.addEventListener('input', function(){
+    writeTripNoteDraft(quickNoteActiveTrip, ta.value);
+    syncQuickNoteCompose();
+  });
+}
+
+function syncQuickNoteCompose(){
+  const ta = document.getElementById('quickNoteText');
+  const btn = document.getElementById('quickNotePostBtn');
+  if(btn) btn.disabled = !ta || !ta.value.trim();
+}
+
+function openQuickNoteSheet(){
+  quickNoteActiveTrip = null;
+  renderQuickNoteSheet();
+  const ov = document.getElementById('quickNoteOverlay');
+  if(ov) ov.classList.add('open');
+}
+
+function closeQuickNoteSheet(){
+  // Whatever is in the box is kept as a draft, exactly as leaving the trip page
+  // does. Closing a sheet is not a decision to discard.
+  const ta = document.getElementById('quickNoteText');
+  if(ta && quickNoteActiveTrip) writeTripNoteDraft(quickNoteActiveTrip, ta.value);
+  const ov = document.getElementById('quickNoteOverlay');
+  if(ov) ov.classList.remove('open');
+  quickNoteActiveTrip = null;
+}
+
+async function postQuickNote(){
+  const ta = document.getElementById('quickNoteText');
+  const btn = document.getElementById('quickNotePostBtn');
+  const tripId = quickNoteActiveTrip;
+  if(!ta || !tripId || !ta.value.trim()) return;
+  if(btn) btn.disabled = true;
+  try {
+    await appendTripNote(tripId, ta.value);
+    clearTripNoteDraft(tripId);
+    closeQuickNoteSheet();
+    showToast('Note added to trip ' + tripId);
+    // If the trip page happens to be open behind the sheet, its log is now out
+    // of date. Refreshing it here means the shortcut never leaves a stale view
+    // of the very thing it just wrote to.
+    if(document.getElementById('tripNotesList')){
+      hydrateTripNotes({ tripNumber: tripId }).catch(function(){});
+    }
+  } catch(e){
+    console.error('quick note post', e);
+    showToast('Note not saved \u2014 try again');
+    if(btn) btn.disabled = false;
+  }
+}
+
 // Chat sheet interactions, delegated so they survive re-render of the body.
 document.addEventListener('click', async function(e){
   const t = e.target;
   if(!t || !t.closest) return;
 
   if(t.closest('#chatCloseBtn')){ closeChatSheet(); return; }
+
+  if(t.closest('#quickNoteCloseBtn')){ closeQuickNoteSheet(); return; }
+  const qnOpen = t.closest('[data-qn-open]');
+  if(qnOpen){
+    const ta0 = document.getElementById('quickNoteText');
+    if(ta0 && quickNoteActiveTrip) writeTripNoteDraft(quickNoteActiveTrip, ta0.value);
+    quickNoteActiveTrip = qnOpen.getAttribute('data-qn-open');
+    renderQuickNoteSheet();
+    return;
+  }
+  if(t.closest('[data-qn-cancel]')){
+    const ta1 = document.getElementById('quickNoteText');
+    if(ta1 && quickNoteActiveTrip) writeTripNoteDraft(quickNoteActiveTrip, ta1.value);
+    quickNoteActiveTrip = null;
+    renderQuickNoteSheet();
+    return;
+  }
+  if(t.closest('#quickNotePostBtn')){ postQuickNote(); return; }
+  if(t.closest('#barNoteBtn')){ openQuickNoteSheet(); return; }
 
   const add = t.closest('[data-chat-add]');
   if(add){ chatRowToInput(add.getAttribute('data-chat-add')); return; }
