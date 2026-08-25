@@ -888,7 +888,18 @@
   .trip-log-compose .field{ margin-bottom:0; }
   .trip-log-compose .leg-note-textarea{ min-height:60px; }
   .trip-log-actions{ display:flex; justify-content:flex-end; margin-top:8px; }
-  /* .doc-add-btn carries the appearance -- this only adds the disabled state. */
+  /* Same treatment as .home-btn-action: amber outline on panel, amber text, no
+     fill. A solid pill read as the loudest thing in the section when the section
+     is a quiet log. The radius is 3px to match the textarea it commits -- the
+     button and the field it belongs to should look like one control, not two. */
+  .trip-log-post{
+    background:var(--panel-800); border:1px solid var(--amber-500); color:var(--amber-500);
+    font-family:system-ui,'Inter',sans-serif; font-size:13px; font-weight:600;
+    letter-spacing:0.2px; padding:8px 20px; border-radius:3px; cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+    transition:filter 0.15s ease, opacity 0.15s ease;
+  }
+  .trip-log-post:hover:not(:disabled){ filter:brightness(1.08); }
   .trip-log-post:disabled{ opacity:0.45; cursor:default; }
   .trip-log-list{ margin-top:14px; display:flex; flex-direction:column; gap:10px; }
   .trip-log-empty{ font-size:12px; color:var(--fog-500); }
@@ -2028,7 +2039,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T03:05:00Z';
+const BUILD_VERSION = '2026-08-26T03:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -2981,7 +2992,7 @@ function tripNotesBlockHTML(trip){
             '<textarea id="tripNoteTextarea" class="leg-note-textarea" placeholder="Add a note for this trip\u2026"></textarea>' +
           '</div>' +
           '<div class="trip-log-actions">' +
-            '<button type="button" class="doc-add-btn trip-log-post" id="tripNotePostBtn" disabled>Post</button>' +
+            '<button type="button" class="trip-log-post" id="tripNotePostBtn" disabled>Post</button>' +
           '</div>' +
         '</div>' +
         '<div class="trip-log-list" id="tripNotesList"></div>' +
