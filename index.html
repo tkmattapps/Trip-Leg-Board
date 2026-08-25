@@ -1002,6 +1002,11 @@
   .sched-del-btn{ background:none; border:0; color:var(--fog-500); font-size:18px; line-height:1;
     cursor:pointer; padding:0 2px; flex:0 0 auto; }
   .sched-del-btn:hover{ color:var(--alert-600); }
+  /* DRAG PREVIEW. An inset ring rather than a fill: the cell may already carry
+     a colour block, and a fill would hide the thing you are dragging across. */
+  .sched-cell-sel{ box-shadow:inset 0 0 0 2px var(--amber-500) !important; }
+  /* Kills the text-selection smear that a horizontal drag otherwise produces. */
+  body.sched-dragging{ user-select:none; -webkit-user-select:none; cursor:crosshair; }
   .sched-entry-foot{ display:flex; justify-content:flex-end; gap:10px; margin-top:auto; padding-top:18px; }
   /* Only an admin sees a cell as touchable. */
   .sched-can-edit .sched-cell{ cursor:pointer; }
@@ -2200,7 +2205,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T09:15:00Z';
+const BUILD_VERSION = '2026-08-26T10:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13363,6 +13368,134 @@ function schedOwnerLabel(ownerId, kind){
   return p ? (p.name || p.email || 'Crew') : 'Crew';
 }
 
+// ---- DRAG TO SET A SPAN ---------------------------------------------------
+// Press on the start day, drag to the end day, release -- the entry panel opens
+// with both dates already set.
+//
+// The drag is CLAMPED TO THE ROW IT STARTED IN. Dragging down the grid would
+// cross into another person, and one record cannot belong to two people; a
+// selection that silently changed whose row it was on would produce an entry
+// against the wrong name. So vertical movement is ignored rather than followed.
+
+let schedDrag = null;        // { ownerId, ownerKind, anchorDay, curDay }
+let schedDragMoved = false;  // suppresses the click that follows a real drag
+
+function schedCellFromPoint(x, y){
+  const el = document.elementFromPoint(x, y);
+  return el && el.closest ? el.closest('[data-sched-day]') : null;
+}
+
+function schedDragBegin(cell){
+  if(!rosterViewerIsAdmin()) return;
+  schedDrag = {
+    ownerId: cell.getAttribute('data-sched-owner'),
+    ownerKind: cell.getAttribute('data-sched-kind'),
+    anchorDay: cell.getAttribute('data-sched-day'),
+    curDay: cell.getAttribute('data-sched-day')
+  };
+  schedDragMoved = false;
+  document.body.classList.add('sched-dragging');
+  schedPaintDrag();
+}
+
+function schedDragTo(cell){
+  if(!schedDrag || !cell) return;
+  // Same row only.
+  if(cell.getAttribute('data-sched-owner') !== schedDrag.ownerId) return;
+  if(cell.getAttribute('data-sched-kind') !== schedDrag.ownerKind) return;
+  const day = cell.getAttribute('data-sched-day');
+  if(day === schedDrag.curDay) return;
+  schedDrag.curDay = day;
+  if(day !== schedDrag.anchorDay) schedDragMoved = true;
+  schedPaintDrag();
+}
+
+// Paints the preview directly rather than re-rendering the grid. A re-render on
+// every mousemove would rebuild a month of cells forty times a second, and
+// would also drop the row the pointer is tracking out from under it.
+function schedPaintDrag(){
+  document.querySelectorAll('.sched-cell-sel').forEach(function(el){
+    el.classList.remove('sched-cell-sel');
+  });
+  if(!schedDrag) return;
+  const lo = schedDrag.anchorDay < schedDrag.curDay ? schedDrag.anchorDay : schedDrag.curDay;
+  const hi = schedDrag.anchorDay < schedDrag.curDay ? schedDrag.curDay : schedDrag.anchorDay;
+  document.querySelectorAll('[data-sched-day]').forEach(function(el){
+    if(el.getAttribute('data-sched-owner') !== schedDrag.ownerId) return;
+    if(el.getAttribute('data-sched-kind') !== schedDrag.ownerKind) return;
+    const day = el.getAttribute('data-sched-day');
+    if(day >= lo && day <= hi) el.classList.add('sched-cell-sel');
+  });
+}
+
+// Keeps the chosen day (or dragged span) ringed for as long as the panel is
+// open. The panel is pinned to the side precisely so the month stays readable
+// beside it -- which is worth nothing if you cannot tell which cell you tapped.
+function schedPaintSelection(){
+  document.querySelectorAll('.sched-cell-sel').forEach(function(el){
+    el.classList.remove('sched-cell-sel');
+  });
+  if(!schedEntry) return;
+  const lo = schedEntry.start <= schedEntry.end ? schedEntry.start : schedEntry.end;
+  const hi = schedEntry.start <= schedEntry.end ? schedEntry.end : schedEntry.start;
+  document.querySelectorAll('[data-sched-day]').forEach(function(el){
+    if(el.getAttribute('data-sched-owner') !== schedEntry.ownerId) return;
+    if(el.getAttribute('data-sched-kind') !== schedEntry.ownerKind) return;
+    const day = el.getAttribute('data-sched-day');
+    if(day >= lo && day <= hi) el.classList.add('sched-cell-sel');
+  });
+}
+
+function schedDragEnd(){
+  if(!schedDrag){ document.body.classList.remove('sched-dragging'); return; }
+  const drag = schedDrag;
+  schedDrag = null;
+  document.body.classList.remove('sched-dragging');
+  document.querySelectorAll('.sched-cell-sel').forEach(function(el){
+    el.classList.remove('sched-cell-sel');
+  });
+  if(!schedDragMoved) return;          // a plain click; the click handler has it
+  // Dragging right-to-left is the same selection as left-to-right.
+  const lo = drag.anchorDay < drag.curDay ? drag.anchorDay : drag.curDay;
+  const hi = drag.anchorDay < drag.curDay ? drag.curDay : drag.anchorDay;
+  openSchedEntry(drag.ownerId, drag.ownerKind, lo, hi);
+}
+
+// Mouse and touch both route through the same three calls. Touch needs
+// elementFromPoint because a touchmove keeps firing at the element the touch
+// STARTED on, not the one under the finger.
+document.addEventListener('mousedown', function(ev){
+  if(ev.button !== 0) return;
+  const cell = ev.target && ev.target.closest ? ev.target.closest('[data-sched-day]') : null;
+  if(!cell) return;
+  schedDragBegin(cell);
+});
+document.addEventListener('mousemove', function(ev){
+  if(!schedDrag) return;
+  schedDragTo(schedCellFromPoint(ev.clientX, ev.clientY));
+});
+document.addEventListener('mouseup', function(){ if(schedDrag) schedDragEnd(); });
+
+document.addEventListener('touchstart', function(ev){
+  const cell = ev.target && ev.target.closest ? ev.target.closest('[data-sched-day]') : null;
+  if(!cell) return;
+  schedDragBegin(cell);
+}, { passive: true });
+document.addEventListener('touchmove', function(ev){
+  if(!schedDrag) return;
+  const t = ev.touches[0];
+  if(!t) return;
+  const cell = schedCellFromPoint(t.clientX, t.clientY);
+  if(cell && cell.getAttribute('data-sched-owner') === schedDrag.ownerId){
+    // Only swallow the scroll once the finger is genuinely tracking the row.
+    // Swallowing it earlier would trap a plain vertical scroll of the grid.
+    if(schedDragMoved && ev.cancelable) ev.preventDefault();
+  }
+  schedDragTo(cell);
+}, { passive: false });
+document.addEventListener('touchend', function(){ if(schedDrag) schedDragEnd(); });
+document.addEventListener('touchcancel', function(){ if(schedDrag) schedDragEnd(); });
+
 // Reads back the REAL records behind a day's blocks.
 //
 // crew_busy_days expands a record into one row per day, so a five-day block
@@ -13407,7 +13540,7 @@ async function loadSchedDayRecords(ownerId, ownerKind, dayISO){
   return out;
 }
 
-async function openSchedEntry(ownerId, ownerKind, dayISO){
+async function openSchedEntry(ownerId, ownerKind, dayISO, endISO){
   if(!rosterViewerIsAdmin()){
     // Stated, not silent. A control that does nothing reads as broken; a
     // control that explains itself reads as a rule.
@@ -13424,7 +13557,9 @@ async function openSchedEntry(ownerId, ownerKind, dayISO){
     // whether a human meant it.
     category: ownerKind === 'aircraft' ? 'maintenance' : 'pto',
     start: dayISO,
-    end: dayISO,
+    // A dragged span sets its own end. A single tap sets both to the same day,
+    // which is the common case and stays one keystroke from a longer block.
+    end: endISO || dayISO,
     reason: ''
   };
   schedEntry.day = dayISO;
@@ -13433,6 +13568,11 @@ async function openSchedEntry(ownerId, ownerKind, dayISO){
   renderSchedEntry();
   const ov = document.getElementById('schedEntryOverlay');
   if(ov) ov.classList.add('open');
+  // Opening can never inherit a disabled button from a previous pass. The
+  // finally above should make this unnecessary; it is here because a dead
+  // primary control fails SILENTLY, which is the worst way for it to fail.
+  const sbtn = document.getElementById('schedEntrySaveBtn');
+  if(sbtn) sbtn.disabled = false;
   try {
     const rows = await loadSchedDayRecords(ownerId, ownerKind, dayISO);
     // The panel may have been closed, or another cell opened, while this was
@@ -13452,6 +13592,7 @@ function closeSchedEntry(){
   const ov = document.getElementById('schedEntryOverlay');
   if(ov) ov.classList.remove('open');
   schedEntry = null;
+  schedPaintSelection();   // schedEntry is null, so this clears the ring
 }
 
 // Human-readable single date: "Thu 11 Jun 2026".
@@ -13542,6 +13683,7 @@ function renderSchedEntry(){
   h += '<div class="sched-entry-span" id="schedSpan"></div>';
   body.innerHTML = h;
   updateSchedSpan();
+  schedPaintSelection();
 }
 
 // Says how many days will be written, in words, before anything is written.
@@ -13612,6 +13754,11 @@ async function saveSchedEntry(){
 
   const deptId = await getFlightDepartmentId();
   const prof = currentUserProfile || await loadCurrentUserProfile();
+  // Disabled only for the duration of the write, and re-enabled in a FINALLY.
+  // Re-enabling in the catch alone left it dead after a SUCCESSFUL save: the
+  // overlay is static markup, so the same element comes back every time the
+  // panel reopens, and every later Add did nothing at all -- no toast and no
+  // console line, because a disabled button raises no click event.
   const btn = document.getElementById('schedEntrySaveBtn');
   if(btn) btn.disabled = true;
   try {
@@ -13653,6 +13800,7 @@ async function saveSchedEntry(){
     showToast(/reason/i.test(msg) ? 'That category needs a reason'
             : /dates_ordered/i.test(msg) ? 'The end date is before the start date'
             : 'Could not save that \u2014 try again');
+  } finally {
     if(btn) btn.disabled = false;
   }
 }
@@ -13931,6 +14079,9 @@ document.addEventListener('input', function(e){
     if(schedEntry){ schedEntry.start = document.getElementById('schedStart').value;
                     schedEntry.end   = document.getElementById('schedEnd').value; }
     updateSchedSpan();
+    // The ring follows a typed date too. If the form and the grid disagreed
+    // about what is selected, the grid is the one you would believe.
+    schedPaintSelection();
   }
 });
 
@@ -13961,6 +14112,9 @@ document.addEventListener('click', async function(e){
   }
   const schedCell = t.closest('[data-sched-day]');
   if(schedCell){
+    // A drag has already opened the panel with both dates. The click that
+    // follows the release must not reopen it on a single day.
+    if(schedDragMoved){ schedDragMoved = false; return; }
     openSchedEntry(schedCell.getAttribute('data-sched-owner'), schedCell.getAttribute('data-sched-kind'),
                    schedCell.getAttribute('data-sched-day'));
     return;
