@@ -909,6 +909,67 @@
      pill is only loud when it is present, and it is only present once there is
      text to post. */
   .trip-log-actions[hidden]{ display:none; }
+  /* SCHEDULE GRID. A DESK SCREEN -- this is the one place Beacon abandons
+     phone-first, deliberately. The grid scrolls HORIZONTALLY rather than
+     shrinking, because a month squeezed into a phone width destroys the
+     adjacency that is the only reason to draw a grid at all. */
+  .sched-wrap{ display:flex; flex-direction:column; gap:14px; }
+  .sched-scroll{ overflow-x:auto; overscroll-behavior-x:contain; padding-bottom:6px; }
+  .sched-row{ display:flex; align-items:stretch; min-width:max-content; }
+  /* The name column is STICKY: scrolled twenty days into a month, an unlabelled
+     row of colour is unreadable. */
+  .sched-name{ position:sticky; left:0; z-index:2; flex:0 0 auto; width:152px;
+    display:flex; flex-direction:column; justify-content:center; gap:1px;
+    padding:0 10px; background:var(--panel-800);
+    border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
+  .sched-name-main{ font-size:12px; color:var(--paper-050); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; }
+  .sched-name-sub{ font-size:10px; color:var(--fog-500); letter-spacing:0.04em; }
+  .sched-name-head{ background:var(--panel-700); }
+  .sched-head .sched-name{ background:var(--panel-700); }
+  .sched-hcell{ flex:0 0 auto; width:30px; height:34px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:1px; background:var(--panel-700);
+    border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
+  .sched-dow{ font-size:9px; color:var(--fog-500); }
+  .sched-dnum{ font-size:11px; color:var(--fog-300); }
+  .sched-cell{ flex:0 0 auto; width:30px; min-height:30px; display:flex;
+    flex-direction:column; gap:1px; padding:2px; box-sizing:border-box;
+    border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
+  /* Two blocks in one cell IS the collision the grid exists to show, so they
+     stack rather than merging or overwriting each other. */
+  .sched-blk{ flex:1 1 auto; min-height:9px; border-radius:2px; display:flex;
+    align-items:center; justify-content:center; font-size:9px; font-weight:700;
+    color:var(--ink-900); }
+  .sched-cell-wknd{ background:rgba(184,196,217,0.05); }
+  /* Overhang days are DIMMED, not hidden. A trip running from one month into
+     the next is the collision most easily missed, so the days either side stay
+     on screen and merely recede. */
+  .sched-cell-out{ opacity:0.45; }
+  .sched-cell-today{ box-shadow:inset 0 0 0 1px var(--amber-500); }
+  /* THE VIOLATION, GIVEN A STRUCTURAL REGISTER RATHER THAN A COLOUR.
+     With PTO already red, a trip landing on a protected day has nowhere louder
+     to escalate chromatically -- the constraint and the breach would look
+     equally urgent. An outline plus a corner mark reads at any zoom, survives
+     whichever two categories collided, and does not depend on telling two reds
+     apart. */
+  .sched-cell-clash{ box-shadow:inset 0 0 0 2px var(--alert-600); position:relative; }
+  .sched-cell-clash::after{
+    content:''; position:absolute; top:0; right:0;
+    border-width:0 7px 7px 0; border-style:solid;
+    border-color:transparent var(--paper-050) transparent transparent;
+  }
+  .sched-cell-clash.sched-cell-today{ box-shadow:inset 0 0 0 2px var(--alert-600); }
+  .sched-key-clash{ width:10px; height:10px; border-radius:2px; flex:0 0 auto;
+    box-shadow:inset 0 0 0 2px var(--alert-600); }
+  .sched-band{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--fog-500); padding:12px 0 5px 2px; position:sticky; left:0; }
+  .sched-key{ display:flex; flex-wrap:wrap; gap:12px; }
+  .sched-key-item{ display:inline-flex; align-items:center; gap:6px;
+    font-size:11px; color:var(--fog-300); }
+  .sched-key-dot{ width:10px; height:10px; border-radius:2px; flex:0 0 auto; }
+  .sched-note{ font-size:11px; color:var(--fog-500); }
+  .sched-empty{ font-size:13px; color:var(--fog-500); padding:24px 0; }
+  .sched-nav{ min-width:44px; }
   /* Quick note sheet. Borrows .chat-row wholesale -- same list, same question. */
   .qn-row-off{ opacity:0.5; }
   .qn-row-open{ border-bottom:none; }
@@ -1807,7 +1868,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.8 19.2 16 11l3.5-3.5a2.12 2.12 0 0 0-3-3L13 8 4.8 6.2a2 2 0 0 0-1.9.5L2 7.6l7 3.9-2.5 2.5-2.3-.4-1 1L6 16.3l1.7 2.8 1-1-.4-2.3L10.8 15l3.9 7 .9-.9a2 2 0 0 0 .5-1.9Z"/></svg>
         <span class="nav-lbl">Trips</span>
       </button>
-      <button type="button" class="nav-btn nav-btn-soon" id="navScheduleBtn" data-nav="schedule">
+      <button type="button" class="nav-btn" id="navScheduleBtn" data-nav="schedule">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
         <span class="nav-lbl">Schedule</span>
       </button>
@@ -2084,7 +2145,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T05:35:00Z';
+const BUILD_VERSION = '2026-08-26T07:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -10413,15 +10474,9 @@ document.addEventListener('click', function(e){
     return;
   }
   if(dest === 'schedule'){
-    showConfirm(
-      // Two sentences, and each earns its place. The first says the schedule looks
-      // BACKWARDS as well as forwards -- otherwise people read "schedule" as
-      // "calendar" and expect only what is coming. The second is the actual
-      // product: the running tally. Kept short deliberately; this is a
-      // coming-soon note, not documentation.
-      'The schedule is not built yet. It will show the department month by month \u2014 who is working, who is away, and what has already been flown. Alongside it runs a tally of days worked, building up across the year, so you can see how the flying is being shared out.',
-      { alertOnly: true, title: 'Schedule \u2014 coming soon', okLabel: 'Got it' }
-    );
+    // No longer a coming-soon note. The wide grid is built; the entry sheet
+    // over it and the narrow-screen list are the next two passes.
+    openScheduleView();
     return;
   }
   if(dest === 'chat'){
@@ -10498,6 +10553,7 @@ function renderMain(){
   if(state.view === 'archivedLeg'){ renderArchivedLegView(); return; }
   if(state.view === 'importPreview'){ renderImportPreviewView(); return; }
   if(state.view === 'settings'){ renderSettingsView(); return; }
+  if(state.view === 'schedule'){ renderScheduleView(); return; }
 
   const main = document.getElementById('mainPanel');
   const leg = state.legs.find(l => l.id === state.activeId);
@@ -13017,6 +13073,325 @@ function quickNoteBodyHTML(activeTripId){
   return h;
 }
 
+// ---- SCHEDULE: the wide grid ---------------------------------------------
+// A DESK SCREEN. Beacon is phone-first everywhere else; this deliberately is
+// not. Building a schedule is a desk task and the value of the spreadsheet it
+// replaces is ADJACENCY -- you can only see that a recurrent collides with a
+// trip because they sit a centimetre apart on the same row. Cramming a month
+// into 390px destroys exactly the thing worth keeping. The phone answer is the
+// list view, built later, not a shrunken grid.
+
+// Month plus overhang: calendar months alone cut collisions in half, because a
+// trip running into a training block straddles the boundary.
+const SCHED_OVERHANG_DAYS = 4;
+
+// *** COLOUR IS A RENDERING OF CATEGORY, NEVER THE SOURCE OF IT. ***
+//
+// The spreadsheet's legend is followed, including RED FOR PTO.
+//
+// *** PTO IS RED, AND THAT IS NOT A VIOLATION OF "RED IS AN ALERT". ***
+// The assistant argued PTO should be violet, on the grounds that red is
+// reserved for alerts and PTO is the most ordinary thing on a schedule.
+// KYLE OVERRULED IT, and was right:
+//
+//   "Those days need to be honored. They are sacrosanct."
+//
+// To the person building the schedule, a PTO block is not information, it is a
+// CONSTRAINT -- the one thing on the row that must not be scheduled over. Red
+// fires exactly where you are about to do something wrong, which is what red
+// means everywhere else in Beacon. The app also already carries view-local
+// colour languages (trip status uses amber/green/blue for planning/ready/flown,
+// none of which mean what alert red means), so a scheduler-local reading of red
+// is a precedent being followed, not a leak.
+//
+// *** THE COST, ACCEPTED KNOWINGLY: a trip landing on a PTO day now stacks
+// green on red, and red has nothing louder left to escalate to. THEREFORE THE
+// VIOLATION GETS A STRUCTURAL REGISTER, NOT A CHROMATIC ONE -- see
+// .sched-cell-clash. Structure stays visible no matter which two categories
+// collided, which colour never could. ***
+//
+// THE AMBER COLLISION IS STILL NOT REPRODUCED. In the spreadsheet amber meant
+// "aircraft in MX" on a tail row and "soft day" on a crew row -- one colour,
+// two unrelated concepts, told apart only by which row you were looking at.
+// The two now live in separate tables with no column in common, and maintenance
+// does not borrow amber back: doing so would re-import exactly the confusion
+// the two-table split was built to remove.
+//
+// *** MAINTENANCE IS VIOLET, NOT ORANGE OR RED. *** It was briefly orange on
+// the assistant's reasoning that a tail in MX is an alert when planning against
+// it. KYLE CORRECTED THIS: maintenance is often MOVABLE. It is a constraint you
+// negotiate with, not one you honour absolutely, so it must not read as loudly
+// as PTO. Only the genuinely immovable things carry heat.
+//
+// AWAY FROM BASE MOVED TO TEAL as a consequence. Violet and purple would have
+// been maintenance and away-from-base -- two near-identical colours on the SAME
+// aircraft rows, directly above and below one another. Unlike the amber case
+// these really would sit side by side, and two purples in a 30px cell is a
+// distinction that survives a large monitor and fails on a laptop.
+const SCHED_COLORS = {
+  flight:         '#3DBE6B',
+  training:       '#4A9DE0',
+  pto:            '#E0574A',
+  quarterly_call: '#E8D44F',
+  soft_day:       '#F2A93B',
+  other:          '#7E8FAC',
+  maintenance:    '#C77DD6',
+  away_from_base: '#3FB0A8'
+};
+
+// A day where a person is on flight duty AND holds a protected exception. This
+// is the collision the grid exists to catch, and the only state that must never
+// be scrolled past.
+const SCHED_PROTECTED = { pto: true, training: true };
+
+function schedIsClash(entries){
+  if(!entries || entries.length < 2) return false;
+  let flying = false, protectedDay = false;
+  entries.forEach(function(e){
+    if(e.kind === 'flight') flying = true;
+    else if(SCHED_PROTECTED[e.kind]) protectedDay = true;
+  });
+  return flying && protectedDay;
+}
+
+const SCHED_LABELS = {
+  flight:         'Flight duty',
+  training:       'Training / on-site',
+  pto:            'PTO',
+  quarterly_call: 'Quarterly call',
+  soft_day:       'Soft day',
+  other:          'Other',
+  maintenance:    'In maintenance',
+  away_from_base: 'Away from base'
+};
+
+// Anchored on a MONTH, not on today, so paging is predictable. Stored as the
+// first of the month; the visible window is derived from it.
+let schedAnchor = null;      // Date, first of the displayed month
+let schedData   = null;      // { crew:[], aircraft:[], roster:[], tails:[] }
+let schedLoading = false;
+
+function schedMonthStart(dt){ return new Date(dt.getFullYear(), dt.getMonth(), 1); }
+
+// The visible window: the whole month, plus a few days either side.
+function schedWindow(){
+  const first = schedAnchor || schedMonthStart(new Date());
+  const start = new Date(first.getFullYear(), first.getMonth(), 1 - SCHED_OVERHANG_DAYS);
+  const lastOfMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+  const end = new Date(lastOfMonth.getFullYear(), lastOfMonth.getMonth(), lastOfMonth.getDate() + SCHED_OVERHANG_DAYS);
+  return { start: start, end: end, monthFirst: first, monthLast: lastOfMonth };
+}
+
+// Local-date ISO. Deliberately NOT toISOString(), which converts to UTC and
+// would shift every date by a day for anyone west of Greenwich -- the exact
+// class of off-by-one the provisional-date guard exists to prevent.
+function schedISO(dt){
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return dt.getFullYear() + '-' + m + '-' + day;
+}
+
+function schedDayList(){
+  const w = schedWindow();
+  const out = [];
+  const cur = new Date(w.start.getTime());
+  while(cur <= w.end){
+    out.push(new Date(cur.getTime()));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
+// Both derivations are asked SEPARATELY and never joined. crew_busy_days and
+// aircraft_busy_days share a shape but nothing else; a caller wanting both asks
+// twice. Joining them in the client would quietly recreate the spreadsheet's
+// collision in a place the schema was redesigned to prevent.
+async function loadScheduleData(){
+  const w = schedWindow();
+  const deptId = await getFlightDepartmentId();
+  const args = { p_department_id: deptId, p_start: schedISO(w.start), p_end: schedISO(w.end) };
+  const [crewRes, acRes] = await Promise.all([
+    sb.rpc('crew_busy_days', args),
+    sb.rpc('aircraft_busy_days', args)
+  ]);
+  if(crewRes.error) throw crewRes.error;
+  if(acRes.error) throw acRes.error;
+  if(!rosterCache || !rosterCache.length) await loadRoster();
+  if(!aircraftCache || !aircraftCache.length) await loadAircraft();
+  return { crew: crewRes.data || [], aircraft: acRes.data || [] };
+}
+
+// Index day-rows into { ownerId: { 'YYYY-MM-DD': [entry, ...] } }.
+//
+// An ARRAY per day, not a single value: a person can be on flight duty and hold
+// a PTO row on the same date. That is not a data error -- it is exactly the
+// collision the grid exists to make visible. Collapsing it to one value would
+// hide the thing worth seeing.
+function indexBusyDays(rows, ownerKey, sourceKey){
+  const out = {};
+  (rows || []).forEach(function(r){
+    const owner = r[ownerKey];
+    if(!owner) return;
+    const day = String(r.day || '').slice(0, 10);
+    if(!day) return;
+    if(!out[owner]) out[owner] = {};
+    if(!out[owner][day]) out[owner][day] = [];
+    out[owner][day].push({ kind: r[sourceKey], ref: r.ref_id || '', detail: r.detail || '' });
+  });
+  return out;
+}
+
+function schedCellHTML(entries, dayISO, ownerId, isToday, isWeekend, outside){
+  let cls = 'sched-cell';
+  if(isWeekend) cls += ' sched-cell-wknd';
+  if(outside)   cls += ' sched-cell-out';
+  if(isToday)   cls += ' sched-cell-today';
+  if(schedIsClash(entries)) cls += ' sched-cell-clash';
+  const attrs = ' data-sched-day="' + dayISO + '" data-sched-owner="' + escapeHtml(ownerId) + '"';
+  if(!entries || !entries.length){
+    return '<div class="' + cls + '"' + attrs + '></div>';
+  }
+  // Stacked, not merged. Two blocks in one cell IS the collision.
+  const blocks = entries.map(function(e){
+    const col = SCHED_COLORS[e.kind] || SCHED_COLORS.other;
+    const label = SCHED_LABELS[e.kind] || e.kind;
+    const title = e.detail ? (label + ' \u2014 ' + e.detail) : label;
+    // The qualifier (the spreadsheet's "M" for a medical appointment) is shown
+    // in the cell when it is short enough to fit, because a reason nobody can
+    // see without tapping is a reason nobody reads.
+    const short = (e.detail && e.detail.length <= 2) ? escapeHtml(e.detail) : '';
+    return '<span class="sched-blk" style="background:' + col + '" title="' + escapeHtml(title) + '">' + short + '</span>';
+  }).join('');
+  return '<div class="' + cls + ' sched-cell-filled"' + attrs + '>' + blocks + '</div>';
+}
+
+function renderScheduleView(){
+  const main = document.getElementById('mainPanel');
+  if(!main) return;
+  const w = schedWindow();
+  const monthLabel = w.monthFirst.toLocaleDateString([], { month: 'long', year: 'numeric' });
+
+  setPageHeader({
+    title: 'Schedule',
+    subtitle: monthLabel,
+    actionsHTML:
+      '<button type="button" class="btn sched-nav" data-sched-step="-1" aria-label="Previous month">\u2039</button>' +
+      '<button type="button" class="btn sched-nav" data-sched-today="1">Today</button>' +
+      '<button type="button" class="btn sched-nav" data-sched-step="1" aria-label="Next month">\u203A</button>'
+  });
+
+  if(schedLoading || !schedData){
+    main.innerHTML = '<div class="sched-wrap"><div class="sched-empty">Loading the schedule\u2026</div></div>';
+    return;
+  }
+
+  const days = schedDayList();
+  const todayISO = schedISO(new Date());
+  const crewIdx = indexBusyDays(schedData.crew, 'user_id', 'source');
+  const acIdx   = indexBusyDays(schedData.aircraft, 'aircraft_id', 'status');
+
+  // Column headers: weekday letter over day number, so a week is scannable
+  // without counting. The month boundary is drawn rather than trimmed -- the
+  // overhang days are what make a straddling trip visible.
+  let head = '<div class="sched-row sched-head"><div class="sched-name sched-name-head"></div>';
+  days.forEach(function(dt){
+    const iso = schedISO(dt);
+    const dow = dt.getDay();
+    const outside = dt.getMonth() !== w.monthFirst.getMonth();
+    let cls = 'sched-hcell';
+    if(dow === 0 || dow === 6) cls += ' sched-cell-wknd';
+    if(outside) cls += ' sched-cell-out';
+    if(iso === todayISO) cls += ' sched-cell-today';
+    head += '<div class="' + cls + '">' +
+              '<span class="sched-dow">' + 'SMTWTFS'.charAt(dow) + '</span>' +
+              '<span class="sched-dnum">' + dt.getDate() + '</span>' +
+            '</div>';
+  });
+  head += '</div>';
+
+  function bandHTML(label, rows, idx, nameOf, subOf){
+    if(!rows.length) return '';
+    let h = '<div class="sched-band">' + escapeHtml(label) + '</div>';
+    rows.forEach(function(r){
+      h += '<div class="sched-row">' +
+             '<div class="sched-name">' +
+               '<span class="sched-name-main">' + escapeHtml(nameOf(r)) + '</span>' +
+               (subOf(r) ? '<span class="sched-name-sub">' + escapeHtml(subOf(r)) + '</span>' : '') +
+             '</div>';
+      const owned = idx[r.id] || {};
+      days.forEach(function(dt){
+        const iso = schedISO(dt);
+        const dow = dt.getDay();
+        h += schedCellHTML(owned[iso], iso, r.id, iso === todayISO,
+                           dow === 0 || dow === 6,
+                           dt.getMonth() !== w.monthFirst.getMonth());
+      });
+      h += '</div>';
+    });
+    return h;
+  }
+
+  const crewRows = (rosterCache || []).slice();
+  const acRows   = (aircraftCache || []).map(function(a){ return { id: a.id, tail: a.tail_number || '', type: a.model || a.aircraft_type || '' }; });
+
+  let body = bandHTML('Crew', crewRows, crewIdx,
+                      function(r){ return r.name || r.email; },
+                      function(r){ return r.abbrev || ''; });
+  body += bandHTML('Aircraft', acRows, acIdx,
+                   function(r){ return r.tail; },
+                   function(r){ return r.type; });
+
+  if(!crewRows.length && !acRows.length){
+    main.innerHTML = '<div class="sched-wrap"><div class="sched-empty">No crew or aircraft in this department yet.</div></div>';
+    return;
+  }
+
+  // The key is not decoration. Colour is a RENDERING of category here, never
+  // the source of it, so the grid has to say out loud what each colour means.
+  let key = '<div class="sched-key">';
+  ['flight','training','pto','quarterly_call','soft_day','other','maintenance','away_from_base'].forEach(function(k){
+    key += '<span class="sched-key-item"><span class="sched-key-dot" style="background:' + SCHED_COLORS[k] + '"></span>' +
+           escapeHtml(SCHED_LABELS[k]) + '</span>';
+  });
+  // The clash marker is a STATE, not a category, so it is named apart from the
+  // colours rather than listed among them.
+  key += '<span class="sched-key-item"><span class="sched-key-clash" aria-hidden="true"></span>' +
+         'Flying on a protected day</span>';
+  key += '</div>';
+
+  main.innerHTML = '<div class="sched-wrap">' +
+      '<div class="sched-scroll">' + head + body + '</div>' +
+      key +
+      '<div class="sched-note">Flight duty is read from the trips themselves and cannot be edited here. ' +
+      'Everything else is entered by hand.</div>' +
+    '</div>';
+}
+
+async function openScheduleView(){
+  if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
+  state.view = 'schedule';
+  state.activeId = null;
+  if(!schedAnchor) schedAnchor = schedMonthStart(new Date());
+  schedLoading = true;
+  renderMain();
+  try {
+    schedData = await loadScheduleData();
+  } catch(e){
+    console.error('schedule load', e);
+    schedData = { crew: [], aircraft: [] };
+    showToast('Could not load the schedule');
+  }
+  schedLoading = false;
+  if(state.view === 'schedule') renderMain();
+}
+
+function schedStepMonth(delta){
+  const a = schedAnchor || schedMonthStart(new Date());
+  schedAnchor = new Date(a.getFullYear(), a.getMonth() + delta, 1);
+  schedData = null;
+  openScheduleView();
+}
+
 function renderChatSheet(){
   const body = document.getElementById('chatSheetBody');
   if(body) body.innerHTML = chatSheetBodyHTML();
@@ -13141,6 +13516,15 @@ document.addEventListener('click', async function(e){
   if(t.closest('#chatCloseBtn')){ closeChatSheet(); return; }
 
   if(t.closest('#quickNoteCloseBtn')){ closeQuickNoteSheet(); return; }
+
+  const schedStep = t.closest('[data-sched-step]');
+  if(schedStep){ schedStepMonth(parseInt(schedStep.getAttribute('data-sched-step'), 10) || 0); return; }
+  if(t.closest('[data-sched-today]')){
+    schedAnchor = schedMonthStart(new Date());
+    schedData = null;
+    openScheduleView();
+    return;
+  }
   const qnOpen = t.closest('[data-qn-open]');
   if(qnOpen){
     const ta0 = document.getElementById('quickNoteText');
