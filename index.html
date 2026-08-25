@@ -2205,7 +2205,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T10:20:00Z';
+const BUILD_VERSION = '2026-08-26T10:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13892,9 +13892,31 @@ function renderScheduleView(){
   });
   const acRows   = (aircraftCache || []).map(function(a){ return { id: a.id, tail: a.tail_number || '', type: a.model || a.aircraft_type || '' }; });
 
-  let body = bandHTML('Crew', crewRows, crewIdx, 'crew',
-                      function(r){ return r.name || r.email; },
-                      function(r){ return r.abbrev || ''; });
+  // One band per JOB TITLE, not one Crew band.
+  //
+  // Grouped on users.role via the same ROSTER_GROUP_ORDER the Settings roster
+  // uses -- NOT on the roster_order number gap. The tens gap between pilots and
+  // cabin is a numbering convention for SORTING; making it structural would mean
+  // renumbering the roster silently rearranged the bands. A job title is a fact
+  // about the person and it is already the department's stated answer elsewhere.
+  const nameOfCrew = function(r){ return r.name || r.email; };
+  const abbrevOf   = function(r){ return r.abbrev || ''; };
+  let body = '';
+  const bandPlaced = Object.create(null);
+  ROSTER_GROUP_ORDER.forEach(function(title){
+    const group = crewRows.filter(function(x){ return x.title === title; });
+    if(!group.length) return;   // an empty band is not drawn
+    group.forEach(function(x){ bandPlaced[x.id] = true; });
+    body += bandHTML(ROSTER_GROUP_LABELS[title] || title, group, crewIdx, 'crew',
+                     nameOfCrew, abbrevOf);
+  });
+  // Anyone whose title is unset or unrecognised. Shown rather than dropped: a
+  // person missing from the schedule reads as a person with nothing on, which
+  // is the most dangerous thing this grid could imply.
+  const bandLeftover = crewRows.filter(function(x){ return !bandPlaced[x.id]; });
+  if(bandLeftover.length){
+    body += bandHTML('Other crew', bandLeftover, crewIdx, 'crew', nameOfCrew, abbrevOf);
+  }
   body += bandHTML('Aircraft', acRows, acIdx, 'aircraft',
                    function(r){ return r.tail; },
                    function(r){ return r.type; });
