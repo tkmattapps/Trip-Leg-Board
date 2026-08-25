@@ -988,6 +988,20 @@
   .sched-cat-on{ border-color:var(--amber-500); color:var(--paper-050); }
   .sched-entry-span{ font-size:12px; color:var(--fog-500); margin-top:10px; }
   .sched-entry-span-bad{ color:var(--alert-600); }
+  .sched-entry-day{ font-size:12px; color:var(--fog-500); margin:-8px 0 14px; }
+  .sched-entry-sep{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--fog-500); border-top:1px solid var(--hairline); padding-top:14px; margin:18px 0 12px; }
+  .sched-existing-note{ font-size:12px; color:var(--fog-500); }
+  .sched-existing{ display:flex; flex-direction:column; gap:8px; }
+  .sched-existing-row{ display:flex; align-items:flex-start; gap:9px;
+    background:var(--panel-700); border:1px solid var(--hairline); border-radius:4px; padding:9px 10px; }
+  .sched-existing-row .sched-key-dot{ margin-top:4px; flex:0 0 auto; }
+  .sched-existing-txt{ flex:1; min-width:0; }
+  .sched-existing-lbl{ font-size:13px; color:var(--paper-050); }
+  .sched-existing-sub{ font-size:11px; color:var(--fog-500); margin-top:2px; }
+  .sched-del-btn{ background:none; border:0; color:var(--fog-500); font-size:18px; line-height:1;
+    cursor:pointer; padding:0 2px; flex:0 0 auto; }
+  .sched-del-btn:hover{ color:var(--alert-600); }
   .sched-entry-foot{ display:flex; justify-content:flex-end; gap:10px; margin-top:auto; padding-top:18px; }
   /* Only an admin sees a cell as touchable. */
   .sched-can-edit .sched-cell{ cursor:pointer; }
@@ -2035,7 +2049,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 <div class="sched-entry-overlay" id="schedEntryOverlay">
   <div class="sched-entry-panel" role="dialog" aria-label="Schedule entry">
     <div class="feedback-modal-head">
-      <span class="feedback-modal-title">Add to schedule</span>
+      <span class="feedback-modal-title">Schedule</span>
       <button class="feedback-close-btn" id="schedEntryCloseBtn" aria-label="Close">&times;</button>
     </div>
     <div id="schedEntryBody"></div>
@@ -2186,7 +2200,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T08:40:00Z';
+const BUILD_VERSION = '2026-08-26T09:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13349,7 +13363,51 @@ function schedOwnerLabel(ownerId, kind){
   return p ? (p.name || p.email || 'Crew') : 'Crew';
 }
 
-function openSchedEntry(ownerId, ownerKind, dayISO){
+// Reads back the REAL records behind a day's blocks.
+//
+// crew_busy_days expands a record into one row per day, so a five-day block
+// arrives as five identical rows. Reconstructing the block's span from the rows
+// visible in the month would truncate it at the window edge -- the panel would
+// say "to 30 Jun" for a record that runs to 4 Jul, and then the delete would
+// remove more than the panel named. So we fetch the record by id.
+async function loadSchedDayRecords(ownerId, ownerKind, dayISO){
+  // Filter the raw derivation rows. The rendered index is local to the render
+  // pass and deliberately not cached -- one source of truth, not two.
+  const rows = (ownerKind === 'aircraft' ? schedData.aircraft : schedData.crew) || [];
+  const ownerKey = ownerKind === 'aircraft' ? 'aircraft_id' : 'user_id';
+  const srcKey   = ownerKind === 'aircraft' ? 'status' : 'source';
+  const cell = rows.filter(function(r){
+    return r[ownerKey] === ownerId && String(r.day || '').slice(0,10) === dayISO;
+  }).map(function(r){ return { kind: r[srcKey], ref: r.ref_id || '', detail: r.detail || '' }; });
+  const out = [];
+  const refs = [];
+  cell.forEach(function(e){
+    if(e.kind === 'flight'){
+      // Flight duty is derived from a leg. The schedule REPORTS it; the trip
+      // owns it. Removing it here would mean editing a trip from a calendar,
+      // which is the one thing this surface must not do.
+      out.push({ id: e.ref, kind: 'flight', detail: e.detail || '', removable: false });
+    } else if(e.ref){
+      refs.push(e.ref);
+    }
+  });
+  if(refs.length){
+    const tbl = ownerKind === 'aircraft' ? 'aircraft_availability' : 'crew_exceptions';
+    const catCol = ownerKind === 'aircraft' ? 'status' : 'category';
+    const { data, error } = await sb.from(tbl)
+      .select('id,' + catCol + ',start_date,end_date,reason')
+      .in('id', refs)
+      .is('deleted_at', null);
+    if(error) throw error;
+    (data || []).forEach(function(r){
+      out.push({ id: r.id, kind: r[catCol], start: r.start_date, end: r.end_date,
+                 reason: r.reason || '', removable: true });
+    });
+  }
+  return out;
+}
+
+async function openSchedEntry(ownerId, ownerKind, dayISO){
   if(!rosterViewerIsAdmin()){
     // Stated, not silent. A control that does nothing reads as broken; a
     // control that explains itself reads as a rule.
@@ -13369,15 +13427,82 @@ function openSchedEntry(ownerId, ownerKind, dayISO){
     end: dayISO,
     reason: ''
   };
+  schedEntry.day = dayISO;
+  schedEntry.existing = [];
+  schedEntry.loadingExisting = true;
   renderSchedEntry();
   const ov = document.getElementById('schedEntryOverlay');
   if(ov) ov.classList.add('open');
+  try {
+    const rows = await loadSchedDayRecords(ownerId, ownerKind, dayISO);
+    // The panel may have been closed, or another cell opened, while this was
+    // in flight. Only apply the result if it still belongs to what is on screen.
+    if(schedEntry && schedEntry.ownerId === ownerId && schedEntry.day === dayISO){
+      schedEntry.existing = rows;
+      schedEntry.loadingExisting = false;
+      renderSchedEntry();
+    }
+  } catch(err){
+    console.error('schedule day records', err);
+    if(schedEntry){ schedEntry.loadingExisting = false; schedEntry.existingError = true; renderSchedEntry(); }
+  }
 }
 
 function closeSchedEntry(){
   const ov = document.getElementById('schedEntryOverlay');
   if(ov) ov.classList.remove('open');
   schedEntry = null;
+}
+
+// Human-readable single date: "Thu 11 Jun 2026".
+function schedPrettyDay(iso){
+  if(!iso) return '';
+  const dt = new Date(iso + 'T00:00:00');
+  if(isNaN(dt)) return iso;
+  return dt.toLocaleDateString(undefined,
+    { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+}
+
+// A span in words. Says the WHOLE record, because that is what a remove will
+// take -- a block is one record, not one row per day, and tapping day three of
+// five removes all five.
+function schedPrettySpan(start, end){
+  if(!start) return '';
+  const a = new Date(start + 'T00:00:00'), b = new Date((end || start) + 'T00:00:00');
+  if(isNaN(a) || isNaN(b)) return start;
+  const days = Math.round((b - a) / 86400000) + 1;
+  const fmt = function(dt){ return dt.toLocaleDateString(undefined, { day:'numeric', month:'short' }); };
+  if(days <= 1) return fmt(a) + ' \u2014 1 day';
+  return fmt(a) + ' to ' + fmt(b) + ' \u2014 ' + days + ' days';
+}
+
+function schedExistingHTML(e){
+  if(e.loadingExisting) return '<div class="sched-existing-note">Reading this day\u2026</div>';
+  if(e.existingError)   return '<div class="sched-existing-note sched-entry-span-bad">Could not read this day.</div>';
+  if(!e.existing || !e.existing.length) return '<div class="sched-existing-note">Nothing on this day.</div>';
+  let h = '<div class="sched-existing">';
+  e.existing.forEach(function(r){
+    const col = SCHED_COLORS[r.kind] || SCHED_COLORS.other;
+    const label = SCHED_LABELS[r.kind] || r.kind;
+    h += '<div class="sched-existing-row">' +
+           '<span class="sched-key-dot" style="background:' + col + '"></span>' +
+           '<div class="sched-existing-txt">' +
+             '<div class="sched-existing-lbl">' + escapeHtml(label) + '</div>' +
+             '<div class="sched-existing-sub">' +
+               (r.removable ? escapeHtml(schedPrettySpan(r.start, r.end))
+                            // Flight duty belongs to the trip. Naming where it
+                            // lives is more use than a disabled button.
+                            : 'From a trip \u2014 change it on the trip')  +
+               (r.reason ? ' \u00b7 ' + escapeHtml(r.reason) : '') +
+             '</div>' +
+           '</div>' +
+           (r.removable
+             ? '<button type="button" class="sched-del-btn" data-sched-del="' + escapeHtml(r.id) + '" ' +
+               'aria-label="Remove">&times;</button>'
+             : '') +
+         '</div>';
+  });
+  return h + '</div>';
 }
 
 function renderSchedEntry(){
@@ -13390,6 +13515,9 @@ function renderSchedEntry(){
   // person thought was fine -- but the trigger remains the rule, not this note.
   const needsReason = e.category === 'other';
   let h = '<div class="sched-entry-who">' + escapeHtml(e.ownerLabel) + '</div>';
+  h += '<div class="sched-entry-day">' + escapeHtml(schedPrettyDay(e.day)) + '</div>';
+  h += schedExistingHTML(e);
+  h += '<div class="sched-entry-sep">Add</div>';
   h += '<div class="sched-entry-cats">';
   cats.forEach(function(c){
     const on = c === e.category;
@@ -13434,6 +13562,39 @@ function updateSchedSpan(){
   const n = Math.round((d2 - d1) / 86400000) + 1;
   el.textContent = n === 1 ? '1 day' : (n + ' days');
   el.className = 'sched-entry-span';
+}
+
+// SOFT delete. Neither table carries a DELETE policy by design -- removal is
+// `deleted_at`, so the record survives for anyone later asking what the
+// schedule said at the time.
+async function removeSchedEntry(recId){
+  if(!schedEntry) return;
+  const rec = (schedEntry.existing || []).find(function(x){ return x.id === recId; });
+  if(!rec) return;
+  const label = SCHED_LABELS[rec.kind] || rec.kind;
+  // Names the WHOLE span, because that is what goes. Removing day three of a
+  // five-day block removes all five, and the confirm is the only place that
+  // can say so before it happens.
+  const ok = await showConfirm(
+    schedEntry.ownerLabel + ' \u2014 ' + schedPrettySpan(rec.start, rec.end) + '.\n\n' +
+    'The whole block is removed, not just this day.',
+    { title: 'Remove ' + label + '?', okLabel: 'Remove' });
+  if(!ok) return;
+  const tbl = schedEntry.ownerKind === 'aircraft' ? 'aircraft_availability' : 'crew_exceptions';
+  try {
+    const { error } = await sb.from(tbl)
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', recId)
+      .select('id').single();
+    if(error) throw error;
+    closeSchedEntry();
+    showToast(label + ' removed');
+    schedData = null;
+    await openScheduleView();
+  } catch(err){
+    console.error('schedule entry remove', err);
+    showToast('Could not remove that \u2014 try again');
+  }
 }
 
 async function saveSchedEntry(){
@@ -13783,6 +13944,8 @@ document.addEventListener('click', async function(e){
 
   if(t.closest('#schedEntryCloseBtn') || t.closest('#schedEntryCancelBtn')){ closeSchedEntry(); return; }
   if(t.closest('#schedEntrySaveBtn')){ saveSchedEntry(); return; }
+  const schedDel = t.closest('[data-sched-del]');
+  if(schedDel){ removeSchedEntry(schedDel.getAttribute('data-sched-del')); return; }
   const schedCat = t.closest('[data-sched-cat]');
   if(schedCat && schedEntry){
     // Keep whatever has already been typed. Re-rendering the form must not
