@@ -2145,7 +2145,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T07:10:00Z';
+const BUILD_VERSION = '2026-08-26T07:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7525,7 +7525,7 @@ async function loadRoster(){
     // allow. current_date is UTC on Supabase, so the string is built in UTC.
     const _today = new Date().toISOString().slice(0, 10);
     const { data, error } = await sb.from('memberships')
-      .select('user_id, membership_role, is_admin, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname)')
+      .select('user_id, membership_role, is_admin, roster_order, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname)')
       .eq('flight_department_id', deptId)
       .lte('starts_on', _today)
       .or('ends_on.is.null,ends_on.gt.' + _today);
@@ -7546,7 +7546,9 @@ async function loadRoster(){
         given: m.users.legal_given_name || '',
         surname: m.users.legal_surname || '',
         membershipRole: m.membership_role || 'member',
-        isAdmin: !!m.is_admin
+        isAdmin: !!m.is_admin,
+        // The department's own row order for the schedule grid. Null until set.
+        rosterOrder: (m.roster_order == null) ? null : Number(m.roster_order)
       }))
       .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
   } catch(e){
@@ -13331,7 +13333,25 @@ function renderScheduleView(){
     return h;
   }
 
-  const crewRows = (rosterCache || []).slice();
+  // *** ROSTER ORDER IS THE DEPARTMENT'S, NOT ALPHABETICAL. ***
+  //
+  // The master spreadsheet lists crew in a fixed order that is neither
+  // alphabetical nor by abbreviation -- pilots first in their own sequence,
+  // then cabin. It is stable across every month sheet, so it is a real
+  // convention rather than an accident, and people read the grid by row
+  // POSITION. Re-sorting it alphabetically would force everyone to hunt for
+  // their own row on a screen designed for scanning.
+  //
+  // It cannot be derived, so it is stored: memberships.roster_order, set per
+  // department. NULL sorts last and falls back to the alphabetical order
+  // loadRoster already applies, so a department that never sets it still gets a
+  // sensible grid rather than an arbitrary one.
+  const crewRows = (rosterCache || []).slice().sort(function(a, b){
+    const ao = (a.rosterOrder == null) ? Infinity : a.rosterOrder;
+    const bo = (b.rosterOrder == null) ? Infinity : b.rosterOrder;
+    if(ao !== bo) return ao - bo;
+    return 0;   // loadRoster already sorted alphabetically; keep that as the tail
+  });
   const acRows   = (aircraftCache || []).map(function(a){ return { id: a.id, tail: a.tail_number || '', type: a.model || a.aircraft_type || '' }; });
 
   let body = bandHTML('Crew', crewRows, crewIdx,
