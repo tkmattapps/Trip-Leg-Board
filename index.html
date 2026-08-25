@@ -881,6 +881,23 @@
   .import-reconcile-summary{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; margin-bottom:20px; font-size:14px; color:var(--paper-050); }
   .import-leg-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; }
   .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
+  /* TRIP NOTES AS A LOG. Composer on top, entries below, newest first. */
+  .trip-log-head{ display:flex; flex-direction:column; gap:2px; margin-bottom:8px; }
+  .trip-log-head label{ font-size:12px; color:var(--fog-500); }
+  .trip-log-sub{ font-size:11px; color:var(--fog-500); }
+  .trip-log-compose{ display:flex; align-items:flex-end; gap:8px; }
+  .trip-log-compose .leg-note-textarea{ flex:1 1 auto; min-height:60px; }
+  .trip-log-post{ flex:0 0 auto; background:var(--amber-500); border:none; color:var(--ink-900);
+    font-weight:700; font-size:13px; padding:8px 16px; border-radius:18px; cursor:pointer; }
+  .trip-log-post:disabled{ opacity:0.45; cursor:default; }
+  .trip-log-list{ margin-top:14px; display:flex; flex-direction:column; gap:10px; }
+  .trip-log-empty{ font-size:12px; color:var(--fog-500); }
+  .trip-log-entry{ border-left:2px solid var(--hairline); padding:2px 0 2px 10px; }
+  .trip-log-entry-head{ display:flex; align-items:center; gap:8px; margin-bottom:2px; }
+  .trip-log-when{ font-size:11px; color:var(--fog-500); margin-left:auto; }
+  .trip-log-del{ background:none; border:none; color:var(--fog-500); font-size:16px;
+    line-height:1; padding:0 2px; cursor:pointer; }
+  .trip-log-del:hover{ color:var(--alert-600); }
   /* What the paperwork called this leg, once a human has renumbered it.
      NEVER BLIND: the override is visible beside the new value, not hidden. */
   .import-leg-was{ font-weight:400; color:var(--fog-500); font-size:12px; }
@@ -2011,7 +2028,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T01:20:00Z';
+const BUILD_VERSION = '2026-08-26T02:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -2879,6 +2896,47 @@ async function fetchTripNotes(tripId){
   return data || [];
 }
 
+// APPENDS an entry. Was an upsert on (trip_id, user_id) -- one row per person
+// per trip -- which meant every save OVERWROTE that person's previous note.
+// Migration 20 dropped the unique key; this is the other half of that change.
+//
+// isPublic is accepted but no longer offered anywhere in the UI: a trip note is
+// a catch-all log for everyone on the trip, so private-by-default produced
+// knowledge nobody else could reach, and the archive only ever captured shared
+// notes. Defaults to true, matching the column default.
+async function appendTripNote(tripId, content, isPublic){
+  const prof = currentUserProfile || await loadCurrentUserProfile();
+  if(!prof) return null;
+  const text = content == null ? '' : String(content);
+  // An empty entry is not a note. Silently doing nothing is correct here --
+  // the caller has nothing to report and nothing was lost.
+  if(text.trim() === '') return null;
+  const deptId = await getFlightDepartmentId();
+  const row = {
+    trip_id: tripId,
+    flight_department_id: deptId,
+    user_id: prof.id,
+    content: text,
+    is_public: isPublic === undefined ? true : !!isPublic,
+    // SNAPSHOTS, not lookups. Each entry records who wrote it AT THE TIME, and
+    // keeps reading correctly after a rename or after the account is gone.
+    author_name: prof.displayName || '',
+    author_role: prof.role || ''
+  };
+  // .select() is LOAD-BEARING: an insert that matched no policy returns success
+  // with an empty array, so without it a blocked write reports as saved.
+  const { data, error } = await sb.from('trip_notes').insert(row).select('id').single();
+  if(error) throw error;
+  return data ? data.id : null;
+}
+
+async function deleteTripNoteEntry(noteId){
+  // RLS restricts this to the author's own rows; no client-side check needed.
+  const { error } = await sb.from('trip_notes').delete().eq('id', noteId);
+  if(error) throw error;
+}
+
+// Retained for the old single-field call path until it is gone.
 async function saveTripNote(tripId, content, isPublic){
   const prof = currentUserProfile || await loadCurrentUserProfile();
   if(!prof) return;
@@ -2904,89 +2962,134 @@ async function saveTripNote(tripId, content, isPublic){
 }
 
 function tripNotesBlockHTML(trip){
+  // A FEED, not a field. One composer at the top, entries below it newest
+  // first. No visibility toggle: every entry is shared with the department.
   return '<div class="section" id="tripNotesSection" style="margin-top:18px;">' +
-      '<div class="leg-notes" data-trip-note="1">' +
-        '<div class="field leg-note-own">' +
-          '<div class="leg-note-labelrow">' +
-            '<label>Trip notes</label>' +
-            '<button type="button" class="note-vis-toggle" id="tripNoteToggle" data-public="false" aria-pressed="false" title="Private to you. Tap to share with your flight department.">' +
-              '<span class="note-vis-dot" aria-hidden="true"></span>' +
-              '<span class="note-vis-text">Private</span>' +
-            '</button>' +
-          '</div>' +
-          '<textarea id="tripNoteTextarea" class="leg-note-textarea" placeholder="Catch-all notes for this whole trip\u2026"></textarea>' +
+      '<div class="trip-log">' +
+        '<div class="trip-log-head">' +
+          '<label>Trip notes</label>' +
+          '<span class="trip-log-sub">Everyone on this trip can read these.</span>' +
         '</div>' +
-        '<div class="leg-note-others" id="tripNotesOthers" hidden></div>' +
+        '<div class="trip-log-compose">' +
+          '<textarea id="tripNoteTextarea" class="leg-note-textarea" placeholder="Add a note for this trip\u2026"></textarea>' +
+          '<button type="button" class="trip-log-post" id="tripNotePostBtn" disabled>Post</button>' +
+        '</div>' +
+        '<div class="trip-log-list" id="tripNotesList"></div>' +
       '</div>' +
     '</div>';
 }
 
-async function saveTripNoteFromDOM(tripId){
+async function postTripNoteFromDOM(tripId){
   const ta = document.getElementById('tripNoteTextarea');
-  const toggle = document.getElementById('tripNoteToggle');
-  if(!ta) return;
-  const isPublic = toggle ? toggle.dataset.public === 'true' : false;
-  await saveTripNote(tripId, ta.value, isPublic);
+  const btn = document.getElementById('tripNotePostBtn');
+  if(!ta || !ta.value.trim()) return;
+  if(btn) btn.disabled = true;
+  try{
+    await appendTripNote(tripId, ta.value);
+    // Cleared ONLY after the write succeeds. Clearing first would lose the
+    // text on a failed save, which is the one outcome the person cannot undo.
+    ta.value = '';
+    ta.dataset.userEdited = '';
+    await hydrateTripNotes({ tripNumber: tripId });
+  } catch(e){
+    console.error('trip note post', e);
+    showToast('Note not saved \u2014 try again');
+  }
+  if(btn) btn.disabled = !ta.value.trim();
 }
 
 function wireTripNotes(trip){
   const tripId = (trip.tripNumber || '').trim();
   const ta = document.getElementById('tripNoteTextarea');
-  const toggle = document.getElementById('tripNoteToggle');
+  const btn = document.getElementById('tripNotePostBtn');
   if(!ta) return;
   if(!tripId){
     ta.placeholder = 'Give this trip a trip number to add trip notes.';
     ta.disabled = true;
-    if(toggle) toggle.disabled = true;
+    if(btn) btn.disabled = true;
     return;
   }
-  ta.addEventListener('input', function(){ ta.dataset.userEdited = '1'; });
-  ta.addEventListener('blur', function(){
-    saveTripNoteFromDOM(tripId).catch(function(e){ console.error('trip note save', e); });
+  // NO BLUR AUTOSAVE. A log entry is committed by a deliberate act -- posting
+  // on blur would file half-written thoughts every time focus moved, and a log
+  // cannot be quietly corrected the way an overwritten field could.
+  ta.addEventListener('input', function(){
+    ta.dataset.userEdited = '1';
+    if(btn) btn.disabled = !ta.value.trim();
   });
-  if(toggle){
-    toggle.addEventListener('click', function(){
-      const nowPublic = toggle.dataset.public !== 'true';
-      setNoteToggleState(toggle, nowPublic);
-      saveTripNoteFromDOM(tripId).catch(function(e){ console.error('trip note toggle', e); });
+  if(btn){
+    btn.addEventListener('click', function(){ postTripNoteFromDOM(tripId); });
+  }
+  const list = document.getElementById('tripNotesList');
+  if(list){
+    list.addEventListener('click', async function(e){
+      const del = e.target.closest('[data-note-del]');
+      if(!del) return;
+      const id = del.getAttribute('data-note-del');
+      const ok = (typeof showConfirm === 'function')
+        ? await showConfirm('Delete this note? It will be removed for everyone on the trip.', { okLabel:'Delete' })
+        : true;
+      if(!ok) return;
+      try{
+        await deleteTripNoteEntry(id);
+        await hydrateTripNotes({ tripNumber: tripId });
+      } catch(err){
+        console.error('trip note delete', err);
+        showToast('Could not delete that note');
+      }
     });
   }
 }
 
 async function hydrateTripNotes(trip){
   const tripId = (trip.tripNumber || '').trim();
-  const ta = document.getElementById('tripNoteTextarea');
-  if(!ta || !tripId) return;
+  const list = document.getElementById('tripNotesList');
+  if(!list || !tripId) return;
   let rows;
   try { rows = await fetchTripNotes(tripId); }
   catch(e){ console.error('trip_notes load', e); return; }
-  if(!document.getElementById('tripNoteTextarea')) return; // navigated away
+  if(!document.getElementById('tripNotesList')) return; // navigated away
+  // NEWEST FIRST. created_at is set by the database, so ordering does not
+  // depend on any client's clock.
+  rows.sort(function(a,b){ return String(b.created_at||'').localeCompare(String(a.created_at||'')); });
   const myId = currentUserProfile ? currentUserProfile.id : null;
-  const mine = myId ? rows.find(function(r){ return r.user_id === myId; }) : null;
-  const others = rows.filter(function(r){ return r.is_public && (!myId || r.user_id !== myId); });
-  const toggle = document.getElementById('tripNoteToggle');
-  if(ta.dataset.userEdited !== '1' && document.activeElement !== ta){
-    ta.value = mine ? (mine.content || '') : '';
+  if(rows.length === 0){
+    list.innerHTML = '<div class="trip-log-empty">No notes on this trip yet.</div>';
+    return;
   }
-  setNoteToggleState(toggle, mine ? !!mine.is_public : false);
-  const cont = document.getElementById('tripNotesOthers');
-  if(cont){
-    if(others.length === 0){
-      cont.innerHTML = '';
-      cont.hidden = true;
-    } else {
-      cont.hidden = false;
-      cont.innerHTML = '<div class="leg-note-others-head">Shared by others</div>' +
-        others.map(function(r){
-          const who = escapeHtml(r.author_name || 'Crew');
-          const role = r.author_role ? '<span class="note-other-role">' + escapeHtml(r.author_role) + '</span>' : '';
-          return '<div class="note-other">' +
-            '<div class="note-other-head"><span class="note-other-author">' + who + '</span>' + role + '</div>' +
-            '<div class="note-other-body">' + escapeHtml(r.content || '') + '</div>' +
-          '</div>';
-        }).join('');
-    }
+  list.innerHTML = rows.map(function(r){
+    const who = escapeHtml(r.author_name || 'Crew');
+    const role = r.author_role ? '<span class="note-other-role">' + escapeHtml(r.author_role) + '</span>' : '';
+    const when = escapeHtml(formatNoteStamp(r.created_at));
+    // Delete is offered only on your own entries. RLS enforces the same rule,
+    // so a hidden button is a convenience, not the control.
+    const del = (myId && r.user_id === myId)
+      ? '<button type="button" class="trip-log-del" data-note-del="' + escapeHtml(r.id) + '" title="Delete this note" aria-label="Delete this note">&times;</button>'
+      : '';
+    return '<div class="trip-log-entry">' +
+      '<div class="trip-log-entry-head">' +
+        '<span class="note-other-author">' + who + '</span>' + role +
+        '<span class="trip-log-when">' + when + '</span>' + del +
+      '</div>' +
+      '<div class="note-other-body">' + escapeHtml(r.content || '') + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// Short, local, and unambiguous. Times inside a log are read as "when relative
+// to now", so today shows a clock and anything older shows a date.
+function formatNoteStamp(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '';
+  const now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear() &&
+                  d.getMonth() === now.getMonth() &&
+                  d.getDate() === now.getDate();
+  if(sameDay){
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   }
+  return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) +
+    ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 function noteTextareaId(field){ return field === 'enroute' ? 'enrouteNotes' : (field + 'Notes'); }
