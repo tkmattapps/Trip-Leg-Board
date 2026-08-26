@@ -2473,7 +2473,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T19:25:00Z';
+const BUILD_VERSION = '2026-08-27T20:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13530,22 +13530,6 @@ function quickNoteBodyHTML(activeTripId){
 
 // Month plus overhang: calendar months alone cut collisions in half, because a
 // trip running into a training block straddles the boundary.
-// Thirty, not four, and not fifteen.
-//
-// Two separate requirements set this. First, the day panel opens over the right
-// of the grid and covers the squares you want to click next, so the grid must be
-// able to slide out from underneath it rather than the panel having to move.
-//
-// Second, and the reason fifteen was not enough: bringing TODAY to the left edge
-// requires enough grid to its RIGHT to scroll into. On the 26th of a month, a
-// fifteen-day overhang leaves only about twenty days beyond today -- the
-// container hits maximum scroll before today reaches the edge, and simply stops
-// short. No arithmetic can fix that; the runway has to exist. Thirty days covers
-// the last day of any month.
-//
-// The view stays month-based either way: the month arrows still do the
-// long-range work.
-const SCHED_OVERHANG_DAYS = 30;
 
 // *** COLOUR IS A RENDERING OF CATEGORY, NEVER THE SOURCE OF IT. ***
 //
@@ -13653,13 +13637,39 @@ let schedLoading = false;
 
 function schedMonthStart(dt){ return new Date(dt.getFullYear(), dt.getMonth(), 1); }
 
-// The visible window: the whole month, plus a few days either side.
+// *** STEP 2 OF THE YEAR-STRIP REFACTOR. ***
+// See beacon-schedule-year-strip-design.md. Revert baseline:
+// index-PRE-YEAR-STRIP.html, build 2026-08-27T19:25:00Z (written with pipes so a
+// blanket version-string replace cannot silently rewrite the baseline).
+//
+// The window is now a FIXED CALENDAR-YEAR STRIP: 1 Dec of the previous year
+// through 31 Jan of the next. Fetched in ONE call and scrolled natively --
+// deliberately NOT load-on-scroll, which is the fragile kind of infinite scroll
+// (partial data, racing fetches, the ground moving under a finger mid-drag).
+//
+// Fixed to the CALENDAR year rather than rolling, because backfilling 2026 is
+// coming and a container that matches the year is the right shape for it. A
+// rolling window would slide away from the thing being filled.
+//
+// monthFirst / monthLast are still returned and still describe the ANCHOR
+// month. Nothing else has been touched yet, so the header, the highlight and
+// the scroll park position all keep working off them. Those come out in the
+// later steps.
+//
+// *** IF THIS RENDERS BUT FEELS HEAVY, NARROW THE STRIP HERE. *** Six months
+// instead of fourteen is a change to this function alone -- no other code knows
+// the width. Reach for that before reverting anything.
+const SCHED_STRIP_LEAD_MONTHS  = 1;   // December of the previous year
+const SCHED_STRIP_TRAIL_MONTHS = 1;   // January of the next
+
 function schedWindow(){
   const first = schedAnchor || schedMonthStart(new Date());
-  const start = new Date(first.getFullYear(), first.getMonth(), 1 - SCHED_OVERHANG_DAYS);
+  const year  = first.getFullYear();
+  const start = new Date(year - 1, 12 - SCHED_STRIP_LEAD_MONTHS, 1);
+  // Day 0 of the month AFTER the trailing one = its last day.
+  const end   = new Date(year + 1, SCHED_STRIP_TRAIL_MONTHS, 0);
   const lastOfMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0);
-  const end = new Date(lastOfMonth.getFullYear(), lastOfMonth.getMonth(), lastOfMonth.getDate() + SCHED_OVERHANG_DAYS);
-  return { start: start, end: end, monthFirst: first, monthLast: lastOfMonth };
+  return { start: start, end: end, monthFirst: first, monthLast: lastOfMonth, year: year };
 }
 
 // Local-date ISO. Deliberately NOT toISOString(), which converts to UTC and
