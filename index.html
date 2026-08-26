@@ -945,7 +945,11 @@
      the next is the collision most easily missed, so the days either side stay
      on screen and merely recede. */
   .sched-cell-out{ opacity:0.45; }
-  .sched-cell-today{ box-shadow:inset 0 0 0 1px var(--amber-500); }
+  /* TODAY IS ORIENTATION, NOT INFORMATION. Amber is reserved for something the
+     viewer needs to weigh; a date marker says only "you are here" and must not
+     borrow the vocabulary of an alert. A cool light ring reads instantly on the
+     dark grid without competing with any category colour. */
+  .sched-cell-today{ box-shadow:inset 0 0 0 1px rgba(184,196,217,0.55); }
   /* THE VIOLATION, GIVEN A STRUCTURAL REGISTER RATHER THAN A COLOUR.
      With PTO already red, a trip landing on a protected day has nowhere louder
      to escalate chromatically -- the constraint and the breach would look
@@ -1008,9 +1012,14 @@
   .sched-del-btn{ background:none; border:0; color:var(--fog-500); font-size:18px; line-height:1;
     cursor:pointer; padding:0 2px; flex:0 0 auto; }
   .sched-del-btn:hover{ color:var(--alert-600); }
-  /* DRAG PREVIEW. An inset ring rather than a fill: the cell may already carry
-     a colour block, and a fill would hide the thing you are dragging across. */
-  .sched-cell-sel{ box-shadow:inset 0 0 0 2px var(--amber-500) !important; }
+  /* DRAG PREVIEW / LIVE SELECTION. An inset ring rather than a fill: the cell may
+     already carry a colour block, and a fill would hide the thing you are
+     dragging across.
+     *** ONE VISUAL LANGUAGE FOR "WHERE YOU ARE", VARIED BY INTENSITY, NOT HUE. ***
+     Hover is fog-500 at 1px, today is fog-300 at 55%, and a live selection is
+     the brightest rung: full fog-300 at 2px. Amber was doing this job and read
+     as an alert, which selection is not. */
+  .sched-cell-sel{ box-shadow:inset 0 0 0 2px var(--fog-300) !important; }
   /* Kills the text-selection smear that a horizontal drag otherwise produces. */
   body.sched-dragging{ user-select:none; -webkit-user-select:none; cursor:crosshair; }
   .sched-entry-foot{ display:flex; justify-content:flex-end; gap:10px; margin-top:auto; padding-top:18px; }
@@ -2211,7 +2220,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T13:40:00Z';
+const BUILD_VERSION = '2026-08-26T14:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
