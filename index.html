@@ -1147,6 +1147,12 @@
   .sched-note{ font-size:11px; color:var(--fog-500); }
   .sched-empty{ font-size:13px; color:var(--fog-500); padding:24px 0; }
   .sched-nav{ min-width:44px; }
+  /* Reads as a label, not a button -- it is the thing the double chevrons move. */
+  .sched-yearlbl{
+    font-size:13px; font-weight:600; color:var(--fog-200);
+    padding:0 2px; min-width:38px; text-align:center;
+    font-variant-numeric:tabular-nums; user-select:none;
+  }
   /* ENTRY PANEL. Pinned right, not centred: the grid behind it is the reason
      the decision is being made here rather than on a form. */
   /* *** THE PANEL IS AN INSPECTOR, NOT A DIALOGUE. ***
@@ -2473,7 +2479,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T20:35:00Z';
+const BUILD_VERSION = '2026-08-27T21:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14930,10 +14936,17 @@ function renderScheduleView(){
   const w = schedWindow();
   const monthLabel = w.monthFirst.toLocaleDateString([], { month: 'long', year: 'numeric' });
 
+  // *** TWO STEPPERS, DELIBERATELY DIFFERENT SHAPES. ***
+  // Single chevrons step a MONTH inside the strip; double chevrons step the
+  // YEAR, which rebuilds the strip. The year is spelled out between them so the
+  // double arrows read as belonging to it rather than as a faster month step.
   setPageHeader({
     title: 'Schedule',
     subtitle: monthLabel,
     actionsHTML:
+      '<button type="button" class="btn sched-nav" data-sched-year="-1" aria-label="Previous year">\u00AB</button>' +
+      '<span class="sched-yearlbl">' + w.year + '</span>' +
+      '<button type="button" class="btn sched-nav" data-sched-year="1" aria-label="Next year">\u00BB</button>' +
       '<button type="button" class="btn sched-nav" data-sched-step="-1" aria-label="Previous month">\u2039</button>' +
       '<button type="button" class="btn sched-nav" data-sched-today="1">Today</button>' +
       '<button type="button" class="btn sched-nav" data-sched-step="1" aria-label="Next month">\u203A</button>'
@@ -15306,6 +15319,30 @@ function schedStepMonth(delta){
   }
 }
 
+// *** STEP 4 OF THE YEAR-STRIP REFACTOR: YEAR STEPPING, ALONGSIDE THE MONTH
+// ARROWS RATHER THAN INSTEAD OF THEM. ***
+//
+// The design note proposed replacing the month arrows with year arrows. Kyle's
+// decision overrides that: the month arrows are the control you actually reach
+// for day to day, and losing them to gain a year jump would be a bad trade. So
+// there are now TWO steppers and they mean different things -- months move
+// within the strip, years move the strip itself.
+//
+// A year step ALWAYS changes the strip, so unlike a month step it is always a
+// refetch. It lands on 1 January of the target year (design note question 3),
+// which is both the simplest rule and the one that matches "show me that year"
+// rather than "show me this date last year".
+function schedStepYear(delta){
+  if(!delta) return;
+  const a = schedAnchor || schedMonthStart(new Date());
+  schedAnchor = new Date(a.getFullYear() + delta, 0, 1);
+  schedScrollToDay = schedISO(schedAnchor);
+  // The strip is defined by the anchor's YEAR, so this is new data by
+  // definition -- there is no in-strip shortcut to take here.
+  schedData = null;
+  openScheduleView();
+}
+
 // Is the grid already parked at the first of the anchor month? Compares the
 // container's actual scrollLeft against where that day sits, with a cell's
 // tolerance so a pixel of rounding does not read as "not there yet".
@@ -15529,6 +15566,8 @@ document.addEventListener('click', async function(e){
     return;
   }
 
+  const schedYearStep = t.closest('[data-sched-year]');
+  if(schedYearStep){ schedStepYear(parseInt(schedYearStep.getAttribute('data-sched-year'), 10) || 0); return; }
   const schedStep = t.closest('[data-sched-step]');
   if(schedStep){ schedStepMonth(parseInt(schedStep.getAttribute('data-sched-step'), 10) || 0); return; }
   if(t.closest('[data-sched-today]')){
