@@ -2265,7 +2265,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T19:20:00Z';
+const BUILD_VERSION = '2026-08-26T19:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13982,6 +13982,35 @@ function schedExistingSubText(r, isAwayRow){
 //   'whole'   -- the span covers the block entirely; this is a removal
 //   'middle'  -- the span is strictly inside; would need two rows. REFUSED.
 //   {start,end} -- the block's remaining range after the trim
+// *** EXTENDING A BLOCK IS THE SAME ACT AS TRIMMING IT: A DATE CHANGE. ***
+//
+// Without this, lengthening a block was only possible by ADDING a second one,
+// because the Add section always inserts. The grid then showed one continuous
+// run of training that was really two records -- a fair description of two
+// consecutive courses, but NOT of the four-day block the person meant.
+//
+// Returns the range this row would become if the selection were absorbed:
+//   null        -- no touch/overlap, row is derived, or the selection adds nothing
+//   {start,end} -- the block's range after extending
+//
+// TOUCHING COUNTS. A selection starting the day after a block ends extends it,
+// because that is plainly what dragging on from the end of a block means. Kyle's
+// separate point -- that two CONSECUTIVE blocks are legitimate, each carrying
+// its own reason -- is preserved by the Add button, which still creates a new
+// block regardless of what it sits beside. Extending is OFFERED, never forced.
+function schedExtendResult(row, selLo, selHi){
+  if(!row || !row.removable || !row.start || !row.end) return null;
+  const bLo = row.start, bHi = row.end;
+  // Must touch or overlap. A gap of a day or more is a separate block.
+  if(selHi < schedShiftISO(bLo, -1) || selLo > schedShiftISO(bHi, 1)) return null;
+  const nLo = selLo < bLo ? selLo : bLo;
+  const nHi = selHi > bHi ? selHi : bHi;
+  // Already contained: extending would change nothing, and a control that does
+  // nothing reads as broken.
+  if(nLo === bLo && nHi === bHi) return null;
+  return { start: nLo, end: nHi };
+}
+
 function schedTrimResult(row, selLo, selHi){
   if(!row || !row.removable || !row.start || !row.end) return null;
   const bLo = row.start, bHi = row.end;
@@ -14062,6 +14091,22 @@ function schedExistingHTML(e){
     // empty days and "trim" over occupied ones is one gesture with two meanings,
     // which is precisely the kind of thing that needs explaining. The drag only
     // ever selects; this row states the consequence in plain words.
+    // Extend and trim are mutually exclusive for any one selection: a span
+    // either reaches beyond the block or falls inside it. Checked first so a
+    // selection that does both -- overlapping one end and spilling past it --
+    // reads as the lengthening it plainly is.
+    const ext = schedExtendResult(r, selLo, selHi);
+    if(ext){
+      h += '<div class="sched-trim">' +
+             '<button type="button" class="sched-trim-btn" data-sched-ext="' + escapeHtml(r.id) + '" ' +
+               'data-sched-ext-start="' + escapeHtml(ext.start) + '" ' +
+               'data-sched-ext-end="' + escapeHtml(ext.end) + '">' +
+               'Add to this block' +
+             '</button>' +
+             '<span class="sched-trim-sub">Makes it ' + escapeHtml(schedPrettySpan(ext.start, ext.end)) +
+               ' \u00b7 or use Add below for a separate one</span>' +
+           '</div>';
+    }
     const trim = schedTrimResult(r, selLo, selHi);
     if(trim){
       const spanTxt = selLo === selHi ? schedPrettyDay(selLo) : schedPrettySpan(selLo, selHi);
@@ -14196,14 +14241,17 @@ async function removeSchedEntry(recId){
 // Trims a block to a new range. An UPDATE to start_date or end_date only --
 // the row keeps its id, its created_by and its history, because the block was
 // not replaced, it was shortened.
-async function trimSchedEntry(recId, newStart, newEnd){
+async function trimSchedEntry(recId, newStart, newEnd, mode){
   if(!schedEntry) return;
   const rec = (schedEntry.existing || []).find(function(x){ return x.id === recId; });
   if(!rec) return;
   const label = SCHED_LABELS[rec.kind] || rec.kind;
-  // A protected category is worth a confirm even for a trim: shortening someone's
-  // PTO is a change to time off they have already been granted.
-  if(SCHED_PROTECTED[rec.kind]){
+  const growing = mode === 'extend';
+  // A protected category is worth a confirm when SHORTENING -- cutting into PTO
+  // takes back time already granted. GROWING one does not: giving someone more
+  // time off, or more training, takes nothing away, and a confirm on a harmless
+  // act is noise that trains people to click through the ones that matter.
+  if(SCHED_PROTECTED[rec.kind] && !growing){
     const ok = await showConfirm(
       schedEntry.ownerLabel + ' \u2014 ' + schedPrettySpan(rec.start, rec.end) + '\n' +
       'becomes ' + schedPrettySpan(newStart, newEnd) + '.',
@@ -14656,7 +14704,14 @@ document.addEventListener('click', async function(e){
   if(trimBtn){
     trimSchedEntry(trimBtn.getAttribute('data-sched-trim'),
                    trimBtn.getAttribute('data-sched-trim-start'),
-                   trimBtn.getAttribute('data-sched-trim-end'));
+                   trimBtn.getAttribute('data-sched-trim-end'), 'trim');
+    return;
+  }
+  const extBtn = t.closest('[data-sched-ext]');
+  if(extBtn){
+    trimSchedEntry(extBtn.getAttribute('data-sched-ext'),
+                   extBtn.getAttribute('data-sched-ext-start'),
+                   extBtn.getAttribute('data-sched-ext-end'), 'extend');
     return;
   }
   if(t.closest('#schedEntrySaveBtn')){ saveSchedEntry(); return; }
