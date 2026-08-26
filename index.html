@@ -940,11 +940,18 @@
   .sched-blk{ flex:1 1 auto; min-height:9px; border-radius:2px; display:flex;
     align-items:center; justify-content:center; font-size:9px; font-weight:700;
     color:var(--ink-900); }
+  /* AWAY ON TRIP, NOT FLYING. A slim bar, vertically centred, so it lines up
+     with its neighbours and the run reads as continuous. flex:0 0 auto keeps it
+     thin when it shares a cell with a full-height block. */
+  .sched-blk-away{ flex:0 0 auto; height:4px; min-height:4px; align-self:center;
+    border-radius:1px; }
   /* PROVISIONAL FLIGHT DUTY. Hollow, not tinted -- see schedCellHTML. */
   .sched-blk-pencil{ background:transparent !important; }
   /* The dot on the category button and in the legend must match the grid, or
      the button teaches the wrong shape. */
   .sched-key-dot-pencil{ background:transparent !important; }
+  /* Matches the grid: an away day is a bar, not a dot. */
+  .sched-key-dot-away{ height:3px !important; border-radius:1px; align-self:center; }
   /* A superseded pencil is still listed, because it is still a record and still
      removable -- it is merely no longer the truth about the day. Dimmed, not
      struck through: it was not wrong, it was overtaken. */
@@ -2234,7 +2241,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T15:30:00Z';
+const BUILD_VERSION = '2026-08-26T16:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13243,6 +13250,7 @@ const SCHED_OVERHANG_DAYS = 4;
 const SCHED_COLORS = {
   flight:         '#3DBE6B',
   flight_pencil:  '#3DBE6B',   // SAME GREEN AS A REAL FLIGHT, ON PURPOSE
+  away_on_trip:   '#3DBE6B',   // ONE TRIP, ONE COLOUR -- see schedCellHTML
   training:       '#4A9DE0',
   pto:            '#E0574A',
   quarterly_call: '#E8D44F',
@@ -13261,7 +13269,7 @@ function schedIsClash(entries){
   if(!entries || entries.length < 2) return false;
   let flying = false, protectedDay = false;
   entries.forEach(function(e){
-    if(e.kind === 'flight' || e.kind === 'flight_pencil') flying = true;
+    if(e.kind === 'flight' || e.kind === 'flight_pencil' || e.kind === 'away_on_trip') flying = true;
     else if(SCHED_PROTECTED[e.kind]) protectedDay = true;
   });
   return flying && protectedDay;
@@ -13270,6 +13278,7 @@ function schedIsClash(entries){
 const SCHED_LABELS = {
   flight:         'Flight duty',
   flight_pencil:  'Flight duty (penciled)',
+  away_on_trip:   'Away on trip \u2014 not flying',
   training:       'Training / on-site',
   pto:            'PTO',
   quarterly_call: 'Quarterly call',
@@ -13355,6 +13364,64 @@ function indexBusyDays(rows, ownerKey, sourceKey){
   return out;
 }
 
+// *** A TRIP IS A CONTINUOUS ABSENCE, NOT A SET OF FLYING DAYS. ***
+//
+// Kyle, 26 Aug 2026: "from the day of departure to the day of return, you are on
+// flight duty and away. Right now we have blocks on our flight days, but not on
+// the on-duty-but-not-flying days."
+//
+// This is the gap that most misleads a reader of the grid: a two-leg trip with
+// three days sitting between the legs LOOKS like two isolated duty days with the
+// middle of the week free. Eric could reasonably assign someone on a day they
+// are on the other side of the world.
+//
+// NOTHING IS ENTERED BY HAND. The days are DERIVED: for each person, group their
+// flight days by trip, then fill the interior of each trip's span. A leg id maps
+// to a trip through state.legs, the same resolution the day panel already uses.
+//
+// *** ONLY THE INTERIOR IS FILLED, NEVER THE ENDS. *** The span is bounded by
+// the person's own first and last flight day of that trip, so this can never
+// invent duty beyond what the trip sheet says. If a trip cannot be resolved to a
+// trip number the legs stay as they are -- an unresolvable trip must not become
+// an assumption about someone's availability.
+function schedFillAwayDays(idx){
+  Object.keys(idx || {}).forEach(function(ownerId){
+    const byDay = idx[ownerId] || {};
+    // trip key -> sorted list of that person's flight days on that trip
+    const trips = {};
+    Object.keys(byDay).forEach(function(day){
+      (byDay[day] || []).forEach(function(e){
+        if(e.kind !== 'flight' || !e.ref) return;
+        const info = schedFlightRefInfo(e.ref);
+        if(!info) return;                       // archived or unreadable -- leave alone
+        const key = info.tripNumber || ('__grp_' + (info.groupId || e.ref));
+        if(!trips[key]) trips[key] = [];
+        trips[key].push(day);
+      });
+    });
+    Object.keys(trips).forEach(function(key){
+      const days = trips[key].slice().sort();
+      if(days.length < 2) return;               // one flying day cannot have an interior
+      const first = days[0], last = days[days.length - 1];
+      const cur = new Date(first + 'T00:00:00');
+      const end = new Date(last  + 'T00:00:00');
+      while(cur < end){
+        cur.setDate(cur.getDate() + 1);
+        const iso = schedISO(cur);
+        if(iso >= last) break;
+        const dayEntries = byDay[iso] || [];
+        // A day that already carries real flight duty needs nothing added.
+        const flying = dayEntries.some(function(e){ return e.kind === 'flight'; });
+        if(flying) continue;
+        if(dayEntries.some(function(e){ return e.kind === 'away_on_trip'; })) continue;
+        if(!byDay[iso]) byDay[iso] = [];
+        byDay[iso].push({ kind: 'away_on_trip', ref: '', detail: '', trip: key });
+      }
+    });
+  });
+  return idx;
+}
+
 function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, outside){
   let cls = 'sched-cell';
   if(isWeekend) cls += ' sched-cell-wknd';
@@ -13425,6 +13492,20 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
     // artefact at 30px and disappears on a dim screen; an outline, which reads
     // as "not filled in yet" without anyone being told. A pencil that looked
     // like a confirmed flight would be a way to accidentally promise a trip.
+    // *** ONE TRIP READS AS ONE CONTINUOUS THING. ***
+    // Not a third green and not a new hue: three greens on a grid becomes a code
+    // you have to learn, and Kyle's constraint is that the schedule must be
+    // legible without a legend. Same colour, LESS HEIGHT -- a slim bar at the
+    // cell's midline, so a five-day trip reads as one green run with thicker
+    // segments where you actually fly. It ends up looking LESS busy than
+    // isolated blocks did, because the eye follows one bar across the week
+    // instead of hunting for separate marks. Thinner obviously means less going
+    // on, which is the whole explanation anyone needs.
+    if(e.kind === 'away_on_trip'){
+      return '<span class="sched-blk sched-blk-away" style="background:' + col + '"' +
+             ' title="' + escapeHtml(label + (e.trip && e.trip.indexOf('__grp_') !== 0
+                                              ? ' \u2014 trip ' + e.trip : '')) + '"></span>';
+    }
     if(e.kind === 'flight_pencil'){
       return '<span class="sched-blk sched-blk-pencil" style="box-shadow:inset 0 0 0 2px ' + col + '"' +
              ' title="' + escapeHtml(title + ' \u2014 provisional, not a confirmed trip') + '"></span>';
@@ -13597,6 +13678,34 @@ document.addEventListener('touchcancel', function(){ if(schedDrag) schedDragEnd(
 // visible in the month would truncate it at the window edge -- the panel would
 // say "to 30 Jun" for a record that runs to 4 Jul, and then the delete would
 // remove more than the panel named. So we fetch the record by id.
+// Is this person between the first and last flight day of one trip, on a day
+// with no flying? Returns the trip key, or '' if not. Same bounds rule as
+// schedFillAwayDays -- interior only, never beyond the trip sheet.
+function schedAwayTripForDay(ownerId, dayISO){
+  const rows = (schedData && schedData.crew) || [];
+  const trips = {};
+  rows.forEach(function(r){
+    if(r.user_id !== ownerId || r.source !== 'flight' || !r.ref_id) return;
+    const info = schedFlightRefInfo(r.ref_id);
+    if(!info) return;
+    const key = info.tripNumber || ('__grp_' + (info.groupId || r.ref_id));
+    const day = String(r.day || '').slice(0,10);
+    if(!day) return;
+    if(!trips[key]) trips[key] = [];
+    trips[key].push(day);
+    if(day === dayISO) trips[key].flying = true;
+  });
+  let found = '';
+  Object.keys(trips).forEach(function(key){
+    const days = trips[key];
+    if(days.flying) return;                 // actually flying -- not an away day
+    if(days.length < 2) return;
+    const sorted = days.slice().sort();
+    if(dayISO > sorted[0] && dayISO < sorted[sorted.length - 1]) found = key;
+  });
+  return found;
+}
+
 async function loadSchedDayRecords(ownerId, ownerKind, dayISO){
   // Filter the raw derivation rows. The rendered index is local to the render
   // pass and deliberately not cached -- one source of truth, not two.
@@ -13618,6 +13727,17 @@ async function loadSchedDayRecords(ownerId, ownerKind, dayISO){
       refs.push(e.ref);
     }
   });
+  // *** THE PANEL MUST AGREE WITH THE GRID. ***
+  // Away-on-trip days are DERIVED at render time and are not RPC rows, so a tap
+  // on one would otherwise read "Nothing on this day" while the grid plainly
+  // shows a bar. Recomputed here from the same derivation rather than cached,
+  // so there is one rule and not two copies of it.
+  if(ownerKind !== 'aircraft' && !out.length){
+    const awayTrip = schedAwayTripForDay(ownerId, dayISO);
+    if(awayTrip){
+      out.push({ id: '', kind: 'away_on_trip', detail: '', trip: awayTrip, removable: false });
+    }
+  }
   if(refs.length){
     const tbl = ownerKind === 'aircraft' ? 'aircraft_availability' : 'crew_exceptions';
     const catCol = ownerKind === 'aircraft' ? 'status' : 'category';
@@ -13778,6 +13898,23 @@ function schedGoToLeg(legId){
   openTripDetail(key, 'schedule');
 }
 
+// The one line under a row in the day panel. Pulled out of the template because
+// it now answers three different questions and a nested ternary inside string
+// concatenation is where paren bugs live.
+function schedExistingSubText(r, isAwayRow){
+  if(isAwayRow){
+    const named = r.trip && r.trip.indexOf('__grp_') !== 0;
+    return 'Between legs of ' + (named ? 'trip ' + r.trip : 'a trip') +
+           ' \u2014 derived from the trip, nothing to remove';
+  }
+  // An exception owns its own span, so it can state it.
+  if(r.removable) return schedPrettySpan(r.start, r.end);
+  // Flight duty belongs to the trip. Naming WHICH trip is more use than a
+  // disabled button -- and it is the only way a mid-tour trip-number change is
+  // visible on this surface.
+  return schedFlightRowSub(r.id);
+}
+
 function schedExistingHTML(e){
   if(e.loadingExisting) return '<div class="sched-existing-note">Reading this day\u2026</div>';
   if(e.existingError)   return '<div class="sched-existing-note sched-entry-span-bad">Could not read this day.</div>';
@@ -13791,6 +13928,7 @@ function schedExistingHTML(e){
     const col = SCHED_COLORS[r.kind] || SCHED_COLORS.other;
     const label = SCHED_LABELS[r.kind] || r.kind;
     const isPencilRow  = r.kind === 'flight_pencil';
+    const isAwayRow    = r.kind === 'away_on_trip';
     const superseded   = isPencilRow && dayHasRealFlight;
     // A flight row opens the trip it came from -- but ONLY if that trip is in
     // the live set. An unreachable row must not look like a link, because a
@@ -13800,18 +13938,16 @@ function schedExistingHTML(e){
            (goTrip ? ' data-sched-goleg="' + escapeHtml(goTrip) + '" role="button" tabindex="0"' : '') + '>' +
            (isPencilRow
              ? '<span class="sched-key-dot sched-key-dot-pencil" style="box-shadow:inset 0 0 0 2px ' + col + '"></span>'
-             : '<span class="sched-key-dot" style="background:' + col + '"></span>') +
+             : isAwayRow
+               ? '<span class="sched-key-dot sched-key-dot-away" style="background:' + col + '"></span>'
+               : '<span class="sched-key-dot" style="background:' + col + '"></span>') +
            '<div class="sched-existing-txt">' +
              '<div class="sched-existing-lbl' + (superseded ? ' sched-existing-lbl-done' : '') + '">' +
                escapeHtml(label) +
                (superseded ? ' <span class="sched-superseded">superseded by the trip</span>' : '') +
              '</div>' +
              '<div class="sched-existing-sub">' +
-               (r.removable ? escapeHtml(schedPrettySpan(r.start, r.end))
-                            // Flight duty belongs to the trip. Naming WHICH trip
-                            // is more use than a disabled button -- and it is the
-                            // only way a mid-tour trip-number change is visible.
-                            : escapeHtml(schedFlightRowSub(r.id)))  +
+               escapeHtml(schedExistingSubText(r, isAwayRow)) +
                (r.reason ? ' \u00b7 ' + escapeHtml(r.reason) : '') +
              '</div>' +
            '</div>' +
@@ -14017,7 +14153,7 @@ function renderScheduleView(){
 
   const days = schedDayList();
   const todayISO = schedISO(new Date());
-  const crewIdx = indexBusyDays(schedData.crew, 'user_id', 'source');
+  const crewIdx = schedFillAwayDays(indexBusyDays(schedData.crew, 'user_id', 'source'));
   const acIdx   = indexBusyDays(schedData.aircraft, 'aircraft_id', 'status');
 
   // Column headers: weekday letter over day number, so a week is scannable
