@@ -1155,12 +1155,49 @@
   .sched-key-dot{ width:10px; height:10px; border-radius:2px; flex:0 0 auto; }
   .sched-note{ font-size:11px; color:var(--fog-500); }
   .sched-empty{ font-size:13px; color:var(--fog-500); padding:24px 0; }
-  .sched-nav{ min-width:44px; }
+  /* *** THE SCHEDULE HEADER CONTROLS ARE BORDERLESS. ***
+     Four bordered .btn pills in a row read as a row of form FIELDS, not actions,
+     and the alternating widths (square chevron, wide Today, square chevron, wide
+     year) made the group look ragged. Dropping the box leaves the glyph and the
+     word as the only visual weight, which is what they should have been.
+     The tap target does NOT shrink with the box: min-height/min-width keep the
+     full 44px Apple touch target, it is simply invisible until touched.
+     Affordance now comes from the PRESS state rather than a permanent outline --
+     and on the year, from the caret, which is the part that still says "this
+     opens something" on a touchscreen where there is no hover at all. */
+  .sched-hbtn{
+    border:1px solid transparent; background:transparent;
+    border-radius:8px; padding:0 10px;
+    min-height:44px; min-width:44px;
+    display:inline-flex; align-items:center; justify-content:center;
+    color:var(--paper-050); cursor:pointer;
+    font-family:system-ui,'Inter',sans-serif; font-size:14px; font-weight:500;
+    transition:background 0.15s ease, color 0.15s ease;
+    -webkit-tap-highlight-color:transparent;
+  }
+  /* Hover is a mouse-only nicety; the active state below is what a finger gets. */
+  .sched-hbtn:hover{ background:var(--panel-700); color:var(--paper-050); }
+  .sched-hbtn:active{ background:var(--panel-800); }
+  /* Keyboard focus still needs a visible ring -- removing the border must not
+     remove focus visibility. :focus-visible only, so a mouse click does not
+     leave a ring behind. */
+  .sched-hbtn:focus-visible{ outline:2px solid var(--amber-500); outline-offset:-2px; }
+  /* The chevrons are glyphs, so they carry more size and less weight. line-height
+     1 stops the arrow sitting optically low in the target. */
+  .sched-nav{ font-size:19px; line-height:1; padding:0 6px; }
+  /* *** THE GROUP TIGHTENS UP WHEN THE BOXES GO. ***
+     .page-header-actions keeps an 8px gap, which was right when every item had a
+     border to hold it apart. Without borders that gap plus each button's own
+     padding reads as four items adrift. Negative gap pulls the three month
+     controls into ONE cluster, then a real margin sets the year apart from it --
+     so the grouping is now done by SPACING rather than by boxes. */
+  .page-header-actions:has(.sched-hbtn){ gap:0; }
+  .sched-yearbtn{ margin-left:10px; }
   /* Wears the same chrome as the other header buttons so it reads as pressable,
      plus a caret so it reads as OPENING something rather than doing something. */
   .sched-yearbtn{
-    display:inline-flex; align-items:center; gap:5px;
-    font-variant-numeric:tabular-nums; white-space:nowrap;
+    gap:5px; font-variant-numeric:tabular-nums; white-space:nowrap;
+    font-weight:600;   /* the only bold item: it is the strip you are looking at */
   }
   /* Year rows: big touch targets, current year marked the same way the status
      sheet marks a current status, so the two sheets read as one family. */
@@ -2536,7 +2573,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T23:15:00Z';
+const BUILD_VERSION = '2026-08-27T23:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15025,10 +15062,10 @@ function renderScheduleView(){
   setPageHeader({
     title: 'Schedule',
     actionsHTML:
-      '<button type="button" class="btn sched-nav" data-sched-step="-1" aria-label="Previous month">\u2039</button>' +
-      '<button type="button" class="btn sched-nav" data-sched-today="1">Today</button>' +
-      '<button type="button" class="btn sched-nav" data-sched-step="1" aria-label="Next month">\u203A</button>' +
-      '<button type="button" class="btn sched-yearbtn" data-sched-yearpick="1" aria-haspopup="listbox" aria-label="Choose year. Currently ' + w.year + '">' +
+      '<button type="button" class="sched-hbtn sched-nav" data-sched-step="-1" aria-label="Previous month">\u2039</button>' +
+      '<button type="button" class="sched-hbtn" data-sched-today="1">Today</button>' +
+      '<button type="button" class="sched-hbtn sched-nav" data-sched-step="1" aria-label="Next month">\u203A</button>' +
+      '<button type="button" class="sched-hbtn sched-yearbtn" data-sched-yearpick="1" aria-haspopup="listbox" aria-label="Choose year. Currently ' + w.year + '">' +
         w.year + '<span class="sched-caret" aria-hidden="true"></span>' +
       '</button>'
   });
