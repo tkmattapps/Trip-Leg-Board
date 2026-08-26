@@ -1146,6 +1146,41 @@
     padding:0 20px 20px;
     padding-top:env(safe-area-inset-top, 0px);
     padding-bottom:max(20px, env(safe-area-inset-bottom)); }
+
+  /* *** UNDER 700px THE PANEL DOCKS TO THE BOTTOM, NOT THE SIDE. ***
+     A side panel steals from the HORIZONTAL axis, which is the axis the grid
+     scrolls on. At 390pt an iPhone gives the panel ~359 and the grid ~31 -- and
+     narrowing the panel only trades a cramped panel for two visible day cells,
+     88pt of which is the sticky name column.
+     Docked to the bottom, the grid keeps its FULL WIDTH above the sheet: sticky
+     names, sticky dates, and sideways scrolling through the month all still work
+     with the sheet open.
+     Keyed on WIDTH, not on device or orientation, because width is the actual
+     constraint. iPhone landscape (844pt+), iPad in either orientation (768pt+)
+     and every desktop size keep the side panel untouched. A desktop window
+     dragged under 700 gets the sheet, which is right -- the problem there is
+     identical. */
+  @media (max-width:700px){
+    .sched-entry-panel{
+      top:auto; right:0; left:0; bottom:0;
+      width:auto;
+      max-height:58vh;
+      border-left:0;
+      border-top:1px solid var(--hairline);
+      border-radius:16px 16px 0 0;
+      box-shadow:0 -18px 40px rgba(6,12,22,0.45);
+      /* No status bar to clear when docked at the bottom, so the top padding
+         goes back to a normal value rather than a safe-area inset. */
+      padding-top:14px;
+    }
+    /* A grab bar, matching the key's handle. It says "this is a sheet" without a
+       label, and marks the top edge as somewhere to look for the close control. */
+    .sched-entry-panel::before{
+      content:''; display:block; flex:0 0 auto;
+      width:44px; height:4px; margin:-4px auto 10px;
+      border-radius:2px; background:var(--fog-500); opacity:0.55;
+    }
+  }
   .sched-entry-who{ font-family:'Big Shoulders Display',sans-serif; font-size:22px;
     color:var(--paper-050); margin-bottom:12px; }
   .sched-entry-cats{ display:flex; flex-direction:column; gap:6px; margin-bottom:16px; }
@@ -2392,7 +2427,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T17:15:00Z';
+const BUILD_VERSION = '2026-08-27T17:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
