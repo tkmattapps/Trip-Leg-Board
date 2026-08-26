@@ -2329,7 +2329,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T13:00:00Z';
+const BUILD_VERSION = '2026-08-27T13:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13987,14 +13987,29 @@ async function loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO){
   const spanLo = (endISO && endISO < dayISO) ? endISO : dayISO;
   const spanHi = (endISO && endISO > dayISO) ? endISO : dayISO;
   // One day EITHER SIDE, so a selection that merely TOUCHES a block still finds
-  // it -- which is exactly the case that was failing.
+  // it -- the case that broke extending a block backwards.
+  //
+  // *** THE REACH IS FOR TRIM AND EXTEND ONLY. IT IS NOT A WIDER DAY. ***
+  // Applied to every row, this reported neighbouring days as though they were
+  // the selected one: clicking 30 Aug listed the 31st's legs too, clicking the
+  // 31st listed both days, and clicking 1 Sep -- a day with no flying at all --
+  // reached back and listed the 31st's legs. Worse, those phantom rows made the
+  // panel non-empty, so the "Away on trip" line that SHOULD answer for 1 Sep
+  // never appeared.
+  //
+  // Flight duty is derived from the trip and can never be trimmed or extended,
+  // so it is reported for the SELECTED DAYS ONLY. The reach applies solely to
+  // hand-entered blocks, which are the only rows those controls can act on.
   const reachLo = schedShiftISO(spanLo, -1);
   const reachHi = schedShiftISO(spanHi, 1);
   const seenRef = {};
   const cell = rows.filter(function(r){
     if(r[ownerKey] !== ownerId) return false;
     const dy = String(r.day || '').slice(0,10);
-    if(dy < reachLo || dy > reachHi) return false;
+    const isDerived = String(r[srcKey]) === 'flight';
+    const lo = isDerived ? spanLo : reachLo;
+    const hi = isDerived ? spanHi : reachHi;
+    if(dy < lo || dy > hi) return false;
     // A five-day block returns one row PER DAY. Keeping them all would list the
     // same block five times in the panel.
     const k = String(r[srcKey]) + '|' + String(r.ref_id || dy);
