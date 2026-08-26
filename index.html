@@ -991,10 +991,18 @@
   .sched-cat-note{ font-size:11px; line-height:1.45; color:var(--fog-500);
     border-left:2px solid #3DBE6B; padding:2px 0 2px 9px; margin:10px 0 2px; }
   .sched-cell-wknd{ background:rgba(184,196,217,0.05); }
-  /* Overhang days are DIMMED, not hidden. A trip running from one month into
-     the next is the collision most easily missed, so the days either side stay
-     on screen and merely recede. */
-  .sched-cell-out{ opacity:0.45; }
+  /* Overhang days RECEDE, they are not hidden: a trip running from one month
+     into the next is the collision most easily missed.
+     0.45 was tuned when the overhang was FOUR days and the dimmed part was a
+     hint at the edges. At THIRTY days either side most of the grid is overhang,
+     and at that strength the whole thing looked switched off -- which read as
+     the current month being dim rather than its neighbours. Softened, with the
+     month boundary carried by the month band and the divider below instead of
+     by brightness alone. */
+  .sched-cell-out{ opacity:0.82; }
+  /* The first day of the named month, marked structurally rather than by
+     brightness -- a line holds up at any opacity. */
+  .sched-cell-mstart{ border-left:1px solid var(--fog-500); }
   /* TODAY IS ORIENTATION, NOT INFORMATION. Amber is reserved for something the
      viewer needs to weigh; a date marker says only "you are here" and must not
      borrow the vocabulary of an alert. A cool light ring reads instantly on the
@@ -2290,7 +2298,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T22:35:00Z';
+const BUILD_VERSION = '2026-08-26T22:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13490,6 +13498,9 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   let cls = 'sched-cell';
   if(isWeekend) cls += ' sched-cell-wknd';
   if(outside)   cls += ' sched-cell-out';
+  // Derived from the date itself rather than passed in, so every row draws the
+  // boundary in the same place without another argument to keep in step.
+  if(String(dayISO).slice(8, 10) === '01') cls += ' sched-cell-mstart';
   if(isToday)   cls += ' sched-cell-today';
   if(schedIsClash(entries)) cls += ' sched-cell-clash';
   const attrs = ' data-sched-day="' + dayISO + '" data-sched-owner="' + escapeHtml(ownerId) + '"' +
@@ -14481,6 +14492,8 @@ function renderScheduleView(){
     let cls = 'sched-hcell';
     if(dow === 0 || dow === 6) cls += ' sched-cell-wknd';
     if(outside) cls += ' sched-cell-out';
+    // A line on the 1st: the month boundary survives any opacity choice.
+    if(dt.getDate() === 1) cls += ' sched-cell-mstart';
     if(iso === todayISO) cls += ' sched-cell-today';
     head += '<div class="' + cls + '">' +
               '<span class="sched-dow">' + 'SMTWTFS'.charAt(dow) + '</span>' +
