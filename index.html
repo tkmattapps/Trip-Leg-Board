@@ -1189,7 +1189,9 @@
   .sched-entry-foot{ display:flex; justify-content:flex-end; gap:10px; margin-top:auto; padding-top:18px; }
   /* Only an admin sees a cell as touchable. */
   .sched-can-edit .sched-cell{ cursor:pointer; }
-  .sched-can-edit .sched-cell:hover{ box-shadow:inset 0 0 0 1px var(--fog-500); }
+  /* Not gated on .sched-can-edit any more: every viewer can OPEN a day to read
+     it, so every viewer gets the affordance saying so. */
+  .sched-cell:hover{ box-shadow:inset 0 0 0 1px var(--fog-500); }
   /* Quick note sheet. Borrows .chat-row wholesale -- same list, same question. */
   .qn-row-off{ opacity:0.5; }
   .qn-row-open{ border-bottom:none; }
@@ -2390,7 +2392,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T16:40:00Z';
+const BUILD_VERSION = '2026-08-27T17:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14169,17 +14171,26 @@ async function loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO){
   return out;
 }
 
+// *** ADMIN GOVERNS WRITING, NOT READING. ***
+//
+// This used to refuse outright for a non-admin, which left crew able to SEE
+// coloured blocks on the grid and with no way to find out what any of them was.
+// That is the wrong shape: the schedule is a shared record, and the whole point
+// of a shared record is that everyone can read it. Only the writing is
+// privileged.
+//
+// So the panel opens for everyone and renders READ ONLY for a non-admin: the
+// day's records, in words, with nothing that could change them. The editing
+// controls are not disabled, they are ABSENT -- a screen full of dead buttons
+// tells a crew member they are not trusted, where a clean list of facts just
+// answers the question they had.
 async function openSchedEntry(ownerId, ownerKind, dayISO, endISO){
-  if(!rosterViewerIsAdmin()){
-    // Stated, not silent. A control that does nothing reads as broken; a
-    // control that explains itself reads as a rule.
-    showToast('Only a department admin can change the schedule');
-    return;
-  }
+  const canEdit = rosterViewerIsAdmin();
   // Captured BEFORE schedEntry is replaced: the rows currently on screen, held
   // over so the panel does not collapse while the new day is read.
   const prevExisting = (schedEntry && Array.isArray(schedEntry.existing)) ? schedEntry.existing : [];
   schedEntry = {
+    readOnly: !canEdit,
     ownerId: ownerId,
     ownerKind: ownerKind,
     ownerLabel: schedOwnerLabel(ownerId, ownerKind),
@@ -14483,7 +14494,7 @@ function schedExistingHTML(e){
                (r.reason ? ' \u00b7 ' + escapeHtml(r.reason) : '') +
              '</div>' +
            '</div>' +
-           (r.removable
+           (r.removable && !e.readOnly
              ? '<button type="button" class="sched-del-btn" data-sched-del="' + escapeHtml(r.id) + '" ' +
                'aria-label="Remove">&times;</button>'
              : '') +
@@ -14497,7 +14508,7 @@ function schedExistingHTML(e){
     // either reaches beyond the block or falls inside it. Checked first so a
     // selection that does both -- overlapping one end and spilling past it --
     // reads as the lengthening it plainly is.
-    const ext = schedExtendResult(r, selLo, selHi);
+    const ext = e.readOnly ? null : schedExtendResult(r, selLo, selHi);
     if(ext){
       h += '<div class="sched-trim">' +
              '<button type="button" class="sched-trim-btn" data-sched-ext="' + escapeHtml(r.id) + '" ' +
@@ -14509,7 +14520,7 @@ function schedExistingHTML(e){
                ' \u00b7 or use Add below for a separate one</span>' +
            '</div>';
     }
-    const trim = schedTrimResult(r, selLo, selHi);
+    const trim = e.readOnly ? null : schedTrimResult(r, selLo, selHi);
     if(trim){
       const spanTxt = selLo === selHi ? schedPrettyDay(selLo) : schedPrettySpan(selLo, selHi);
       if(trim === 'whole'){
@@ -14552,6 +14563,16 @@ function renderSchedEntry(){
   let h = '<div class="sched-entry-who">' + escapeHtml(e.ownerLabel) + '</div>';
   h += '<div class="sched-entry-day">' + escapeHtml(schedPrettyDay(e.day)) + '</div>';
   h += schedExistingHTML(e);
+
+  // READ ONLY stops here: the day's records and nothing else. No Add section, no
+  // category buttons, no date fields. Everything below this point can write.
+  if(e.readOnly){
+    body.innerHTML = h;
+    schedSyncSaveBtn();
+    schedPaintSelection();
+    return;
+  }
+
   h += '<div class="sched-entry-sep">Add</div>';
   h += '<div class="sched-entry-cats">';
   cats.forEach(function(c){
@@ -14597,8 +14618,17 @@ function renderSchedEntry(){
 // line above it, so this reads as a rule rather than as a dead button.
 function schedSyncSaveBtn(){
   const btn = document.getElementById('schedEntrySaveBtn');
-  if(!btn) return;
-  btn.disabled = !(schedEntry && schedEntry.category);
+  const ro  = !!(schedEntry && schedEntry.readOnly);
+  // The footer is static markup shared by both modes, so it is adjusted here
+  // rather than rebuilt. Read only: Add is REMOVED, not disabled -- there is
+  // nothing to add -- and Cancel becomes Close, because nothing is in progress
+  // to cancel.
+  if(btn){
+    btn.style.display = ro ? 'none' : '';
+    btn.disabled = ro ? true : !(schedEntry && schedEntry.category);
+  }
+  const cancel = document.getElementById('schedEntryCancelBtn');
+  if(cancel) cancel.textContent = ro ? 'Close' : 'Cancel';
 }
 
 // Says how many days will be written, in words, before anything is written.
@@ -14626,6 +14656,12 @@ function updateSchedSpan(){
 // schedule said at the time.
 async function removeSchedEntry(recId){
   if(!schedEntry) return;
+  // *** THE DOOR IS NO LONGER THE LOCK. ***
+  // Until the panel opened read-only for non-admins, openSchedEntry refused at
+  // the door and these functions could assume an admin had got this far. That
+  // assumption is now false, so each write path checks for itself. RLS is still
+  // the actual gate; this stops the request being made at all.
+  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can change the schedule'); return; }
   const rec = (schedEntry.existing || []).find(function(x){ return x.id === recId; });
   if(!rec) return;
   const label = SCHED_LABELS[rec.kind] || rec.kind;
@@ -14659,6 +14695,12 @@ async function removeSchedEntry(recId){
 // not replaced, it was shortened.
 async function trimSchedEntry(recId, newStart, newEnd, mode){
   if(!schedEntry) return;
+  // *** THE DOOR IS NO LONGER THE LOCK. ***
+  // Until the panel opened read-only for non-admins, openSchedEntry refused at
+  // the door and these functions could assume an admin had got this far. That
+  // assumption is now false, so each write path checks for itself. RLS is still
+  // the actual gate; this stops the request being made at all.
+  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can change the schedule'); return; }
   const rec = (schedEntry.existing || []).find(function(x){ return x.id === recId; });
   if(!rec) return;
   const label = SCHED_LABELS[rec.kind] || rec.kind;
@@ -14693,6 +14735,12 @@ async function trimSchedEntry(recId, newStart, newEnd, mode){
 
 async function saveSchedEntry(){
   if(!schedEntry) return;
+  // *** THE DOOR IS NO LONGER THE LOCK. ***
+  // Until the panel opened read-only for non-admins, openSchedEntry refused at
+  // the door and these functions could assume an admin had got this far. That
+  // assumption is now false, so each write path checks for itself. RLS is still
+  // the actual gate; this stops the request being made at all.
+  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can change the schedule'); return; }
   const e = schedEntry;
   const startEl = document.getElementById('schedStart');
   const endEl = document.getElementById('schedEnd');
