@@ -1202,12 +1202,27 @@
   .sched-yearbtn{ margin-left:10px; }
   /* Wears the same chrome as the other header buttons so it reads as pressable,
      plus a caret so it reads as OPENING something rather than doing something. */
+  /* *** THE YEAR KEEPS A PILL. THE MONTH CONTROLS DO NOT. ***
+     Deliberate asymmetry, arrived at by elimination. A down-caret was tried and
+     clashed: two horizontal chevrons flanking Today and then a filled downward
+     triangle is two different shape languages in one row. Amber was tried next
+     and was worse REASONING -- if amber means "interactive" then Today must be
+     amber too, so it would have meant nothing a first-time user could decode.
+     A box is the honest marker, because it is now the ONLY box in the header. It
+     says "not one of those three" without claiming anything about pressability
+     that the bare controls contradict. The month trio reads as a group by
+     sitting bare together; the year reads as a separate thing by being framed. */
   .sched-yearbtn{
-    gap:5px; font-variant-numeric:tabular-nums; white-space:nowrap;
-    /* No weight override -- inherits 500 from .sched-hbtn like everything else.
-       It was 600 to mark it as "the strip you are looking at"; the caret already
-       does that job without making it look like a different font. */
+    font-variant-numeric:tabular-nums; white-space:nowrap;
+    border-color:var(--hairline);
+    border-radius:3px;               /* .btn's radius, not the 8px hover shape */
+    min-width:0; padding:0 12px;
+    min-height:32px;                 /* shorter than the 44px glyph targets so it
+                                        reads as a pill, not a tall block; the
+                                        touch target is still comfortable. */
   }
+  .sched-yearbtn:hover{ border-color:var(--fog-500); background:transparent; }
+  .sched-yearbtn:active{ background:var(--panel-800); }
   /* Year rows: big touch targets, current year marked the same way the status
      sheet marks a current status, so the two sheets read as one family. */
   .sched-yearrow{
@@ -1223,13 +1238,6 @@
   .sched-yearrow-cur{
     margin-left:auto; font-size:11px; color:var(--fog-500);
     letter-spacing:0.4px; text-transform:uppercase;
-  }
-  .sched-caret{
-    width:0; height:0; flex:none;
-    border-left:4px solid transparent;
-    border-right:4px solid transparent;
-    border-top:5px solid currentColor;
-    opacity:0.8;
   }
   /* ENTRY PANEL. Pinned right, not centred: the grid behind it is the reason
      the decision is being made here rather than on a form. */
@@ -2582,7 +2590,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T23:50:00Z';
+const BUILD_VERSION = '2026-08-28T00:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15047,10 +15055,13 @@ function renderScheduleView(){
   // iPhone header and read as clutter on the Mac. More importantly three taps to
   // reach 2023 is the wrong interaction for something you jump to, not nudge.
   //
-  // So: ONE control. It carries a caret because the schedule's design default is
-  // that a first-time user needs no instructions -- and a bare year reads as a
-  // label, not a button. A value plus a caret is about as close to a universal
-  // "this opens something" as convention offers. Month arrows are untouched.
+  // So: ONE control, FRAMED IN A PILL -- the only box in the header. The
+  // schedule's design default is that a first-time user needs no instructions,
+  // and a bare year sitting among bare chevrons reads as a label rather than a
+  // button. A down-caret was tried first and clashed with the horizontal
+  // chevrons; amber was tried after that and rejected on reasoning. See the note
+  // on .sched-yearbtn. Month arrows are untouched throughout.
+  //
   // *** NO MONTH LABEL IN THE HEADER AT ALL. ***
   // It was tried under the title (far from the controls that change it) and then
   // as a caption under the buttons (three stacked lines, too busy). Both were
@@ -15075,7 +15086,7 @@ function renderScheduleView(){
       '<button type="button" class="sched-hbtn" data-sched-today="1">Today</button>' +
       '<button type="button" class="sched-hbtn sched-nav" data-sched-step="1" aria-label="Next month">\u203A</button>' +
       '<button type="button" class="sched-hbtn sched-yearbtn" data-sched-yearpick="1" aria-haspopup="listbox" aria-label="Choose year. Currently ' + w.year + '">' +
-        w.year + '<span class="sched-caret" aria-hidden="true"></span>' +
+        w.year +
       '</button>'
   });
 
