@@ -941,7 +941,20 @@
      below .sched-name at its own corner, so the two never fight.
      The offset is the app header's height -- the bar must come to rest BELOW it,
      not underneath it. */
-  .sched-head{ position:sticky; top:0; z-index:3; }
+  /* MONTH BAND. Sticks above the day numbers, so scrolling into a neighbouring
+     month tells you so. */
+  .sched-months{ position:sticky; top:0; z-index:3; }
+  .sched-mcell{ flex:0 0 auto; display:flex; align-items:center; padding:5px 8px;
+    box-sizing:border-box; background:var(--panel-700); overflow:hidden;
+    white-space:nowrap; font-size:11px; letter-spacing:0.04em;
+    text-transform:uppercase; color:var(--fog-500);
+    border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
+  /* The month the header names, and the one the arrows step. Brighter, not a
+     different hue -- one visual language for "where you are", varied by
+     intensity. */
+  .sched-mcell-on{ color:#fff; background:var(--panel-800); }
+  /* Offset by the band above it so the two stack rather than overlap. */
+  .sched-head{ position:sticky; top:27px; z-index:3; }
   .sched-name-head{ z-index:4; }
   .sched-hcell{ flex:0 0 auto; width:30px; height:34px; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:1px; background:var(--panel-700);
@@ -2277,7 +2290,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T22:05:00Z';
+const BUILD_VERSION = '2026-08-26T22:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14426,6 +14439,40 @@ function renderScheduleView(){
   // Column headers: weekday letter over day number, so a week is scannable
   // without counting. The month boundary is drawn rather than trimmed -- the
   // overhang days are what make a straddling trip visible.
+  // *** THE GRID MUST SAY WHICH MONTH IT IS SHOWING. ***
+  //
+  // A row of numbers from 1 to 30 does not say which month it belongs to, and
+  // with thirty days of overhang either side you can scroll a long way from the
+  // month named in the page header -- which never changes as you scroll. So the
+  // boundary was invisible: a dimmed run of days 1 to 26 could be the current
+  // month or the next one, and there was no way to tell without clicking a cell.
+  //
+  // One label per RUN of days in the same month, sized to that run, so a month
+  // boundary is something you SEE rather than something you work out.
+  let months = '<div class="sched-row sched-months"><div class="sched-name sched-name-head"></div>';
+  let runStart = 0;
+  days.forEach(function(dt, i){
+    const last = i === days.length - 1;
+    const nextDifferent = last || days[i + 1].getMonth() !== dt.getMonth();
+    if(!nextDifferent) return;
+    const len = i - runStart + 1;
+    const isCurrent = dt.getMonth() === w.monthFirst.getMonth() &&
+                      dt.getFullYear() === w.monthFirst.getFullYear();
+    // The year is only worth the space when the run is long enough to carry it,
+    // and always for a January or December run, where the year is the point.
+    const showYear = len >= 12 || dt.getMonth() === 0 || dt.getMonth() === 11;
+    const label = dt.toLocaleDateString([], showYear ? { month: 'long', year: 'numeric' }
+                                                     : { month: 'long' });
+    // A short run cannot hold a word. It keeps its width so the grid stays
+    // aligned, but shows nothing rather than a clipped fragment.
+    months += '<div class="sched-mcell' + (isCurrent ? ' sched-mcell-on' : '') + '"' +
+                ' style="width:' + (len * 30) + 'px">' +
+                (len >= 4 ? '<span>' + escapeHtml(label) + '</span>' : '') +
+              '</div>';
+    runStart = i + 1;
+  });
+  months += '</div>';
+
   let head = '<div class="sched-row sched-head"><div class="sched-name sched-name-head"></div>';
   days.forEach(function(dt){
     const iso = schedISO(dt);
@@ -14536,7 +14583,7 @@ function renderScheduleView(){
   // are the actual gate -- this only avoids offering something that would fail.
   const editCls = rosterViewerIsAdmin() ? ' sched-can-edit' : '';
   main.innerHTML = '<div class="sched-wrap' + editCls + '">' +
-      '<div class="sched-scroll">' + head + body + '</div>' +
+      '<div class="sched-scroll">' + months + head + body + '</div>' +
       key +
       '<div class="sched-note">Flight duty is read from the trips themselves and cannot be edited here. ' +
       'Everything else is entered by hand.</div>' +
