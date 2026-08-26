@@ -2298,7 +2298,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T23:15:00Z';
+const BUILD_VERSION = '2026-08-26T23:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14633,6 +14633,9 @@ function schedCellWidth(){
 let schedScrollKey = null;
 let schedScrollLeft = null;
 let schedScrollForce = false;   // set by Today; overrides the remembered position
+// True on ARRIVAL only: first open of the schedule, and the Today button.
+// Cleared by a month step, so stepping lands on the 1st rather than on today.
+let schedScrollToToday = true;
 
 // Where the grid should sit when a month is first shown.
 //
@@ -14647,19 +14650,27 @@ function schedDefaultScrollLeft(){
   // before comparing -- indexOf on a Date array with a string finds nothing.
   const days = schedDayList().map(schedISO);
   const now = new Date();
-  // *** TODAY ANCHORS ONLY THE MONTH IT BELONGS TO. ***
-  // Being in the visible WINDOW is not enough. With thirty days of overhang,
-  // today is still on screen when you step to the month either side -- so
-  // anchoring on it there scrolled the grid back to today and showed you the
-  // month you had just left, with the month you asked for pushed off to the
-  // left. Stepping back from this month appeared to skip one entirely.
+  // *** STEPPING A MONTH MEANS THE START OF THAT MONTH. ***
+  //
+  // Today anchors the view on ARRIVAL -- opening the schedule, or pressing
+  // Today -- because that is when "where am I now" is the question. It must NOT
+  // anchor a month you stepped to deliberately: stepping July to August landed
+  // on the 26th and showed the last third of August, which reads as having
+  // skipped past the month you asked for. When you step, you want its start.
+  //
+  // schedScrollToToday is set by the two arrival paths and by nothing else.
   const todayInNamedMonth = now.getMonth() === w.monthFirst.getMonth() &&
                             now.getFullYear() === w.monthFirst.getFullYear();
-  let i = todayInNamedMonth ? days.indexOf(schedISO(now)) : -1;
+  let i = (schedScrollToToday && todayInNamedMonth) ? days.indexOf(schedISO(now)) : -1;
+  // The run-in belongs to TODAY, not to a month boundary. Arriving at today you
+  // want to see the few days just gone; stepping to a month you want that month,
+  // and any days of the previous one before it only muddy which is which. So a
+  // stepped month starts hard against the left edge.
+  let lead = SCHED_LEAD_IN_DAYS;
   if(i < 0){
-    // Any other month opens on its own first day.
     i = days.indexOf(schedISO(w.monthFirst));
     if(i < 0) i = 0;
+    lead = 0;
   }
   // *** THE STICKY NAME COLUMN OVERLAPS THE SCROLLED CONTENT. ***
   // .sched-name is position:sticky at left:0, so it sits ON TOP of the first
@@ -14672,7 +14683,7 @@ function schedDefaultScrollLeft(){
   // offset -- and any future change to the header would silently shift it again.
   const sc = document.querySelector('.sched-scroll');
   const cells = document.querySelectorAll('.sched-hcell');
-  const target = cells[Math.max(0, i - SCHED_LEAD_IN_DAYS)];
+  const target = cells[Math.max(0, i - lead)];
   const nameEl = document.querySelector('.sched-name');
   const nameW = nameEl ? nameEl.getBoundingClientRect().width : 152;
   if(sc && target){
@@ -14682,7 +14693,7 @@ function schedDefaultScrollLeft(){
     return Math.max(0, target.offsetLeft - nameW);
   }
   // Fallback if the grid has not laid out yet.
-  return Math.max(0, (i - SCHED_LEAD_IN_DAYS) * schedCellWidth());
+  return Math.max(0, (i - lead) * schedCellWidth());
 }
 
 function schedApplyScroll(){
@@ -14709,7 +14720,12 @@ async function openScheduleView(){
   if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
   state.view = 'schedule';
   state.activeId = null;
-  if(!schedAnchor) schedAnchor = schedMonthStart(new Date());
+  // No anchor means arriving fresh rather than re-rendering: default to this
+  // month, positioned on today.
+  if(!schedAnchor){
+    schedAnchor = schedMonthStart(new Date());
+    schedScrollToToday = true;
+  }
   schedLoading = true;
   renderMain();
   try {
@@ -14727,6 +14743,10 @@ function schedStepMonth(delta){
   const a = schedAnchor || schedMonthStart(new Date());
   schedAnchor = new Date(a.getFullYear(), a.getMonth() + delta, 1);
   schedData = null;
+  // A deliberate step wants the start of the month it lands on, even when that
+  // month happens to contain today.
+  schedScrollToToday = false;
+  schedScrollForce = true;
   openScheduleView();
 }
 
@@ -14922,6 +14942,7 @@ document.addEventListener('click', async function(e){
     schedData = null;
     // Today means today, even if you are already in this month and scrolled
     // three weeks away from it.
+    schedScrollToToday = true;
     schedScrollForce = true;
     openScheduleView();
     return;
