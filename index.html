@@ -1374,6 +1374,14 @@
      the brightest rung: full fog-300 at 2px. Amber was doing this job and read
      as an alert, which selection is not. */
   .sched-cell-sel{ box-shadow:inset 0 0 0 2px var(--fog-300) !important; }
+  /* THE ARM MOMENT. On touch the drag does not exist until a long press has
+     completed, and this is the only signal that it now does -- Safari has no
+     reliable haptic, so the feedback iOS gives with a tap has to be visible
+     instead. Amber and 2px so it reads as a state change rather than as the
+     ordinary selection ring it becomes a moment later.
+     box-shadow, NOT opacity or a background shorthand: these cells sit under a
+     sticky header and both of those break stickiness. */
+  .sched-cell-arm{ box-shadow:inset 0 0 0 2px var(--amber-500) !important; }
   /* Kills the text-selection smear that a horizontal drag otherwise produces. */
   body.sched-dragging{ user-select:none; -webkit-user-select:none; cursor:crosshair; }
   .sched-entry-foot{ display:flex; justify-content:flex-end; gap:10px; margin-top:auto; padding-top:18px; }
@@ -2607,7 +2615,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T03:45:00Z';
+const BUILD_VERSION = '2026-08-28T04:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14152,6 +14160,45 @@ function schedOwnerLabel(ownerId, kind){
 let schedDrag = null;        // { ownerId, ownerKind, anchorDay, curDay }
 let schedDragMoved = false;  // suppresses the click that follows a real drag
 
+// ---- TOUCH: LONG PRESS TO ARM ----------------------------------------------
+// *** ON TOUCH, A FINGER DOWN IS A SCROLL UNTIL PROVEN OTHERWISE. ***
+//
+// The bug this exists to fix: touchstart used to arm the drag immediately, and
+// schedDragMoved flipped true as soon as the finger crossed into a second day
+// cell. A cell is 30px wide, so ~30px of ordinary horizontal scrolling was
+// indistinguishable from a deliberate two-day selection, and releasing opened
+// the day panel. On an iPad you could not reliably scroll the grid at all.
+//
+// Direction cannot separate the two: a drag-select IS horizontal. Only TIME
+// can. So this mirrors what iOS does for drag inside a scroll view -- hold,
+// then drag:
+//
+//   finger down          -> nothing armed, the grid scrolls normally
+//   held still ~320ms    -> the cell rings amber; the drag is now armed
+//   drag after that      -> selects, and the scroll is suppressed
+//   moved before arming  -> it was a scroll, and the drag NEVER arms for this
+//                           touch (deliberately not "arms late" -- holding
+//                           still mid-scroll must not become a selection)
+//   quick tap            -> unchanged: the existing click handler opens the day
+//
+// Safari has no dependable haptic, so .sched-cell-arm is doing the job the
+// native tap does: it is the only way to know the gesture has changed mode.
+const SCHED_LONGPRESS_MS   = 320;  // hold to arm. iOS drag is ~300; a schedule
+                                   // cell is small, so slightly longer.
+const SCHED_LONGPRESS_SLOP = 8;    // px of movement that cancels the arm. Below
+                                   // a finger's natural tremor and well under
+                                   // one 30px cell.
+let schedPressTimer = null;
+let schedPressCell  = null;
+let schedPressX     = 0;
+let schedPressY     = 0;
+
+function schedPressClear(){
+  if(schedPressTimer){ clearTimeout(schedPressTimer); schedPressTimer = null; }
+  if(schedPressCell){ schedPressCell.classList.remove('sched-cell-arm'); }
+  schedPressCell = null;
+}
+
 function schedCellFromPoint(x, y){
   const el = document.elementFromPoint(x, y);
   return el && el.closest ? el.closest('[data-sched-day]') : null;
@@ -14219,6 +14266,13 @@ function schedPaintSelection(){
 }
 
 function schedDragEnd(){
+  // The arm ring is cleared here as well as in schedPressClear: a drag can end
+  // by a route that never touches the press state (touchcancel racing, or the
+  // mouse path), and an amber ring left painted on a cell would read as a
+  // selection that no longer exists.
+  document.querySelectorAll('.sched-cell-arm').forEach(function(el){
+    el.classList.remove('sched-cell-arm');
+  });
   if(!schedDrag){ document.body.classList.remove('sched-dragging'); return; }
   const drag = schedDrag;
   schedDrag = null;
@@ -14248,25 +14302,61 @@ document.addEventListener('mousemove', function(ev){
 });
 document.addEventListener('mouseup', function(){ if(schedDrag) schedDragEnd(); });
 
+// TOUCH. Deliberately NOT symmetrical with the mouse: a mouse has no scroll to
+// compete with, so it arms on press as it always has. Only touch waits.
 document.addEventListener('touchstart', function(ev){
+  schedPressClear();
+  // A second finger means a pinch or a two-finger scroll. Never a selection.
+  if(ev.touches.length > 1) return;
   const cell = ev.target && ev.target.closest ? ev.target.closest('[data-sched-day]') : null;
   if(!cell) return;
-  schedDragBegin(cell);
-}, { passive: true });
-document.addEventListener('touchmove', function(ev){
-  if(!schedDrag) return;
+  if(!rosterViewerIsAdmin()) return;   // no selection to arm; leave scrolling alone
   const t = ev.touches[0];
   if(!t) return;
-  const cell = schedCellFromPoint(t.clientX, t.clientY);
-  if(cell && cell.getAttribute('data-sched-owner') === schedDrag.ownerId){
-    // Only swallow the scroll once the finger is genuinely tracking the row.
-    // Swallowing it earlier would trap a plain vertical scroll of the grid.
-    if(schedDragMoved && ev.cancelable) ev.preventDefault();
+  schedPressX = t.clientX;
+  schedPressY = t.clientY;
+  schedPressCell = cell;
+  schedPressTimer = setTimeout(function(){
+    schedPressTimer = null;
+    if(!schedPressCell) return;
+    // The arm ring goes on BEFORE schedDragBegin so the amber frame is what the
+    // eye catches at the moment of change; schedPaintDrag then adds the grey
+    // selection ring underneath it.
+    schedPressCell.classList.add('sched-cell-arm');
+    schedDragBegin(schedPressCell);
+  }, SCHED_LONGPRESS_MS);
+}, { passive: true });
+
+document.addEventListener('touchmove', function(ev){
+  const t = ev.touches[0];
+  if(!t) return;
+  // NOT YET ARMED: movement means this was a scroll. Cancel the arm outright
+  // rather than deferring it -- a finger that has begun scrolling and then
+  // pauses must not silently become a selection under the stopped finger.
+  if(!schedDrag){
+    if(schedPressTimer){
+      const dx = Math.abs(t.clientX - schedPressX);
+      const dy = Math.abs(t.clientY - schedPressY);
+      if(dx > SCHED_LONGPRESS_SLOP || dy > SCHED_LONGPRESS_SLOP) schedPressClear();
+    }
+    return;
   }
-  schedDragTo(cell);
+  // ARMED: the finger owns the gesture, so the scroll is suppressed for the
+  // rest of it. Unconditionally now, not once movement is detected -- the long
+  // press already established intent, and letting the first few pixels scroll
+  // would jerk the grid at exactly the moment the selection starts painting.
+  if(ev.cancelable) ev.preventDefault();
+  schedDragTo(schedCellFromPoint(t.clientX, t.clientY));
 }, { passive: false });
-document.addEventListener('touchend', function(){ if(schedDrag) schedDragEnd(); });
-document.addEventListener('touchcancel', function(){ if(schedDrag) schedDragEnd(); });
+
+document.addEventListener('touchend', function(){
+  schedPressClear();
+  if(schedDrag) schedDragEnd();
+});
+document.addEventListener('touchcancel', function(){
+  schedPressClear();
+  if(schedDrag) schedDragEnd();
+});
 
 // Reads back the REAL records behind a day's blocks.
 //
