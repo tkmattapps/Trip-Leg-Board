@@ -2607,7 +2607,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T03:20:00Z';
+const BUILD_VERSION = '2026-08-28T03:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -16448,15 +16448,35 @@ async function bootApp(){
 
   // AWAITED, and awaited BEFORE loadLegs(), deliberately.
   //
-  // This is not a display cache. legIsSealed() -> tripIsArchived() ->
-  // archivedTripsCache is the ONLY thing standing between a user and editing a
-  // sealed trip. If the list has not loaded, every archived trip renders as
-  // active and its legs are editable. Loading it late is the same bug in a
-  // smaller window.
+  // This is not a display cache. Every seal check in the app runs
+  // legIsSealed() -> tripIsArchived() -> archivedTripsCache. If this list has
+  // not loaded, tripIsArchived() returns false for EVERY trip, so nothing is
+  // sealed anywhere. Loading it late is the same bug in a smaller window.
   //
   // It was previously called only from openSettingsView(), so a device that
   // never opened Settings enforced no seal at all. Found live: a trip archived
   // on one machine stayed 'awaiting archive' and editable on every other.
+  //
+  // *** WHAT THIS ACTUALLY GUARDS -- verify, do not assume. ***
+  // An earlier version of this comment claimed the chain was "the only thing
+  // standing between a user and editing a sealed trip." That described the
+  // INTENT, not the code: legIsSealed() was wired into the trip-quick bulk
+  // paths and nothing else. openLegEditor() and saveLeg() had no seal check at
+  // all, and the seal held only because no route reached a sealed leg's editor.
+  // The schedule day panel turned out to be such a route -- it drew a sealed
+  // trip as live and handed over a fully editable leg. Found live 28 Aug 2026.
+  //
+  // The seal is now enforced at three points, and the last one is the one that
+  // matters:
+  //   schedGoToLeg()   -- routes an archived trip to the sealed record.
+  //   openLegEditor()  -- refuses to open a sealed leg.
+  //   saveLeg()        -- REFUSES THE WRITE. The others stop a user reaching a
+  //                       screen; only this one protects the record, and it is
+  //                       the only check a new route cannot walk around.
+  //
+  // If you add a path that opens a leg, it does not need its own check -- but
+  // do not remove the one in saveLeg() on the grounds that callers check first.
+  // That reasoning is exactly what left this open.
   await loadArchivedTrips();
   await loadLegs();
   loadRemoteAirportTZ();
