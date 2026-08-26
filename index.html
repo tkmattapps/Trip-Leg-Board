@@ -2627,7 +2627,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T05:05:00Z';
+const BUILD_VERSION = '2026-08-28T05:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13800,30 +13800,62 @@ function quickNoteBodyHTML(activeTripId){
 // monitor and fails on a laptop -- the same failure mode recorded above for two
 // purples. Neither is saturated now, so the pair cannot form.
 //
-// *** THE QUIET TIER IS DARK, NOT MERELY DESATURATED. *** First attempt used
-// muted mid-tones (#8A7A5E, #87825C, #6B7383) and MEASURED WRONG: quietest loud
-// is pto at 0.232 relative luminance, and the loudest of those was 0.219 -- a 6%
-// gap, invisible, because red is inherently dark. Saturation alone cannot carry
-// the tier. Pulling the quiet set down to ~0.085 gives 2.66x separation, which
-// reads regardless of hue.
+// *** THE QUIET TIER IS EQUAL-LUMINANCE, HUE-SEPARATED. ***
+// Two failed attempts, both instructive, both kept here because the failure mode
+// is easy to repeat:
 //
-// CONSEQUENCE, DELIBERATELY ACCEPTED: soft_day and quarterly_call are 1.02:1
-// against each other -- indistinguishable at a glance. They are the two most
-// malleable categories, the day panel names them in one tap, and a qualifier
-// letter still shows in the cell. Told apart from `other` by warmth.
+// ATTEMPT 1 -- muted mid-tones (#8A7A5E, #87825C, #6B7383). MEASURED WRONG:
+// quietest loud is pto at 0.232 relative luminance and the loudest of those was
+// 0.219, a 6% gap, invisible. Red is inherently dark, so SATURATION ALONE CANNOT
+// CARRY THE TIER.
+//
+// ATTEMPT 2 -- same three pulled dark (#5C513C, #585437, #454B57). The tier
+// separation worked (2.66x) and two other things broke. Kyle: soft_day and
+// quarterly_call "both render as more of a brownish yellow brown... they look
+// exactly the same", and other "just blends into the background, you don't even
+// see it". Both were predictable from the numbers and neither was caught:
+//   - soft_day hue 39, quarterly_call hue 53. FOURTEEN DEGREES APART at ~22%
+//     saturation. A dark warm hue at low saturation is brown, and two of them
+//     are the same brown.
+//   - other at 12% saturation measured 2.07 against the grid background. A real
+//     assignment read as an empty cell, which is worse than the grey-as-disabled
+//     problem it was meant to fix.
+//
+// THE MISTAKE BEHIND BOTH: treating "quiet" as one visual property and applying
+// it uniformly. Quiet must mean LOWER PRIORITY, not SAME COLOUR.
+//
+// So: hold LUMINANCE constant across the tier (~0.115, which is 2.02x below pto)
+// and let HUE do all of the distinguishing. Lightness is then solved PER HUE
+// rather than shared, because equal lightness does not mean equal loudness --
+// olive sits near yellow's luminance peak and needs 29% lightness to match what
+// plum reaches at 41% and indigo at 47%. Uniform lightness is exactly what put
+// attempt 2 in the mud.
+//
+// Hues chosen to land in the widest gaps around the loud tier (occupied: 5 red,
+// 141 green, 176 teal, 207 blue, 259 violet) so a quiet colour never reads as a
+// dim version of a loud one:
+//   soft_day        73   olive   -- widest gap; still warm, which suits slack
+//   quarterly_call  312  plum    -- second widest
+//   other           233  indigo  -- neutral-leaning but unmistakably PRESENT
+//
+// NOTE ON MEASURING THIS: luminance ratio between two quiet colours is ~1.00 BY
+// DESIGN and says nothing about whether they can be told apart -- they are 79 to
+// 160 degrees apart in hue. Judging hue separation by contrast ratio is what
+// produced attempt 2.
 //
 // CONSEQUENCE REQUIRING CODE: these fills need LIGHT text. .sched-blk hardcodes
-// ink-900, which is 2.4:1 on them and unreadable -- and these are the categories
-// that most often carry a qualifier. Hence .sched-blk-quiet.
+// ink-900, which is unreadable on them -- and these are the categories that most
+// often carry a qualifier. Hence .sched-blk-quiet (paper measures ~5.9 on all
+// three).
 const SCHED_COLORS = {
   flight:         '#3DBE6B',
   flight_pencil:  '#3DBE6B',   // SAME GREEN AS A REAL FLIGHT, ON PURPOSE
   away_on_trip:   '#3DBE6B',   // ONE TRIP, ONE COLOUR -- see schedCellHTML
   training:       '#4A9DE0',
   pto:            '#E0574A',
-  quarterly_call: '#585437',   // QUIET. was #E8D44F
-  soft_day:       '#5C513C',   // QUIET. was #F2A93B -- the alert amber
-  other:          '#454B57',   // QUIET. was #7E8FAC
+  quarterly_call: '#8D457E',   // QUIET plum.   was #E8D44F
+  soft_day:       '#596431',   // QUIET olive.  was #F2A93B -- the alert amber
+  other:          '#5059A2',   // QUIET indigo. was #7E8FAC -- was --fog-500, i.e. body text
   // *** ONE PALETTE ACROSS SURFACES. ***
   // An aircraft's state should look the same wherever it is drawn, so these two
   // are now shared with the Settings status pill. Maintenance was #C77DD6 here
