@@ -1008,6 +1008,17 @@
      which reads as a grid that rubber-bands but will not scroll. The layer
      exists only to POSITION the panel; it must never be a surface. Pointer
      events are handed back on the panel itself, below. */
+  /* TRIM. Sits under the row it belongs to and indented to it, so it reads as
+     a consequence of that block rather than another thing you could add. */
+  .sched-trim{ display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:0 0 10px 26px; margin-top:-4px; }
+  .sched-trim-btn{ background:transparent; color:var(--fog-300);
+    border:1px solid var(--hairline); border-radius:6px; padding:5px 10px;
+    font-size:12px; font-family:inherit; cursor:pointer; }
+  .sched-trim-btn:hover{ border-color:var(--fog-500); color:#fff; }
+  .sched-trim-sub{ font-size:11px; color:var(--fog-500); }
+  .sched-trim-note{ font-size:11px; color:var(--fog-500); line-height:1.45;
+    padding-right:8px; }
   .sched-entry-overlay{ position:fixed; inset:0; z-index:64; display:none;
     pointer-events:none; }
   .sched-entry-overlay.open{ display:block; }
@@ -2254,7 +2265,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T18:45:00Z';
+const BUILD_VERSION = '2026-08-26T19:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13958,6 +13969,44 @@ function schedExistingSubText(r, isAwayRow){
 //
 // The one-line note is now only for a day that genuinely has nothing, which is
 // the one case where there is no height to preserve.
+// *** A TRIM IS A DATE CHANGE, NOT A DELETE AND RE-ADD. ***
+//
+// Shortening a block by re-entering it would mint a new row: new id, new
+// created_by, new created_at, and the original's history gone. The block is one
+// record with a start and an end, so trimming it is an UPDATE to one of those
+// two dates and nothing else. Who entered it, and when, survives.
+//
+// Returns what trimming this row by the selected span would do, WITHOUT doing
+// it, so the panel can say so before anyone commits:
+//   null      -- no overlap, or the row is derived and cannot be trimmed
+//   'whole'   -- the span covers the block entirely; this is a removal
+//   'middle'  -- the span is strictly inside; would need two rows. REFUSED.
+//   {start,end} -- the block's remaining range after the trim
+function schedTrimResult(row, selLo, selHi){
+  if(!row || !row.removable || !row.start || !row.end) return null;
+  const bLo = row.start, bHi = row.end;
+  // No intersection at all.
+  if(selHi < bLo || selLo > bHi) return null;
+  const coversStart = selLo <= bLo;
+  const coversEnd   = selHi >= bHi;
+  if(coversStart && coversEnd) return 'whole';
+  if(coversStart) return { start: schedShiftISO(selHi, 1), end: bHi };
+  if(coversEnd)   return { start: bLo, end: schedShiftISO(selLo, -1) };
+  // *** A SINGLE EDIT MUST NOT SILENTLY BECOME TWO RECORDS. ***
+  // Splitting is a legitimate thing to want, but it is not a trim, and doing it
+  // quietly would leave two rows where the person believed they had one.
+  return 'middle';
+}
+
+// Day arithmetic on a plain ISO date. Constructed from parts, NOT parsed as a
+// string, because new Date('2026-09-07') is treated as UTC midnight and would
+// roll back a day for anyone west of Greenwich.
+function schedShiftISO(iso, days){
+  const p = String(iso).slice(0,10).split('-');
+  const dt = new Date(parseInt(p[0],10), parseInt(p[1],10) - 1, parseInt(p[2],10) + days);
+  return schedISO(dt);
+}
+
 function schedExistingHTML(e){
   if(e.existingError)   return '<div class="sched-existing-note sched-entry-span-bad">Could not read this day.</div>';
   // Loading with nothing to hold over: first open of the panel. A note is
@@ -13971,6 +14020,11 @@ function schedExistingHTML(e){
   // so the panel is the only place it still appears. It must therefore say WHY
   // it is not drawn, or the record and the picture disagree with no explanation.
   const dayHasRealFlight = e.existing.some(function(r){ return r.kind === 'flight'; });
+  // The CURRENT SELECTION, which is what a trim would remove. A single tap is a
+  // one-day span, so tapping the last day of a block and dragging across three
+  // are the same gesture at different lengths -- one rule, not two.
+  const selLo = e.start <= e.end ? e.start : e.end;
+  const selHi = e.start <= e.end ? e.end : e.start;
   e.existing.forEach(function(r){
     const col = SCHED_COLORS[r.kind] || SCHED_COLORS.other;
     const label = SCHED_LABELS[r.kind] || r.kind;
@@ -14003,6 +14057,33 @@ function schedExistingHTML(e){
                'aria-label="Remove">&times;</button>'
              : '') +
          '</div>';
+    // *** THE TRIM SAYS WHAT IT WILL DO BEFORE IT DOES IT. ***
+    // Deliberately NOT wired to the drag itself. Making a drag mean "add" over
+    // empty days and "trim" over occupied ones is one gesture with two meanings,
+    // which is precisely the kind of thing that needs explaining. The drag only
+    // ever selects; this row states the consequence in plain words.
+    const trim = schedTrimResult(r, selLo, selHi);
+    if(trim){
+      const spanTxt = selLo === selHi ? schedPrettyDay(selLo) : schedPrettySpan(selLo, selHi);
+      if(trim === 'whole'){
+        h += '<div class="sched-trim sched-trim-note">Your selection covers this whole block. ' +
+             'Use the &times; to remove it.</div>';
+      } else if(trim === 'middle'){
+        // Named, not hidden. Refusing silently would read as a broken control.
+        h += '<div class="sched-trim sched-trim-note">' + escapeHtml(spanTxt) + ' is in the middle of ' +
+             'this block, so trimming it would split it in two. Remove the block and re-enter it ' +
+             'as two.</div>';
+      } else {
+        h += '<div class="sched-trim">' +
+               '<button type="button" class="sched-trim-btn" data-sched-trim="' + escapeHtml(r.id) + '" ' +
+                 'data-sched-trim-start="' + escapeHtml(trim.start) + '" ' +
+                 'data-sched-trim-end="' + escapeHtml(trim.end) + '">' +
+                 'Trim ' + escapeHtml(selLo === selHi ? 'this day' : 'these days') + ' off' +
+               '</button>' +
+               '<span class="sched-trim-sub">Leaves ' + escapeHtml(schedPrettySpan(trim.start, trim.end)) + '</span>' +
+             '</div>';
+      }
+    }
   });
   return h + '</div>';
 }
@@ -14109,6 +14190,40 @@ async function removeSchedEntry(recId){
   } catch(err){
     console.error('schedule entry remove', err);
     showToast('Could not remove that \u2014 try again');
+  }
+}
+
+// Trims a block to a new range. An UPDATE to start_date or end_date only --
+// the row keeps its id, its created_by and its history, because the block was
+// not replaced, it was shortened.
+async function trimSchedEntry(recId, newStart, newEnd){
+  if(!schedEntry) return;
+  const rec = (schedEntry.existing || []).find(function(x){ return x.id === recId; });
+  if(!rec) return;
+  const label = SCHED_LABELS[rec.kind] || rec.kind;
+  // A protected category is worth a confirm even for a trim: shortening someone's
+  // PTO is a change to time off they have already been granted.
+  if(SCHED_PROTECTED[rec.kind]){
+    const ok = await showConfirm(
+      schedEntry.ownerLabel + ' \u2014 ' + schedPrettySpan(rec.start, rec.end) + '\n' +
+      'becomes ' + schedPrettySpan(newStart, newEnd) + '.',
+      { title: 'Shorten ' + label + '?', okLabel: 'Shorten' });
+    if(!ok) return;
+  }
+  const tbl = schedEntry.ownerKind === 'aircraft' ? 'aircraft_availability' : 'crew_exceptions';
+  try {
+    const { error } = await sb.from(tbl)
+      .update({ start_date: newStart, end_date: newEnd })
+      .eq('id', recId)
+      .select('id').single();
+    if(error) throw error;
+    closeSchedEntry();
+    showToast(label + ' now ' + schedPrettySpan(newStart, newEnd));
+    schedData = null;
+    await openScheduleView();
+  } catch(err){
+    console.error('schedule entry trim', err);
+    showToast('Could not change that \u2014 try again');
   }
 }
 
@@ -14537,6 +14652,13 @@ document.addEventListener('click', async function(e){
   if(t.closest('#quickNoteCloseBtn')){ closeQuickNoteSheet(); return; }
 
   if(t.closest('#schedEntryCloseBtn') || t.closest('#schedEntryCancelBtn')){ closeSchedEntry(); return; }
+  const trimBtn = t.closest('[data-sched-trim]');
+  if(trimBtn){
+    trimSchedEntry(trimBtn.getAttribute('data-sched-trim'),
+                   trimBtn.getAttribute('data-sched-trim-start'),
+                   trimBtn.getAttribute('data-sched-trim-end'));
+    return;
+  }
   if(t.closest('#schedEntrySaveBtn')){ saveSchedEntry(); return; }
   const schedDel = t.closest('[data-sched-del]');
   if(schedDel){ removeSchedEntry(schedDel.getAttribute('data-sched-del')); return; }
