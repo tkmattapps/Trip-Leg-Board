@@ -2329,7 +2329,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T12:40:00Z';
+const BUILD_VERSION = '2026-08-27T13:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13635,8 +13635,29 @@ function schedFillAwayDays(idx){
 // So the colour depends on the band. This is the ONLY kind that varies, and it
 // varies because the meaning varies, not the styling.
 function schedKindColor(kind, ownerKind){
-  if(kind === 'away_on_trip' && ownerKind === 'aircraft') return SCHED_COLORS.away_from_base;
+  // ONE TRIP, ONE COLOUR -- PER BAND. A crew trip reads as one unbroken green
+  // run; a tail's trip reads as one unbroken TEAL run, flying days and parked
+  // days alike. Splitting the tail's run into green-for-flying and teal-for-
+  // parked would give the aircraft band a second vocabulary to learn for what
+  // is, from the grid's point of view, a single fact: this tail is committed.
+  // Teal also puts a derived away day in the same family as a hand-entered
+  // away-from-base, which is correct -- same fact, different author.
+  if(ownerKind === 'aircraft' && (kind === 'flight' || kind === 'away_on_trip')){
+    return SCHED_COLORS.away_from_base;
+  }
   return SCHED_COLORS[kind] || SCHED_COLORS.other;
+}
+
+// Labels are band-specific for the DERIVED kinds. SCHED_LABELS is written from
+// the crew's point of view -- "Flight duty" is a thing a person is rostered for,
+// not a thing a tail does -- so an aircraft row was being described in crew
+// wording on both the grid tooltip and the day panel.
+function schedKindLabel(kind, ownerKind){
+  if(ownerKind === 'aircraft'){
+    if(kind === 'flight')       return 'On a trip';
+    if(kind === 'away_on_trip') return 'On a trip \u2014 not flying';
+  }
+  return SCHED_LABELS[kind] || kind;
 }
 
 function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, outside){
@@ -13711,7 +13732,7 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   });
   const blocks = shown.map(function(e){
     const col = schedKindColor(e.kind, ownerKind);
-    const label = SCHED_LABELS[e.kind] || e.kind;
+    const label = schedKindLabel(e.kind, ownerKind);
     const title = e.detail ? (label + ' \u2014 ' + e.detail) : label;
     // *** A PENCIL IS VISIBLE TO THE WHOLE DEPARTMENT, SO THE ENTIRE SAFETY OF
     // THE FEATURE RESTS ON THIS LINE. *** Same green -- it means flying -- but
@@ -14307,7 +14328,7 @@ function schedExistingHTML(e){
   const selHi = e.start <= e.end ? e.end : e.start;
   e.existing.forEach(function(r){
     const col = schedKindColor(r.kind, e.ownerKind);
-    const label = SCHED_LABELS[r.kind] || r.kind;
+    const label = schedKindLabel(r.kind, e.ownerKind);
     const isPencilRow  = r.kind === 'flight_pencil';
     const isAwayRow    = r.kind === 'away_on_trip';
     const superseded   = isPencilRow && dayHasRealFlight;
