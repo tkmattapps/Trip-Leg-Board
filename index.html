@@ -275,21 +275,20 @@
      title and subtext inconsistent from page to page. Titles stay on one line. */
   .page-header-title{ font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:30px; letter-spacing:0.5px; color:var(--paper-050); line-height:1.05; white-space:nowrap; }
   .page-header-sub{ font-size:12px; color:var(--paper-050); font-family:system-ui,'Inter',sans-serif; min-height:15px; }
-  /* CENTERED ACROSS THE FULL PAGE WIDTH. The header inner is a flex row - text
-     block left, progress pill right - so the text block is narrower than the
-     page and centering inside it would sit visibly off-centre. Letting the text
-     block grow to fill the row and centering the sub within it lines the sub up
-     with the true page centre.
-     NOT done with position:absolute on purpose: the header's height is measured
-     by syncPageHeaderHeight() to set --page-header-h, and taking the sub out of
-     flow would make that measurement short and let content slide underneath. */
+  /* *** .page-header-subrow NO LONGER EXISTS IN THE MARKUP. ***
+     The subtext moved INTO the title column (see the note on #pageHeaderSub) and
+     the wrapper row was dropped. These rules are dead and are kept only because
+     the two remaining selectors below are load-bearing. The stale comment that
+     used to live here described a centred, full-width subrow and cost real time:
+     it was read as current while deciding where to put the schedule's month
+     label. If you are here for that, the right-hand caption is
+     .page-header-subright, in the .page-header-right stack.
+     Still true and still the reason nothing here uses position:absolute: the
+     header's height is MEASURED by syncPageHeaderHeight() to set
+     --page-header-h, so anything taken out of flow makes that measurement short
+     and lets content slide under the header. */
     .page-header-subrow{ max-width:1800px; margin:0 auto; padding:2px 36px 10px; }
-  /* LEFT-JUSTIFIED, tucked under the page title. Kept in white (--paper-050)
-     and kept on .page-header-subrow rather than moved back inside
-     .page-header-inner: the subrow exists because the verify-progress pill is a
-     right-hand flex item, and sharing a row with it shifts the subtext off the
-     title's left edge. It also stays IN FLOW so syncPageHeaderHeight() keeps
-     measuring it -- see the note above the subrow rule. */
+  /* Left-justified under the page title, in white. */
   .page-header-sub{ text-align:left; }
   /* The right-hand STACK. margin-top lives here now rather than on the actions
      row, so the whole column drops together and the two rows keep a fixed
@@ -299,6 +298,17 @@
   /* margin-top REMOVED -- it moved to .page-header-right. Leaving it here as
      well would double the offset on every page that has actions. */
   .page-header-actions{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+  /* Sits directly under the controls it describes. Collapses when empty so no
+     other page gains a gap. Slightly dimmer than the title's subtext: this is a
+     caption for the buttons, not a second heading. margin-top is negative
+     against the stack's 6px gap so it tucks under the pills rather than
+     floating a clear row below them. */
+  .page-header-subright{
+    font-size:12px; color:var(--fog-300);
+    font-family:system-ui,'Inter',sans-serif;
+    text-align:right; margin-top:-2px; white-space:nowrap;
+  }
+  .page-header-subright:empty{ display:none; }
   /* Collapses completely when empty, so pages with no documents do not carry a
      6px gap under the pill for a row that renders nothing. */
   .page-header-docs{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
@@ -2184,6 +2194,11 @@ a.chat-open{ text-decoration:none; display:inline-block; }
          in here may be written once at boot. -->
     <div class="page-header-right">
       <div class="page-header-actions" id="pageHeaderActions"></div>
+      <!-- CAPTION FOR THE CONTROLS ABOVE IT. Used by the Schedule, whose month
+           label belongs next to the chevrons that change it rather than across
+           the header under the title -- eyes are already in this corner. Empty
+           and collapsed on every other page. -->
+      <div class="page-header-subright" id="pageHeaderSubRight"></div>
       <div class="page-header-docs" id="pageHeaderDocSlot"></div>
     </div>
   </div>
@@ -2518,7 +2533,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T22:20:00Z';
+const BUILD_VERSION = '2026-08-27T22:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -10879,6 +10894,10 @@ function setPageHeader(opts){
   const subEl = document.getElementById('pageHeaderSub');
   if(titleEl) titleEl.textContent = o.title || '';
   if(subEl) subEl.textContent = o.sub || '';
+  // Wiped on EVERY render like the actions area, so a caption can never linger
+  // on a page that did not ask for one.
+  const subRightEl = document.getElementById('pageHeaderSubRight');
+  if(subRightEl) subRightEl.textContent = o.subRight || '';
   // Cleared unconditionally on EVERY render before anything repopulates it, so a
   // mistake shows a missing pill rather than a stale count from another leg.
   const actEl = document.getElementById('pageHeaderActions');
@@ -14992,7 +15011,12 @@ function renderScheduleView(){
   // month chevrons needed labels. They do not, now that the month is on screen.
   setPageHeader({
     title: 'Schedule',
-    sub: monthLabel,
+    // *** THE MONTH LABEL SITS UNDER THE CONTROLS, NOT UNDER THE TITLE. ***
+    // Under the title it was both far from the chevrons that change it and
+    // redundant against the sticky month band a few pixels below. Beneath the
+    // buttons it captions them, which is what makes a bare chevron read as
+    // "month" without a label on it.
+    subRight: monthLabel,
     actionsHTML:
       '<button type="button" class="btn sched-yearbtn" data-sched-yearpick="1" aria-haspopup="listbox" aria-label="Choose year. Currently ' + w.year + '">' +
         w.year + '<span class="sched-caret" aria-hidden="true"></span>' +
