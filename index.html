@@ -2329,7 +2329,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T11:45:00Z';
+const BUILD_VERSION = '2026-08-27T12:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13622,6 +13622,23 @@ function schedFillAwayDays(idx){
   return idx;
 }
 
+// *** THE SAME STATE MUST LOOK THE SAME, WHATEVER PRODUCED IT. ***
+//
+// away_on_trip is one derived kind shared by both bands, but it does not mean
+// the same thing on each. For a person it is part of one continuous run of duty,
+// so it stays the trip's green. For an AIRCRAFT it is precisely "away from base"
+// -- the department already has that category, hand-entered, in teal. Drawing
+// the derived version green would say "flying" on a day the tail is parked, and
+// would make a hand-entered away day and a derived one look like two different
+// facts.
+//
+// So the colour depends on the band. This is the ONLY kind that varies, and it
+// varies because the meaning varies, not the styling.
+function schedKindColor(kind, ownerKind){
+  if(kind === 'away_on_trip' && ownerKind === 'aircraft') return SCHED_COLORS.away_from_base;
+  return SCHED_COLORS[kind] || SCHED_COLORS.other;
+}
+
 function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, outside){
   let cls = 'sched-cell';
   if(isWeekend) cls += ' sched-cell-wknd';
@@ -13693,7 +13710,7 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
     shown.push(e);
   });
   const blocks = shown.map(function(e){
-    const col = SCHED_COLORS[e.kind] || SCHED_COLORS.other;
+    const col = schedKindColor(e.kind, ownerKind);
     const label = SCHED_LABELS[e.kind] || e.kind;
     const title = e.detail ? (label + ' \u2014 ' + e.detail) : label;
     // *** A PENCIL IS VISIBLE TO THE WHOLE DEPARTMENT, SO THE ENTIRE SAFETY OF
@@ -13900,11 +13917,17 @@ document.addEventListener('touchcancel', function(){ if(schedDrag) schedDragEnd(
 // Is this person between the first and last flight day of one trip, on a day
 // with no flying? Returns the trip key, or '' if not. Same bounds rule as
 // schedFillAwayDays -- interior only, never beyond the trip sheet.
-function schedAwayTripForDay(ownerId, dayISO){
-  const rows = (schedData && schedData.crew) || [];
+// Recomputed from the same derivation the grid uses, for EITHER band. Aircraft
+// were previously excluded outright, so tapping an aircraft's away day would
+// have said "Nothing on this day" while the grid plainly showed a block.
+function schedAwayTripForDay(ownerId, dayISO, ownerKind){
+  const isAc = ownerKind === 'aircraft';
+  const rows = (schedData && (isAc ? schedData.aircraft : schedData.crew)) || [];
+  const ownerKey = isAc ? 'aircraft_id' : 'user_id';
+  const srcKey   = isAc ? 'status' : 'source';
   const trips = {};
   rows.forEach(function(r){
-    if(r.user_id !== ownerId || r.source !== 'flight' || !r.ref_id) return;
+    if(r[ownerKey] !== ownerId || r[srcKey] !== 'flight' || !r.ref_id) return;
     const info = schedFlightRefInfo(r.ref_id);
     if(!info) return;
     const key = info.tripNumber || ('__grp_' + (info.groupId || r.ref_id));
@@ -13975,8 +13998,12 @@ async function loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO){
   // on one would otherwise read "Nothing on this day" while the grid plainly
   // shows a bar. Recomputed here from the same derivation rather than cached,
   // so there is one rule and not two copies of it.
-  if(ownerKind !== 'aircraft' && !out.length){
-    const awayTrip = schedAwayTripForDay(ownerId, dayISO);
+  // Now runs for BOTH bands. The aircraft exclusion was left over from when only
+  // the crew index was filled; with migration 25 the aircraft band carries flight
+  // duty too, so tapping a tail's away day must answer for it rather than
+  // reporting an empty day the grid visibly contradicts.
+  if(!out.length){
+    const awayTrip = schedAwayTripForDay(ownerId, dayISO, ownerKind);
     if(awayTrip){
       out.push({ id: '', kind: 'away_on_trip', detail: '', trip: awayTrip, removable: false });
     }
@@ -14106,6 +14133,12 @@ function schedFlightRefInfo(legId){
   return {
     leg: leg,
     tripNumber: tn,
+    // groupId is how groupIntoTrips ties UNNUMBERED legs into one trip. Omitting
+    // it here was a real bug: every caller fell back to the leg id, so each leg
+    // of an unnumbered trip became its own one-leg trip with no interior, and
+    // away-days were never filled for it. Numbered trips were unaffected, which
+    // is why it went unnoticed.
+    groupId: leg.groupId || '',
     legNumber: ln,
     cityPair: (leg.cityPair || '').trim(),
     dep: ((leg.dep && leg.dep.airportId) || '').trim().toUpperCase(),
@@ -14273,7 +14306,7 @@ function schedExistingHTML(e){
   const selLo = e.start <= e.end ? e.start : e.end;
   const selHi = e.start <= e.end ? e.end : e.start;
   e.existing.forEach(function(r){
-    const col = SCHED_COLORS[r.kind] || SCHED_COLORS.other;
+    const col = schedKindColor(r.kind, e.ownerKind);
     const label = SCHED_LABELS[r.kind] || r.kind;
     const isPencilRow  = r.kind === 'flight_pencil';
     const isAwayRow    = r.kind === 'away_on_trip';
@@ -14580,7 +14613,13 @@ function renderScheduleView(){
   const days = schedDayList();
   const todayISO = schedISO(new Date());
   const crewIdx = schedFillAwayDays(indexBusyDays(schedData.crew, 'user_id', 'source'));
-  const acIdx   = indexBusyDays(schedData.aircraft, 'aircraft_id', 'status');
+  // *** A TRIP IS A CONTINUOUS ABSENCE FOR THE AIRCRAFT TOO. ***
+  // schedFillAwayDays is owner-agnostic -- it reads only the index -- so the
+  // same rule serves both bands rather than a second copy of it. If anything the
+  // aircraft case is the stronger one: a tail sitting in Dubai between legs is
+  // unambiguously unavailable, where a crew member could conceivably be
+  // repositioned.
+  const acIdx   = schedFillAwayDays(indexBusyDays(schedData.aircraft, 'aircraft_id', 'status'));
 
   // Column headers: weekday letter over day number, so a week is scannable
   // without counting. The month boundary is drawn rather than trimmed -- the
