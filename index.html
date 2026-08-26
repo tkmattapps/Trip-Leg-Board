@@ -2227,7 +2227,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T14:40:00Z';
+const BUILD_VERSION = '2026-08-26T15:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13359,8 +13359,33 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   if(!entries || !entries.length){
     return '<div class="' + cls + '"' + attrs + '></div>';
   }
-  // Stacked, not merged. Two blocks in one cell IS the collision.
-  const blocks = entries.map(function(e){
+  // *** THE GRID IS ABOUT DAYS OF ASSIGNED DUTY, NOT LEGS. ***
+  // crew_busy_days returns ONE ROW PER LEG PER PERSON PER DAY -- it does not
+  // de-duplicate, and it should not: ref_id carries the leg id, which is how the
+  // day panel links each leg back to its trip. So a four-leg day arrives here as
+  // four flight rows and, rendered naively, drew four blocks in one cell.
+  //
+  // Kyle, 26 Aug 2026: "that's not necessarily information that needs to be
+  // readily available in the view. As long as you can click on it and see what
+  // legs were flown during that day, that would suffice."
+  //
+  // So we collapse PER CATEGORY for DISPLAY ONLY. Nothing is discarded: the
+  // entries array still holds every leg, schedIsClash still sees all of them,
+  // and the day panel still lists each leg with its own link. What changes is
+  // that the cell answers "was this person on duty" rather than "how many
+  // times did they take off", which is the question the grid is for.
+  //
+  // *** A CLASH STILL STACKS. *** Flight-plus-PTO is two DIFFERENT categories,
+  // so it survives collapsing untouched -- the only thing removed is repetition
+  // of the SAME category, which never carried information in the first place.
+  const seenKinds = {};
+  const shown = [];
+  entries.forEach(function(e){
+    if(seenKinds[e.kind]) return;
+    seenKinds[e.kind] = true;
+    shown.push(e);
+  });
+  const blocks = shown.map(function(e){
     const col = SCHED_COLORS[e.kind] || SCHED_COLORS.other;
     const label = SCHED_LABELS[e.kind] || e.kind;
     const title = e.detail ? (label + ' \u2014 ' + e.detail) : label;
