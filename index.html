@@ -1136,7 +1136,16 @@
     position:absolute; top:0; right:0; bottom:0; width:min(380px, 92vw);
     background:var(--panel-800); border-left:1px solid var(--hairline);
     box-shadow:-18px 0 40px rgba(6,12,22,0.45);
-    display:flex; flex-direction:column; padding:0 20px 20px; overflow-y:auto; }
+    display:flex; flex-direction:column; overflow-y:auto;
+    /* The panel is pinned to top:0, which on an iPhone is UNDERNEATH the status
+       bar -- the close button ended up behind the battery indicator. Matches the
+       pattern used by .drawer-head and .page-header-inner: pad by the safe area
+       where there is one, and by a sensible minimum where there is not, so the
+       desktop layout is unchanged. Also pads the BOTTOM, since the panel runs to
+       bottom:0 and would otherwise put Cancel and Add under the home indicator. */
+    padding:0 20px 20px;
+    padding-top:env(safe-area-inset-top, 0px);
+    padding-bottom:max(20px, env(safe-area-inset-bottom)); }
   .sched-entry-who{ font-family:'Big Shoulders Display',sans-serif; font-size:22px;
     color:var(--paper-050); margin-bottom:12px; }
   .sched-entry-cats{ display:flex; flex-direction:column; gap:6px; margin-bottom:16px; }
@@ -2381,7 +2390,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T16:20:00Z';
+const BUILD_VERSION = '2026-08-27T16:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
