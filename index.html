@@ -974,12 +974,17 @@
   /* MONTH BAND. Sticks above the day numbers, so scrolling into a neighbouring
      month tells you so. */
   .sched-months{ position:sticky; top:0; z-index:3; }
-  /* overflow:CLIP, not hidden. Both clip the overflowing text, but hidden makes
-     the element a scroll container -- which would trap the sticky label inside
-     this cell and stop it moving at all. clip does not, so the label still
-     resolves against .sched-scroll. */
+  /* *** NO overflow PROPERTY HERE AT ALL. ***
+     hidden makes this a scroll container, which traps the sticky label inside
+     the cell and stops it moving. clip is specified NOT to do that -- and Safari
+     agrees, which is why the handoff worked on iOS -- but Chrome treats the
+     clipped box as the sticky scrollport too, so the label sat still on the Mac.
+     Neither is needed: sticky already confines an element to its own containing
+     block, so a label can never escape its month. The only way it could overflow
+     is if the text were WIDER than the run, and the threshold below makes that
+     impossible instead of clipping after the fact. */
   .sched-mcell{ flex:0 0 auto; display:flex; align-items:center; padding:5px 8px;
-    box-sizing:border-box; background:var(--panel-700); overflow:clip;
+    box-sizing:border-box; background:var(--panel-700);
     white-space:nowrap; font-size:11px; letter-spacing:0.04em;
     text-transform:uppercase; color:var(--fog-500);
     border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
@@ -2452,7 +2457,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T18:25:00Z';
+const BUILD_VERSION = '2026-08-27T18:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14953,9 +14958,16 @@ function renderScheduleView(){
                                                      : { month: 'long' });
     // A short run cannot hold a word. It keeps its width so the grid stays
     // aligned, but shows nothing rather than a clipped fragment.
+    //
+    // EIGHT DAYS (240px), not four. The cell no longer clips its overflow --
+    // see .sched-mcell -- so the label must be guaranteed to FIT rather than be
+    // trimmed if it does not. 240px comfortably holds the longest label this
+    // produces ("SEPTEMBER 2026") at 11px uppercase with letter-spacing, where
+    // 120px did not. Only a sliver run at the very edge of the window falls
+    // below this, and a sliver has no room for a word anyway.
     months += '<div class="sched-mcell' + (isCurrent ? ' sched-mcell-on' : '') + '"' +
                 ' style="width:' + (len * 30) + 'px">' +
-                (len >= 4 ? '<span>' + escapeHtml(label) + '</span>' : '') +
+                (len >= 8 ? '<span>' + escapeHtml(label) + '</span>' : '') +
               '</div>';
     runStart = i + 1;
   });
