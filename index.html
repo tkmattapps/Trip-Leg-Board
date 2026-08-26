@@ -940,6 +940,13 @@
   .sched-blk{ flex:1 1 auto; min-height:9px; border-radius:2px; display:flex;
     align-items:center; justify-content:center; font-size:9px; font-weight:700;
     color:var(--ink-900); }
+  /* PROVISIONAL FLIGHT DUTY. Hollow, not tinted -- see schedCellHTML. */
+  .sched-blk-pencil{ background:transparent !important; }
+  /* The dot on the category button and in the legend must match the grid, or
+     the button teaches the wrong shape. */
+  .sched-key-dot-pencil{ background:transparent !important; }
+  .sched-cat-note{ font-size:11px; line-height:1.45; color:var(--fog-500);
+    border-left:2px solid #3DBE6B; padding:2px 0 2px 9px; margin:10px 0 2px; }
   .sched-cell-wknd{ background:rgba(184,196,217,0.05); }
   /* Overhang days are DIMMED, not hidden. A trip running from one month into
      the next is the collision most easily missed, so the days either side stay
@@ -2220,7 +2227,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T14:05:00Z';
+const BUILD_VERSION = '2026-08-26T14:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13228,6 +13235,7 @@ const SCHED_OVERHANG_DAYS = 4;
 // distinction that survives a large monitor and fails on a laptop.
 const SCHED_COLORS = {
   flight:         '#3DBE6B',
+  flight_pencil:  '#3DBE6B',   // SAME GREEN AS A REAL FLIGHT, ON PURPOSE
   training:       '#4A9DE0',
   pto:            '#E0574A',
   quarterly_call: '#E8D44F',
@@ -13246,7 +13254,7 @@ function schedIsClash(entries){
   if(!entries || entries.length < 2) return false;
   let flying = false, protectedDay = false;
   entries.forEach(function(e){
-    if(e.kind === 'flight') flying = true;
+    if(e.kind === 'flight' || e.kind === 'flight_pencil') flying = true;
     else if(SCHED_PROTECTED[e.kind]) protectedDay = true;
   });
   return flying && protectedDay;
@@ -13254,6 +13262,7 @@ function schedIsClash(entries){
 
 const SCHED_LABELS = {
   flight:         'Flight duty',
+  flight_pencil:  'Flight duty (penciled)',
   training:       'Training / on-site',
   pto:            'PTO',
   quarterly_call: 'Quarterly call',
@@ -13355,6 +13364,16 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
     const col = SCHED_COLORS[e.kind] || SCHED_COLORS.other;
     const label = SCHED_LABELS[e.kind] || e.kind;
     const title = e.detail ? (label + ' \u2014 ' + e.detail) : label;
+    // *** A PENCIL IS VISIBLE TO THE WHOLE DEPARTMENT, SO THE ENTIRE SAFETY OF
+    // THE FEATURE RESTS ON THIS LINE. *** Same green -- it means flying -- but
+    // HOLLOW rather than solid. Not a lighter green, which reads as a rendering
+    // artefact at 30px and disappears on a dim screen; an outline, which reads
+    // as "not filled in yet" without anyone being told. A pencil that looked
+    // like a confirmed flight would be a way to accidentally promise a trip.
+    if(e.kind === 'flight_pencil'){
+      return '<span class="sched-blk sched-blk-pencil" style="box-shadow:inset 0 0 0 2px ' + col + '"' +
+             ' title="' + escapeHtml(title + ' \u2014 provisional, not a confirmed trip') + '"></span>';
+    }
     // The qualifier (the spreadsheet's "M" for a medical appointment) is shown
     // in the cell when it is short enough to fit, because a reason nobody can
     // see without tapping is a reason nobody reads.
@@ -13369,7 +13388,12 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
 // spreadsheet is ADJACENCY -- you decide against the surrounding picture, so
 // the picture must stay on screen while you decide.
 
-const SCHED_CREW_CATS = ['training','pto','quarterly_call','soft_day','other'];
+// *** 'flight_pencil' IS FIRST BECAUSE IT IS THE THING A NEW ADMIN LOOKS FOR
+// FIRST. *** Before it existed, the panel offered training, PTO, quarterly call,
+// soft day and other -- and a first-time user reasonably concluded the schedule
+// could not record the main thing a flight department schedules. The absence of
+// an option is invisible; you cannot explain it in a place nobody looks.
+const SCHED_CREW_CATS = ['flight_pencil','training','pto','quarterly_call','soft_day','other'];
 const SCHED_AC_CATS   = ['maintenance','away_from_base','other'];
 
 let schedEntry = null;   // { ownerId, ownerKind, ownerLabel, category, start, end, reason }
@@ -13743,6 +13767,11 @@ function renderSchedEntry(){
   // form says so out loud rather than letting the database refuse a save the
   // person thought was fine -- but the trigger remains the rule, not this note.
   const needsReason = e.category === 'other';
+  // *** THE SCHEDULE MUST BE USABLE WITHOUT A MANUAL. *** A penciled flight is
+  // the one category whose BEHAVIOUR is not obvious from its name, so the panel
+  // says what it does at the moment you choose it -- the only moment the answer
+  // is wanted. A rule explained where nobody is looking is not explained.
+  const isPencil = e.category === 'flight_pencil';
   let h = '<div class="sched-entry-who">' + escapeHtml(e.ownerLabel) + '</div>';
   h += '<div class="sched-entry-day">' + escapeHtml(schedPrettyDay(e.day)) + '</div>';
   h += schedExistingHTML(e);
@@ -13751,11 +13780,18 @@ function renderSchedEntry(){
   cats.forEach(function(c){
     const on = c === e.category;
     h += '<button type="button" class="sched-cat' + (on ? ' sched-cat-on' : '') + '" data-sched-cat="' + c + '">' +
-           '<span class="sched-key-dot" style="background:' + SCHED_COLORS[c] + '"></span>' +
+           (c === 'flight_pencil'
+              ? '<span class="sched-key-dot sched-key-dot-pencil" style="box-shadow:inset 0 0 0 2px ' + SCHED_COLORS[c] + '"></span>'
+              : '<span class="sched-key-dot" style="background:' + SCHED_COLORS[c] + '"></span>') +
            escapeHtml(SCHED_LABELS[c]) +
          '</button>';
   });
   h += '</div>';
+  if(isPencil){
+    h += '<div class="sched-cat-note">Provisional. Shows hollow on the grid so nobody reads it ' +
+         'as a booked trip. When the real trip sheet arrives it takes over \u2014 the pencil stays ' +
+         'so you can see how the plan moved. No trip number needed.</div>';
+  }
   h += '<div class="field-row-inline sched-entry-dates">' +
          '<div class="field"><label>Start</label>' +
            '<input type="date" id="schedStart" value="' + escapeHtml(e.start) + '">' +
