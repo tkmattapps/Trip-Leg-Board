@@ -2607,7 +2607,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T01:10:00Z';
+const BUILD_VERSION = '2026-08-28T01:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15439,10 +15439,48 @@ function schedMonthAtScroll(){
 // and should cost nothing.
 let schedShownMonthKey = null;
 
+// *** THE BOUNDARY IS ASYMMETRIC ON PURPOSE. ***
+//
+// A bare left-edge test is knife-edge: one pixel past the 1st and the month you
+// are working in goes dark, which is unusable when the scroll is a finger on
+// glass. The first fix considered was "widest visible month wins", and it was
+// rejected for a good reason -- it also destroys the thing that already felt
+// right. Scrolling FORWARD, the light coming on the instant the 1st reaches the
+// left edge is crisp and satisfying, and a widest-wins rule would delay that
+// until the new month covered half the screen.
+//
+// So the flip is kept crisp in the direction of travel and made STICKY against
+// the direction of retreat. Entering a month lights it immediately; LEAVING it
+// backwards requires scrolling a few days clear of the boundary first. Between
+// those two thresholds nothing changes, so a few pixels of overscroll cannot
+// switch your working month off.
+//
+// This is hysteresis. The buffer applies only when RETREATING to an earlier
+// month -- moving forward is never buffered, or the crisp click would be lost.
+const SCHED_MONTH_HOLD_DAYS = 3;
+
 function schedSyncMonthToScroll(){
   const dt = schedMonthAtScroll();
   if(!dt) return;
-  const key = dt.getFullYear() + '-' + dt.getMonth();
+  let key = dt.getFullYear() + '-' + dt.getMonth();
+
+  // HOLD: the left edge has moved back into an earlier month, but not yet far
+  // enough from the boundary to count as having left the current one.
+  if(schedShownMonthKey && key !== schedShownMonthKey){
+    const parts = schedShownMonthKey.split('-');
+    const shownY = parseInt(parts[0], 10);
+    const shownM = parseInt(parts[1], 10);
+    const isEarlier = dt.getFullYear() < shownY ||
+                      (dt.getFullYear() === shownY && dt.getMonth() < shownM);
+    if(isEarlier){
+      // Days between the left edge and the 1st of the month being held. Inside
+      // the buffer, keep holding.
+      const heldFirst = new Date(shownY, shownM, 1);
+      const gapDays = Math.round((heldFirst - dt) / 86400000);
+      if(gapDays <= SCHED_MONTH_HOLD_DAYS) key = schedShownMonthKey;
+    }
+  }
+
   if(key === schedShownMonthKey) return;
   schedShownMonthKey = key;
 
@@ -15475,8 +15513,16 @@ function schedSyncMonthToScroll(){
   // Keep schedAnchor's MONTH in step, so Back, Today and schedAtMonthStart all
   // reason about the month you are looking at rather than the one you arrived
   // from. The YEAR is left exactly as it was -- see the note above.
-  if(schedAnchor && schedAnchor.getFullYear() === dt.getFullYear()){
-    schedAnchor = new Date(dt.getFullYear(), dt.getMonth(), 1);
+  //
+  // *** DERIVED FROM `key`, NOT FROM `dt`. *** During a hold those two disagree
+  // by design: dt is the raw left-edge day, key is the month still being shown.
+  // Using dt here would leave the anchor pointing at a month the grid is not
+  // lighting, so Back and Today would act on a month the user cannot see.
+  const kp = key.split('-');
+  const kY = parseInt(kp[0], 10);
+  const kM = parseInt(kp[1], 10);
+  if(schedAnchor && schedAnchor.getFullYear() === kY){
+    schedAnchor = new Date(kY, kM, 1);
   }
 }
 
