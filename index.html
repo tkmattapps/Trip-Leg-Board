@@ -927,14 +927,11 @@
      vertically and would therefore never move. Giving it a max height and its own
      vertical scroll makes it the real vertical scroller, so the header can stick
      inside it. */
-  /* overscroll-behavior NONE, not contain. `contain` stops the bounce
-     PROPAGATING to the page but still lets this element rubber-band at its own
-     ends. During that elastic overshoot the browser re-resolves sticky
-     positions, so the sticky month label springs back and forth at a month
-     boundary -- visible on macOS, where elastic scrolling is the default, and
-     not on iOS inside this container. `none` suppresses the element's own
-     bounce, which is what was moving the label. */
-  .sched-scroll{ overflow-x:auto; overscroll-behavior:none; padding-bottom:6px;
+  /* overscroll-behavior:contain, deliberately kept. `none` was tried to stop the
+     sticky month label springing during macOS elastic overshoot, and made the
+     grid feel worse -- the bounce at the ends of the month is wanted. Whatever
+     fixes the label must not cost the scroll its feel. */
+  .sched-scroll{ overflow-x:auto; overscroll-behavior-x:contain; padding-bottom:6px;
     max-height:calc(100vh - var(--page-header-h, 84px) - 132px); overflow-y:auto; }
   .sched-row{ display:flex; align-items:stretch; min-width:max-content; }
   /* The name column is STICKY: scrolled twenty days into a month, an unlabelled
@@ -2464,7 +2461,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T19:00:00Z';
+const BUILD_VERSION = '2026-08-27T19:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
