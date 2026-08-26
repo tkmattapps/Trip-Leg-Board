@@ -943,8 +943,12 @@
   /* AWAY ON TRIP, NOT FLYING. A slim bar, vertically centred, so it lines up
      with its neighbours and the run reads as continuous. flex:0 0 auto keeps it
      thin when it shares a cell with a full-height block. */
-  .sched-blk-away{ flex:0 0 auto; height:4px; min-height:4px; align-self:center;
-    border-radius:1px; }
+  /* align-self MUST stay stretch. .sched-cell is a COLUMN flex container, so the
+     cross axis is HORIZONTAL -- align-self:center made this empty span shrink-wrap
+     to zero width and vanish entirely. Vertical centring is a MAIN-axis job here,
+     so it is done with auto margins instead. */
+  .sched-blk-away{ flex:0 0 auto; height:4px; min-height:4px; align-self:stretch;
+    margin-top:auto; margin-bottom:auto; border-radius:1px; }
   /* PROVISIONAL FLIGHT DUTY. Hollow, not tinted -- see schedCellHTML. */
   .sched-blk-pencil{ background:transparent !important; }
   /* The dot on the category button and in the legend must match the grid, or
@@ -2241,7 +2245,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T16:45:00Z';
+const BUILD_VERSION = '2026-08-26T17:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13385,22 +13389,6 @@ function indexBusyDays(rows, ownerKey, sourceKey){
 // trip number the legs stay as they are -- an unresolvable trip must not become
 // an assumption about someone's availability.
 function schedFillAwayDays(idx){
-  // TEMPORARY DIAGNOSTIC -- remove once the away bars are confirmed.
-  try{
-    let flightRows = 0, resolved = 0;
-    Object.keys(idx || {}).forEach(function(o){
-      Object.keys(idx[o] || {}).forEach(function(dy){
-        (idx[o][dy] || []).forEach(function(en){
-          if(en.kind === 'flight' && en.ref){
-            flightRows++;
-            if(schedFlightRefInfo(en.ref)) resolved++;
-          }
-        });
-      });
-    });
-    console.log('[away-days] state.legs =', (window.state && state.legs ? state.legs.length : 'MISSING'),
-                '| flight rows =', flightRows, '| resolved to a trip =', resolved);
-  }catch(err){ console.log('[away-days] diagnostic threw', err); }
   Object.keys(idx || {}).forEach(function(ownerId){
     const byDay = idx[ownerId] || {};
     // trip key -> sorted list of that person's flight days on that trip
