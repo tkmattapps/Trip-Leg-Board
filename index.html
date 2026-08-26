@@ -999,6 +999,12 @@
   .sched-existing-txt{ flex:1; min-width:0; }
   .sched-existing-lbl{ font-size:13px; color:var(--paper-050); }
   .sched-existing-sub{ font-size:11px; color:var(--fog-500); margin-top:2px; }
+  /* A flight row that can reach its trip. Cursor and a hover lift are the whole
+     affordance -- no chevron, because the row is already dense and the pointer
+     change says it on a desk screen. */
+  .sched-existing-go{ cursor:pointer; }
+  .sched-existing-go:hover{ border-color:var(--fog-500); background:var(--panel-800); }
+  .sched-existing-go:focus-visible{ outline:2px solid var(--fog-300); outline-offset:1px; }
   .sched-del-btn{ background:none; border:0; color:var(--fog-500); font-size:18px; line-height:1;
     cursor:pointer; padding:0 2px; flex:0 0 auto; }
   .sched-del-btn:hover{ color:var(--alert-600); }
@@ -2205,7 +2211,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T10:55:00Z';
+const BUILD_VERSION = '2026-08-26T13:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13617,6 +13623,73 @@ function schedPrettySpan(start, end){
   return fmt(a) + ' to ' + fmt(b) + ' \u2014 ' + days + ' days';
 }
 
+// A flight row on the day panel arrives as a LEG ID and nothing else --
+// crew_busy_days returns null detail for flight duty, because the RPC reports
+// facts and does not know how a UI wants to name them. Resolve the leg here so
+// the row can say WHICH trip it belongs to.
+//
+// *** TWO LEGS ON ONE DAY MAY BELONG TO TWO DIFFERENT TRIPS. *** A tour that
+// splits mid-trip keeps the same aircraft and the same crew while the trip
+// number changes. Naming the trip on every row is what makes that visible; a
+// generic "from a trip" label hides exactly the thing worth seeing.
+//
+// Returns null when the leg is not in the live set -- an archived trip lives in
+// another table and is NOT resolved here.
+function schedFlightRefInfo(legId){
+  if(!legId) return null;
+  const leg = state.legs.find(function(l){ return l.id === legId; });
+  if(!leg) return null;
+  const tn = (leg.tripNumber || '').trim();
+  const ln = (leg.legNumber === 0 || leg.legNumber) ? String(leg.legNumber).trim() : '';
+  return {
+    leg: leg,
+    tripNumber: tn,
+    legNumber: ln,
+    cityPair: (leg.cityPair || '').trim(),
+    dep: ((leg.dep && leg.dep.airportId) || '').trim().toUpperCase(),
+    arr: ((leg.arr && leg.arr.airportId) || '').trim().toUpperCase()
+  };
+}
+
+// The one line under a flight row. Trip number leads because it is the thing
+// you would search for later; the route is context, not identity.
+function schedFlightRowSub(legId){
+  const info = schedFlightRefInfo(legId);
+  // NOT IN state.legs = archived, or a leg this viewer cannot read. Say the
+  // honest thing rather than inventing a label.
+  if(!info) return 'From a trip \u2014 not in active trips';
+  const bits = [];
+  if(info.tripNumber) bits.push('Trip ' + info.tripNumber);
+  else bits.push('Unnumbered trip');
+  if(info.legNumber) bits.push('Leg ' + info.legNumber);
+  const route = info.dep && info.arr ? (info.dep + '\u2192' + info.arr) : info.cityPair;
+  if(route) bits.push(route);
+  return bits.join('  \u00b7  ');
+}
+
+// Leave the schedule for the trip a flight row came from. The day panel is
+// closed first: it acts on a selection that is about to stop being on screen,
+// and a panel left open over a different view is a lie about what is selected.
+//
+// *** THE SCHEDULE IS A READ SURFACE. *** Navigating away from it must not
+// write anything, so this does no save of its own -- openTripDetail's
+// autoSaveIfEditing handles an editor left dirty elsewhere.
+function schedGoToLeg(legId){
+  const info = schedFlightRefInfo(legId);
+  if(!info){
+    // Reachability was checked when the row was drawn, so this is the race
+    // where the live set changed underneath. Say so instead of doing nothing.
+    showToast('That trip is no longer in active trips');
+    return;
+  }
+  closeSchedEntry();
+  const tn = info.tripNumber;
+  // A numbered trip is keyed by its number; an unnumbered one is keyed by its
+  // group, matching groupIntoTrips. Anything else would land on a blank view.
+  const key = tn ? tn : ('__grp_' + (info.leg.groupId || ('__solo_' + info.leg.id)));
+  openTripDetail(key, 'schedule');
+}
+
 function schedExistingHTML(e){
   if(e.loadingExisting) return '<div class="sched-existing-note">Reading this day\u2026</div>';
   if(e.existingError)   return '<div class="sched-existing-note sched-entry-span-bad">Could not read this day.</div>';
@@ -13625,15 +13698,21 @@ function schedExistingHTML(e){
   e.existing.forEach(function(r){
     const col = SCHED_COLORS[r.kind] || SCHED_COLORS.other;
     const label = SCHED_LABELS[r.kind] || r.kind;
-    h += '<div class="sched-existing-row">' +
+    // A flight row opens the trip it came from -- but ONLY if that trip is in
+    // the live set. An unreachable row must not look like a link, because a
+    // control must do what its label says.
+    const goTrip = (r.kind === 'flight' && schedFlightRefInfo(r.id)) ? r.id : '';
+    h += '<div class="sched-existing-row' + (goTrip ? ' sched-existing-go' : '') + '"' +
+           (goTrip ? ' data-sched-goleg="' + escapeHtml(goTrip) + '" role="button" tabindex="0"' : '') + '>' +
            '<span class="sched-key-dot" style="background:' + col + '"></span>' +
            '<div class="sched-existing-txt">' +
              '<div class="sched-existing-lbl">' + escapeHtml(label) + '</div>' +
              '<div class="sched-existing-sub">' +
                (r.removable ? escapeHtml(schedPrettySpan(r.start, r.end))
-                            // Flight duty belongs to the trip. Naming where it
-                            // lives is more use than a disabled button.
-                            : 'From a trip \u2014 change it on the trip')  +
+                            // Flight duty belongs to the trip. Naming WHICH trip
+                            // is more use than a disabled button -- and it is the
+                            // only way a mid-tour trip-number change is visible.
+                            : escapeHtml(schedFlightRowSub(r.id)))  +
                (r.reason ? ' \u00b7 ' + escapeHtml(r.reason) : '') +
              '</div>' +
            '</div>' +
@@ -14119,6 +14198,10 @@ document.addEventListener('click', async function(e){
   if(t.closest('#schedEntrySaveBtn')){ saveSchedEntry(); return; }
   const schedDel = t.closest('[data-sched-del]');
   if(schedDel){ removeSchedEntry(schedDel.getAttribute('data-sched-del')); return; }
+  // Flight row -> the trip it came from. The schedule becomes a way INTO the
+  // record, not just a picture of it: pick a day months back, land on the trip.
+  const schedGo = t.closest('[data-sched-goleg]');
+  if(schedGo){ schedGoToLeg(schedGo.getAttribute('data-sched-goleg')); return; }
   const schedCat = t.closest('[data-sched-cat]');
   if(schedCat && schedEntry){
     // Keep whatever has already been typed. Re-rendering the form must not
@@ -14337,6 +14420,18 @@ function openInstallOverlay(){
     else if(mode === 'leg' && state.activeId) handleDelete(state.activeId);
   });
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeDrawer(); });
+  // A row given role="button" and a tabindex has PROMISED keyboard activation.
+  // Honouring it here keeps that promise rather than leaving a focusable row
+  // that only a mouse can use.
+  document.addEventListener('keydown', function(e){
+    if(e.key !== 'Enter' && e.key !== ' ') return;
+    const t = e.target;
+    if(!t || !t.closest) return;
+    const go = t.closest('[data-sched-goleg]');
+    if(!go) return;
+    e.preventDefault();
+    schedGoToLeg(go.getAttribute('data-sched-goleg'));
+  });
 })();
 
 
