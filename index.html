@@ -2607,7 +2607,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T02:05:00Z';
+const BUILD_VERSION = '2026-08-28T03:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4985,6 +4985,19 @@ function stampCrewSnapshots(leg){
 }
 
 async function saveLeg(leg){
+  // *** LAST GATE BEFORE A WRITE. *** Every other seal check is a courtesy that
+  // stops a user reaching a sealed screen; this one is the thing that actually
+  // protects the record, and it is the only check that cannot be bypassed by
+  // finding a new route in. It had never been written -- legIsSealed() guarded
+  // the bulk trip-quick paths and nothing else, so any single-leg save reaching
+  // an archived leg would have persisted over a sealed trip.
+  //
+  // Also refuses a NEW leg typed against an archived trip number: you cannot
+  // add to a sealed trip either.
+  if(legIsSealed(leg)){
+    showToast('Trip ' + (leg.tripNumber || '') + ' is archived. A sealed record is never overwritten.');
+    return false;
+  }
   leg.updatedAt = Date.now();
   stampCrewSnapshots(leg);
   // Last-edited stamp: who touched this leg, and when.
@@ -5235,6 +5248,19 @@ function sortLegsByTripStack(legs){
 }
 
 function openLegEditor(legId){
+  // *** THE SEAL IS ENFORCED HERE, NOT BY THE ABSENCE OF A ROUTE. ***
+  // This check did not exist. The seal held only because nothing navigated to
+  // a sealed leg's editor -- archived trips were reachable only through the
+  // archive list, which renders the snapshot. The schedule day panel turned out
+  // to be a second door, and it opened onto a fully editable form.
+  //
+  // Send them to the sealed record rather than refusing with a toast: the trip
+  // is what they were trying to reach, and a dead end is not an answer.
+  const _sealCheck = state.legs.find(function(l){ return l.id === legId; });
+  if(legIsSealed(_sealCheck)){
+    openArchivedTrip(_sealCheck.tripNumber);
+    return;
+  }
   clearProvisionalDates();
   autoSaveIfEditing();
   // A spare crew seat belongs to the leg you were just looking at.
@@ -14580,6 +14606,18 @@ function schedGoToLeg(legId){
     return;
   }
   closeSchedEntry();
+  // *** ARCHIVING DOES NOT REMOVE LEGS FROM state.legs. *** A sealed trip's legs
+  // stay in the live set, so schedFlightRefInfo resolves them happily and every
+  // check above passes. Without this branch the schedule walked straight into
+  // openTripDetail and drew a SEALED trip as a live, editable one. Found live.
+  //
+  // Landing on the archived TRIP rather than the specific leg is deliberate:
+  // it matches what the archive list does, and snapshot leg ids come from
+  // archive time so a per-leg jump is not guaranteed to resolve.
+  if(tripIsArchived(info.tripNumber)){
+    openArchivedTrip(info.tripNumber);
+    return;
+  }
   const tn = info.tripNumber;
   // A numbered trip is keyed by its number; an unnumbered one is keyed by its
   // group, matching groupIntoTrips. Anything else would land on a blank view.
