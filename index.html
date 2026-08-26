@@ -945,6 +945,13 @@
   /* The dot on the category button and in the legend must match the grid, or
      the button teaches the wrong shape. */
   .sched-key-dot-pencil{ background:transparent !important; }
+  /* A superseded pencil is still listed, because it is still a record and still
+     removable -- it is merely no longer the truth about the day. Dimmed, not
+     struck through: it was not wrong, it was overtaken. */
+  .sched-existing-lbl-done{ color:var(--fog-500); }
+  .sched-superseded{ font-size:10px; text-transform:uppercase; letter-spacing:0.04em;
+    color:var(--fog-500); border:1px solid var(--hairline); border-radius:3px;
+    padding:1px 4px; margin-left:6px; white-space:nowrap; }
   .sched-cat-note{ font-size:11px; line-height:1.45; color:var(--fog-500);
     border-left:2px solid #3DBE6B; padding:2px 0 2px 9px; margin:10px 0 2px; }
   .sched-cell-wknd{ background:rgba(184,196,217,0.05); }
@@ -2227,7 +2234,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T15:05:00Z';
+const BUILD_VERSION = '2026-08-26T15:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13380,7 +13387,30 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   // of the SAME category, which never carried information in the first place.
   const seenKinds = {};
   const shown = [];
+  // *** A REAL TRIP SUPERSEDES A PENCIL, PER DAY, WITHOUT ANYONE TIDYING UP. ***
+  //
+  // Kyle, 26 Aug 2026: "what I don't want is for Eric to have to go back and
+  // erase all of his penciled in trips... the trip itself should supersede the
+  // penciling in, so he doesn't have to erase them."
+  //
+  // Decided DAY BY DAY, not record by record, which is what makes it self-
+  // maintaining. Where the real trip covers a penciled day the solid block wins
+  // and the hollow one does not draw -- nothing to clean up, and crew reading
+  // the grid see one truthful block instead of a guess sitting next to a fact.
+  // Where a penciled day falls OUTSIDE the trip it keeps showing hollow, because
+  // that day genuinely has not been resolved. A four-day pencil against a
+  // two-day trip therefore goes quiet on the overlap and stays hollow on the two
+  // stragglers, which is exactly the reconciliation Eric needs to see. The grid
+  // surfaces the leftovers by itself rather than making him hunt for them.
+  //
+  // *** SUPPRESSED, NOT DELETED. *** The pencil row is still in entries, still
+  // listed in the day panel, and still removable there. This is a rendering
+  // decision. Erasing the record would destroy the evidence that the plan moved.
+  // Clearing a leftover day stays a MANUAL delete, per Kyle -- by then the trip
+  // is the record of what happened and the pencil has done its job.
+  const hasRealFlight = entries.some(function(e){ return e.kind === 'flight'; });
   entries.forEach(function(e){
+    if(e.kind === 'flight_pencil' && hasRealFlight) return;
     if(seenKinds[e.kind]) return;
     seenKinds[e.kind] = true;
     shown.push(e);
@@ -13753,18 +13783,29 @@ function schedExistingHTML(e){
   if(e.existingError)   return '<div class="sched-existing-note sched-entry-span-bad">Could not read this day.</div>';
   if(!e.existing || !e.existing.length) return '<div class="sched-existing-note">Nothing on this day.</div>';
   let h = '<div class="sched-existing">';
+  // A pencil on a day that also holds a real flight is SUPPRESSED ON THE GRID,
+  // so the panel is the only place it still appears. It must therefore say WHY
+  // it is not drawn, or the record and the picture disagree with no explanation.
+  const dayHasRealFlight = e.existing.some(function(r){ return r.kind === 'flight'; });
   e.existing.forEach(function(r){
     const col = SCHED_COLORS[r.kind] || SCHED_COLORS.other;
     const label = SCHED_LABELS[r.kind] || r.kind;
+    const isPencilRow  = r.kind === 'flight_pencil';
+    const superseded   = isPencilRow && dayHasRealFlight;
     // A flight row opens the trip it came from -- but ONLY if that trip is in
     // the live set. An unreachable row must not look like a link, because a
     // control must do what its label says.
     const goTrip = (r.kind === 'flight' && schedFlightRefInfo(r.id)) ? r.id : '';
     h += '<div class="sched-existing-row' + (goTrip ? ' sched-existing-go' : '') + '"' +
            (goTrip ? ' data-sched-goleg="' + escapeHtml(goTrip) + '" role="button" tabindex="0"' : '') + '>' +
-           '<span class="sched-key-dot" style="background:' + col + '"></span>' +
+           (isPencilRow
+             ? '<span class="sched-key-dot sched-key-dot-pencil" style="box-shadow:inset 0 0 0 2px ' + col + '"></span>'
+             : '<span class="sched-key-dot" style="background:' + col + '"></span>') +
            '<div class="sched-existing-txt">' +
-             '<div class="sched-existing-lbl">' + escapeHtml(label) + '</div>' +
+             '<div class="sched-existing-lbl' + (superseded ? ' sched-existing-lbl-done' : '') + '">' +
+               escapeHtml(label) +
+               (superseded ? ' <span class="sched-superseded">superseded by the trip</span>' : '') +
+             '</div>' +
              '<div class="sched-existing-sub">' +
                (r.removable ? escapeHtml(schedPrettySpan(r.start, r.end))
                             // Flight duty belongs to the trip. Naming WHICH trip
