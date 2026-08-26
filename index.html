@@ -1147,11 +1147,34 @@
   .sched-note{ font-size:11px; color:var(--fog-500); }
   .sched-empty{ font-size:13px; color:var(--fog-500); padding:24px 0; }
   .sched-nav{ min-width:44px; }
-  /* Reads as a label, not a button -- it is the thing the double chevrons move. */
-  .sched-yearlbl{
-    font-size:13px; font-weight:600; color:var(--fog-200);
-    padding:0 2px; min-width:38px; text-align:center;
-    font-variant-numeric:tabular-nums; user-select:none;
+  /* Wears the same chrome as the other header buttons so it reads as pressable,
+     plus a caret so it reads as OPENING something rather than doing something. */
+  .sched-yearbtn{
+    display:inline-flex; align-items:center; gap:5px;
+    font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
+  /* Year rows: big touch targets, current year marked the same way the status
+     sheet marks a current status, so the two sheets read as one family. */
+  .sched-yearrow{
+    display:flex; align-items:center; gap:10px; width:100%;
+    font-family:system-ui,'Inter',sans-serif; font-size:16px; text-align:left;
+    padding:14px 14px; margin-bottom:8px; cursor:pointer;
+    color:var(--paper-050); background:var(--panel-800);
+    border:1px solid var(--hairline); border-radius:10px;
+    font-variant-numeric:tabular-nums;
+  }
+  .sched-yearrow:hover{ border-color:var(--amber-500); }
+  .sched-yearrow.is-current{ border-color:var(--amber-500); }
+  .sched-yearrow-cur{
+    margin-left:auto; font-size:11px; color:var(--fog-500);
+    letter-spacing:0.4px; text-transform:uppercase;
+  }
+  .sched-caret{
+    width:0; height:0; flex:none;
+    border-left:4px solid transparent;
+    border-right:4px solid transparent;
+    border-top:5px solid currentColor;
+    opacity:0.8;
   }
   /* ENTRY PANEL. Pinned right, not centred: the grid behind it is the reason
      the decision is being made here rather than on a form. */
@@ -2272,6 +2295,22 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   </div>
 </div>
 
+<!-- SCHEDULE YEAR PICKER.
+     Raised by the year pill in the Schedule header. Replaced a pair of year
+     arrows that did not fit the iPhone header and read as clutter on the Mac.
+     A list rather than a stepper because a year is somewhere you JUMP to. -->
+<div class="sheet-backdrop" id="schedYearBackdrop"></div>
+<div class="sheet" id="schedYearSheet" role="dialog" aria-label="Choose year" aria-hidden="true">
+  <div class="sheet-head">
+    <div>
+      <div class="sheet-title">Choose year</div>
+      <div class="sheet-sub">The schedule shows one year at a time</div>
+    </div>
+    <button type="button" class="sheet-close" data-sched-yearclose="1" aria-label="Close">&times;</button>
+  </div>
+  <div class="sheet-body" id="schedYearBody"></div>
+</div>
+
 <div class="sheet-backdrop" id="personEditBackdrop"></div>
 <div class="sheet" id="personEditSheet" role="dialog" aria-label="Edit person" aria-hidden="true">
   <div class="sheet-head">
@@ -2479,7 +2518,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T21:10:00Z';
+const BUILD_VERSION = '2026-08-27T22:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14936,17 +14975,22 @@ function renderScheduleView(){
   const w = schedWindow();
   const monthLabel = w.monthFirst.toLocaleDateString([], { month: 'long', year: 'numeric' });
 
-  // *** TWO STEPPERS, DELIBERATELY DIFFERENT SHAPES. ***
-  // Single chevrons step a MONTH inside the strip; double chevrons step the
-  // YEAR, which rebuilds the strip. The year is spelled out between them so the
-  // double arrows read as belonging to it rather than as a faster month step.
+  // *** THE YEAR IS A CHOOSER, NOT A STEPPER. ***
+  // Year arrows were built first and were wrong: six controls did not fit the
+  // iPhone header and read as clutter on the Mac. More importantly three taps to
+  // reach 2023 is the wrong interaction for something you jump to, not nudge.
+  //
+  // So: ONE control. It carries a caret because the schedule's design default is
+  // that a first-time user needs no instructions -- and a bare year reads as a
+  // label, not a button. A value plus a caret is about as close to a universal
+  // "this opens something" as convention offers. Month arrows are untouched.
   setPageHeader({
     title: 'Schedule',
     subtitle: monthLabel,
     actionsHTML:
-      '<button type="button" class="btn sched-nav" data-sched-year="-1" aria-label="Previous year">\u00AB</button>' +
-      '<span class="sched-yearlbl">' + w.year + '</span>' +
-      '<button type="button" class="btn sched-nav" data-sched-year="1" aria-label="Next year">\u00BB</button>' +
+      '<button type="button" class="btn sched-yearbtn" data-sched-yearpick="1" aria-haspopup="listbox" aria-label="Choose year. Currently ' + w.year + '">' +
+        w.year + '<span class="sched-caret" aria-hidden="true"></span>' +
+      '</button>' +
       '<button type="button" class="btn sched-nav" data-sched-step="-1" aria-label="Previous month">\u2039</button>' +
       '<button type="button" class="btn sched-nav" data-sched-today="1">Today</button>' +
       '<button type="button" class="btn sched-nav" data-sched-step="1" aria-label="Next month">\u203A</button>'
@@ -15319,26 +15363,88 @@ function schedStepMonth(delta){
   }
 }
 
-// *** STEP 4 OF THE YEAR-STRIP REFACTOR: YEAR STEPPING, ALONGSIDE THE MONTH
-// ARROWS RATHER THAN INSTEAD OF THEM. ***
+// *** STEP 4 OF THE YEAR-STRIP REFACTOR: THE YEAR IS CHOSEN, NOT STEPPED. ***
 //
-// The design note proposed replacing the month arrows with year arrows. Kyle's
-// decision overrides that: the month arrows are the control you actually reach
-// for day to day, and losing them to gain a year jump would be a bad trade. So
-// there are now TWO steppers and they mean different things -- months move
-// within the strip, years move the strip itself.
+// First attempt was a pair of year arrows flanking the year. It was wrong twice:
+// six controls would not fit the iPhone header, and three taps to reach 2023 is
+// the wrong interaction for a value you jump to rather than nudge. Month arrows
+// are kept and untouched -- they are the day-to-day control. See the design note.
 //
-// A year step ALWAYS changes the strip, so unlike a month step it is always a
-// refetch. It lands on 1 January of the target year (design note question 3),
-// which is both the simplest rule and the one that matches "show me that year"
-// rather than "show me this date last year".
-function schedStepYear(delta){
-  if(!delta) return;
+// *** THE LIST IS RELATIVE TO THE CURRENT YEAR, NOT A FIXED SPAN. ***
+// It was briefly hardcoded 2022-2028, which is a time bomb: in 2029 the list
+// quietly stops offering the year you are in, and nobody remembers why. These
+// are OFFSETS, so the window walks forward on its own and the app can run
+// indefinitely without anyone editing it.
+//
+// Deliberately asymmetric. A schedule is mostly a RECORD -- last year's flying
+// gets looked at far more often than anything two years out gets planned -- so
+// the depth belongs behind you. One year ahead covers the November case where
+// next year is already filling up.
+const SCHED_YEAR_BACK    = 4;
+const SCHED_YEAR_FORWARD = 1;
+
+// Computed per call, never cached: a session left open across New Year would
+// otherwise keep offering the old window.
+function schedYearRange(){
+  const now = new Date().getFullYear();
+  let lo = now - SCHED_YEAR_BACK;
+  let hi = now + SCHED_YEAR_FORWARD;
+  // A year reached some other way -- a deep link, or a session open past
+  // midnight on 1 January -- must still appear in its own list, or the sheet
+  // would show nothing marked "Showing".
+  const cur = (schedAnchor || schedMonthStart(new Date())).getFullYear();
+  if(cur < lo) lo = cur;
+  if(cur > hi) hi = cur;
+  return { lo: lo, hi: hi };
+}
+
+function schedYearBodyHTML(){
+  const cur = (schedAnchor || schedMonthStart(new Date())).getFullYear();
+  const thisYear = new Date().getFullYear();
+  const r = schedYearRange();
+  let h = '<div class="sheet-status-list">';
+  for(let y = r.hi; y >= r.lo; y--){
+    // "Current" means the year being VIEWED, not the calendar year -- the mark
+    // answers "where am I", which is the question the sheet is open to settle.
+    const on = y === cur;
+    h += '<button type="button" class="sched-yearrow' + (on ? ' is-current' : '') +
+         '" data-sched-yearset="' + y + '">' + y +
+         (on ? '<span class="sched-yearrow-cur">Showing</span>'
+             : (y === thisYear ? '<span class="sched-yearrow-cur">This year</span>' : '')) +
+         '</button>';
+  }
+  return h + '</div>';
+}
+
+function openSchedYearSheet(){
+  const body = document.getElementById('schedYearBody');
+  if(body) body.innerHTML = schedYearBodyHTML();
+  const sh = document.getElementById('schedYearSheet');
+  const bd = document.getElementById('schedYearBackdrop');
+  if(bd) bd.classList.add('open');
+  if(sh){ sh.classList.add('open'); sh.setAttribute('aria-hidden', 'false'); }
+}
+
+function closeSchedYearSheet(){
+  const sh = document.getElementById('schedYearSheet');
+  const bd = document.getElementById('schedYearBackdrop');
+  if(bd) bd.classList.remove('open');
+  if(sh){ sh.classList.remove('open'); sh.setAttribute('aria-hidden', 'true'); }
+}
+
+// Lands on 1 January of the chosen year (design note question 3): the simplest
+// rule, and it matches "show me that year" rather than "show me this date then".
+// Choosing the year already shown closes the sheet and does nothing else -- no
+// refetch, and no yanking the scroll back to January.
+function schedSetYear(year){
+  closeSchedYearSheet();
+  if(!year) return;
   const a = schedAnchor || schedMonthStart(new Date());
-  schedAnchor = new Date(a.getFullYear() + delta, 0, 1);
+  if(year === a.getFullYear()) return;
+  schedAnchor = new Date(year, 0, 1);
   schedScrollToDay = schedISO(schedAnchor);
-  // The strip is defined by the anchor's YEAR, so this is new data by
-  // definition -- there is no in-strip shortcut to take here.
+  // The strip is DEFINED by the anchor's year, so this is new data by
+  // definition. There is no in-strip shortcut to take, unlike a month step.
   schedData = null;
   openScheduleView();
 }
@@ -15566,8 +15672,10 @@ document.addEventListener('click', async function(e){
     return;
   }
 
-  const schedYearStep = t.closest('[data-sched-year]');
-  if(schedYearStep){ schedStepYear(parseInt(schedYearStep.getAttribute('data-sched-year'), 10) || 0); return; }
+  if(t.closest('[data-sched-yearpick]')){ openSchedYearSheet(); return; }
+  if(t.closest('[data-sched-yearclose]')){ closeSchedYearSheet(); return; }
+  const schedYearSet = t.closest('[data-sched-yearset]');
+  if(schedYearSet){ schedSetYear(parseInt(schedYearSet.getAttribute('data-sched-yearset'), 10) || 0); return; }
   const schedStep = t.closest('[data-sched-step]');
   if(schedStep){ schedStepMonth(parseInt(schedStep.getAttribute('data-sched-step'), 10) || 0); return; }
   if(t.closest('[data-sched-today]')){
@@ -15720,6 +15828,13 @@ function openInstallOverlay(){
   if(bd) bd.addEventListener('click', closeTripQuickSheet);
   const ap = document.getElementById('tripQuickApplyBtn');
   if(ap) ap.addEventListener('click', function(){ applyTripQuick(); });
+})();
+
+// Backdrop only -- the close X and the year rows are handled by the delegated
+// document click, same as the rest of the schedule's controls.
+(function wireSchedYearSheet(){
+  const bd = document.getElementById('schedYearBackdrop');
+  if(bd) bd.addEventListener('click', closeSchedYearSheet);
 })();
 
 (function wireDrawer(){
