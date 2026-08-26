@@ -932,6 +932,10 @@
      rather than to any conceivable one. Longer names ellipsise, which is honest:
      the abbreviation underneath still identifies the person, and the same applies
      to the fallback where a row has no display name and shows an email. */
+  /* Status shown to a non-admin: the same information, without pretending to be
+     a control. */
+  .set-status-ro{ font-size:12px; color:var(--fog-300); padding:4px 8px;
+    border:1px solid var(--hairline); border-radius:6px; white-space:nowrap; }
   .set-actype{ display:block; width:100%; max-width:220px; margin-top:4px;
     background:transparent; border:1px solid var(--hairline); border-radius:6px;
     padding:4px 8px; font-size:12px; font-family:inherit; color:var(--fog-300); }
@@ -2314,7 +2318,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T10:05:00Z';
+const BUILD_VERSION = '2026-08-27T10:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7497,7 +7501,20 @@ async function loadAircraft(){
   }
 }
 
+// *** THE DATABASE IS THE GATE; THIS IS MANNERS. ***
+//
+// Migration 24 made every write to public.aircraft require is_department_admin().
+// This check does NOT enforce that -- it cannot, and must never be relied on to.
+// It exists so a non-admin is not shown a status dropdown, a type field and a
+// Retire button that will all silently refuse. Offering a control that fails is
+// worse than never offering it: the person cannot tell a permission boundary
+// from a broken app.
+//
+// The read side is deliberately unchanged. Everyone in the department still sees
+// the fleet, because the tail picker on a leg and the schedule's aircraft band
+// both depend on it.
 function aircraftRowHTML(a){
+  const canEdit = rosterViewerIsAdmin();
   const st = AIRCRAFT_STATUSES.includes(a.status) ? a.status : 'home';
   const opts = AIRCRAFT_STATUSES.map(s =>
     '<option value="' + s + '"' + (s === st ? ' selected' : '') + '>' +
@@ -7509,19 +7526,32 @@ function aircraftRowHTML(a){
         // Type is edited in place rather than behind a dialogue: it is one short
         // field, and an aircraft's type effectively never changes, so a row that
         // simply accepts a correction is less machinery than an edit mode.
-        '<input class="set-actype" type="text" data-ac-type="' + escapeHtml(a.id) + '"' +
-          ' value="' + escapeHtml(a.aircraft_type || '') + '"' +
-          ' placeholder="Aircraft type" maxlength="60"' +
-          ' aria-label="Aircraft type for ' + escapeHtml(a.tail_number) + '" />' +
+        (canEdit
+          ? '<input class="set-actype" type="text" data-ac-type="' + escapeHtml(a.id) + '"' +
+              ' value="' + escapeHtml(a.aircraft_type || '') + '"' +
+              ' placeholder="Aircraft type" maxlength="60"' +
+              ' aria-label="Aircraft type for ' + escapeHtml(a.tail_number) + '" />'
+          // Not an empty box a non-admin might try to type into. The type is
+          // still WORTH READING, so it is shown as plain text when recorded and
+          // omitted entirely when it is not.
+          : (a.aircraft_type
+              ? '<div class="set-row-sub">' + escapeHtml(a.aircraft_type) + '</div>'
+              : '')) +
         (a.is_active ? '' : '<div class="set-row-sub">Retired \u2014 hidden from the tail picker</div>') +
       '</div>' +
       (a.is_active
-        ? '<select class="set-status st-' + st + '" data-ac-status="' + escapeHtml(a.id) + '">' + opts + '</select>'
+        ? (canEdit
+            ? '<select class="set-status st-' + st + '" data-ac-status="' + escapeHtml(a.id) + '">' + opts + '</select>'
+            // Status is information a crew member needs -- where the aircraft is
+            // -- so it is still shown, just not as a control.
+            : '<span class="set-status-ro st-' + st + '">' + escapeHtml(AIRCRAFT_STATUS_LABELS[st]) + '</span>')
         : '') +
-      '<div class="set-row-actions">' +
-        '<button type="button" class="set-mini-btn' + (a.is_active ? ' is-danger' : '') + '" data-ac-toggle="' + escapeHtml(a.id) + '">' +
-          (a.is_active ? 'Retire' : 'Restore') + '</button>' +
-      '</div>' +
+      (canEdit
+        ? '<div class="set-row-actions">' +
+            '<button type="button" class="set-mini-btn' + (a.is_active ? ' is-danger' : '') + '" data-ac-toggle="' + escapeHtml(a.id) + '">' +
+              (a.is_active ? 'Retire' : 'Restore') + '</button>' +
+          '</div>'
+        : '') +
     '</div>';
 }
 
@@ -7560,10 +7590,15 @@ function renderSettingsView(){
       '<p class="set-section-note">Tails are chosen from this list when you build a leg. ' +
         'Status is what\u2019s true right now, not a schedule.</p>' +
       listHTML +
-      '<div class="set-add">' +
-        '<input id="acNewTail" placeholder="N667BB" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="12" />' +
-        '<button type="button" class="set-btn" id="acAddBtn">Add aircraft</button>' +
-      '</div>' +
+      // Admin only, matching migration 24: aircraft_insert now requires
+      // is_department_admin(). A non-admin typing a tail and pressing Add would
+      // simply be told it failed.
+      (rosterViewerIsAdmin()
+        ? '<div class="set-add">' +
+            '<input id="acNewTail" placeholder="N667BB" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="12" />' +
+            '<button type="button" class="set-btn" id="acAddBtn">Add aircraft</button>' +
+          '</div>'
+        : '') +
     '</div>' +
     '<div class="set-section">' +
       '<div class="set-section-head"><div class="set-section-title">People</div>' +
@@ -8567,6 +8602,7 @@ function normalizeTail(s){
 }
 
 async function handleAddAircraft(){
+  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can add aircraft.'); return; }
   const input = document.getElementById('acNewTail');
   if(!input) return;
   const tail = normalizeTail(input.value);
@@ -8591,6 +8627,10 @@ async function handleAddAircraft(){
 // Records an aircraft's type. Empty is stored as NULL so the app has ONE empty
 // case rather than two -- matching what migration 23 does to existing rows.
 async function handleAircraftTypeChange(id, value){
+  // Re-checked here, not just at render: a rule attached to a control is not a
+  // rule. The database is the real gate (migration 24); this keeps the client
+  // from firing a request it knows will be refused.
+  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can change aircraft.'); return; }
   const ac = (aircraftCache || []).find(function(a){ return a.id === id; });
   const clean = String(value || '').trim();
   const next = clean === '' ? null : clean;
@@ -8613,6 +8653,7 @@ async function handleAircraftTypeChange(id, value){
 }
 
 async function handleAircraftStatusChange(id, status){
+  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can change aircraft.'); return; }
   if(!AIRCRAFT_STATUSES.includes(status)) return;
   try {
     const { error } = await sb.from('aircraft')
@@ -8629,6 +8670,7 @@ async function handleAircraftStatusChange(id, status){
 // Retire, never delete. A hard delete would orphan the tail recorded on every
 // historical leg, and those legs are the archive.
 async function handleToggleAircraftActive(id){
+  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can change aircraft.'); return; }
   const ac = (aircraftCache || []).find(a => a.id === id);
   if(!ac) return;
   if(ac.is_active){
