@@ -2473,7 +2473,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T20:05:00Z';
+const BUILD_VERSION = '2026-08-27T20:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15165,91 +15165,70 @@ function schedCellWidth(){
   return w > 0 ? w : 30;
 }
 
-// Scroll position is REMEMBERED PER MONTH. renderScheduleView runs again after
-// every add or remove, and resetting the scroll each time would throw you back
-// to the start of the month the instant you filed an entry -- exactly when you
-// are mid-task. The default position is applied only when the month changes.
-let schedScrollKey = null;
-let schedScrollLeft = null;
-let schedScrollForce = false;   // set by Today; overrides the remembered position
-// True on ARRIVAL only: first open of the schedule, and the Today button.
-// Cleared by a month step, so stepping lands on the 1st rather than on today.
-let schedScrollToToday = true;
-
-// Where the grid should sit when a month is first shown.
+// *** STEP 3 OF THE YEAR-STRIP REFACTOR: TWO VARIABLES, NOT FOUR. ***
 //
-// *** TODAY IS THE ANCHOR, NOT THE FIRST OF THE MONTH. ***
-// Anchoring on the 1st was wrong: three weeks into a month it puts most of the
-// visible grid in the PAST, which is the opposite of what a forward-looking
-// board is for. So the anchor is TODAY where today is in view, and the 1st only
-// for a month that does not contain it.
-function schedDefaultScrollLeft(){
-  const w = schedWindow();
-  // schedDayList returns Date objects, not strings, so these are mapped to ISO
-  // before comparing -- indexOf on a Date array with a string finds nothing.
+// Was: schedScrollKey, schedScrollLeft, schedScrollForce, schedScrollToToday --
+// four pieces of state whose only job was to make a month-shaped window behave
+// like a continuous one. The window IS continuous now, so the whole question
+// collapses to: "is something asking to move the grid, or should it stay put?"
+//
+//   schedScrollLeft  -- where the grid was. Restored on re-render, because
+//                       renderScheduleView rebuilds innerHTML after every add or
+//                       remove and scrollLeft would otherwise reset to zero,
+//                       throwing you to December mid-task.
+//   schedScrollToDay -- a one-shot REQUEST to bring a specific day into view.
+//                       Wins over the remembered position, then clears itself,
+//                       so a request can never leak into the next render.
+let schedScrollLeft  = null;
+let schedScrollToDay = null;
+
+// Scroll offset that brings a given ISO day to the left edge of the visible
+// grid. Replaces schedDefaultScrollLeft, which had to decide WHICH day it was
+// aiming at; now the caller says, and this only does the measuring.
+//
+// *** THE STICKY NAME COLUMN OVERLAPS THE SCROLLED CONTENT. ***
+// .sched-name is position:sticky at left:0, so it sits ON TOP of the first
+// column-width of whatever scrolls underneath. Scrolling a day to its own
+// offsetLeft therefore parks it BEHIND the names; the column's measured width
+// is subtracted so the day lands where it appears to.
+function schedScrollLeftForDay(iso){
   const days = schedDayList().map(schedISO);
-  const now = new Date();
-  // *** STEPPING A MONTH MEANS THE START OF THAT MONTH. ***
-  //
-  // Today anchors the view on ARRIVAL -- opening the schedule, or pressing
-  // Today -- because that is when "where am I now" is the question. It must NOT
-  // anchor a month you stepped to deliberately: stepping July to August landed
-  // on the 26th and showed the last third of August, which reads as having
-  // skipped past the month you asked for. When you step, you want its start.
-  //
-  // schedScrollToToday is set by the two arrival paths and by nothing else.
-  const todayInNamedMonth = now.getMonth() === w.monthFirst.getMonth() &&
-                            now.getFullYear() === w.monthFirst.getFullYear();
-  let i = (schedScrollToToday && todayInNamedMonth) ? days.indexOf(schedISO(now)) : -1;
-  // *** ONE RULE: THE ANCHOR DAY GOES HARD AGAINST THE LEFT EDGE. ***
-  // Today and a stepped month behave identically. A four-day run-in was tried
-  // for today and dropped deliberately: two positioning rules made the grid
-  // harder to predict than the small view of the past was worth. The immediate
-  // past is one short scroll away, and the board is for what is coming.
-  if(i < 0){
-    i = days.indexOf(schedISO(w.monthFirst));
-    if(i < 0) i = 0;
-  }
-  const lead = 0;
-  // *** THE STICKY NAME COLUMN OVERLAPS THE SCROLLED CONTENT. ***
-  // .sched-name is position:sticky at left:0, so it sits ON TOP of the first
-  // column-width of whatever is scrolled underneath it -- several cells worth.
-  // Scrolling a day to scrollLeft therefore hides it behind the names rather than placing it
-  // at the visible left edge, which is why four days of run-in showed as nine.
-  // The column's width is added back so the lead-in is what it claims to be.
-  // Measure the day cell's ACTUAL position rather than computing it. The row
-  // starts with the sticky name column, so index-times-width is not the cell's
-  // offset -- and any future change to the header would silently shift it again.
+  let i = days.indexOf(iso);
+  if(i < 0) i = 0;
   const sc = document.querySelector('.sched-scroll');
   const cells = document.querySelectorAll('.sched-hcell');
-  const target = cells[Math.max(0, i - lead)];
+  const target = cells[i];
   const nameEl = document.querySelector('.sched-name');
-  const nameW = nameEl ? nameEl.getBoundingClientRect().width : 88;  // fallback only; measured above
-  if(sc && target){
-    // offsetLeft is relative to the scroll container's content box, so this is
-    // the exact scroll value that brings the target cell to the left edge --
-    // then less the sticky column, which would otherwise cover it.
-    return Math.max(0, target.offsetLeft - nameW);
-  }
-  // Fallback if the grid has not laid out yet.
-  return Math.max(0, (i - lead) * schedCellWidth());
+  const nameW = nameEl ? nameEl.getBoundingClientRect().width : 88;
+  // Measured, not computed: index-times-width ignores the name column and any
+  // future change to the header would silently shift every landing.
+  if(sc && target) return Math.max(0, target.offsetLeft - nameW);
+  // Fallback only, before layout has settled.
+  return Math.max(0, i * schedCellWidth());
 }
 
+// ONE RULE: a pending request wins, otherwise stay where you were.
+//
+// The month-keyed memory is gone with the month-shaped window. There is one
+// strip, so there is one scroll position, and the only question is whether
+// something has asked to move it.
 function schedApplyScroll(){
-  const w = schedWindow();
-  const key = w.monthFirst.getFullYear() + '-' + w.monthFirst.getMonth();
-  // schedScrollForce is set by the Today button. Without it, returning to this
-  // month would restore the position you last left it at, which is precisely
-  // what Today is meant to override.
-  const sameMonth = (key === schedScrollKey) && (schedScrollLeft !== null) && !schedScrollForce;
   // Deferred a frame: the grid has only just been written and has no measurable
   // width until layout settles, so scrollLeft would be clamped to zero.
   requestAnimationFrame(function(){
     const el = document.querySelector('.sched-scroll');
     if(!el) return;
-    el.scrollLeft = sameMonth ? schedScrollLeft : schedDefaultScrollLeft();
-    schedScrollForce = false;
-    schedScrollKey = key;
+    if(schedScrollToDay){
+      el.scrollLeft = schedScrollLeftForDay(schedScrollToDay);
+      // Cleared immediately: a request is for ONE render. Left standing it would
+      // drag the grid back on every later save.
+      schedScrollToDay = null;
+    } else if(schedScrollLeft !== null){
+      el.scrollLeft = schedScrollLeft;
+    } else {
+      // First render of the session with nothing asked for.
+      el.scrollLeft = schedScrollLeftForDay(schedISO(new Date()));
+    }
     schedScrollLeft = el.scrollLeft;
     // Bound ONCE per element. schedApplyScroll runs on every render and on every
     // in-place reposition, and a fresh listener each time would stack up dozens
@@ -15269,18 +15248,25 @@ async function openScheduleView(){
   // month, positioned on today.
   if(!schedAnchor){
     schedAnchor = schedMonthStart(new Date());
-    schedScrollToToday = true;
+    schedScrollToDay = schedISO(new Date());
   }
-  schedLoading = true;
-  renderMain();
-  try {
-    schedData = await loadScheduleData();
-  } catch(e){
-    console.error('schedule load', e);
-    schedData = { crew: [], aircraft: [] };
-    showToast('Could not load the schedule');
+  // *** FETCH ONLY WHEN THE DATA IS ACTUALLY STALE. ***
+  // The strip covers fourteen months, so stepping between months inside it needs
+  // no new data at all -- refetching on every arrow press would be a round trip
+  // for rows already in hand. Callers that genuinely invalidate the data
+  // (saving, trimming, removing, changing year) set schedData = null first.
+  if(!schedData){
+    schedLoading = true;
+    renderMain();
+    try {
+      schedData = await loadScheduleData();
+    } catch(e){
+      console.error('schedule load', e);
+      schedData = { crew: [], aircraft: [] };
+      showToast('Could not load the schedule');
+    }
+    schedLoading = false;
   }
-  schedLoading = false;
   if(state.view === 'schedule') renderMain();
 }
 
@@ -15298,20 +15284,26 @@ async function openScheduleView(){
 function schedStepMonth(delta){
   const a = schedAnchor || schedMonthStart(new Date());
   if(delta < 0 && !schedAtMonthStart()){
-    // Same month, repositioned to its 1st. No re-fetch: the window is unchanged,
-    // so only the scroll moves.
-    schedScrollToToday = false;
-    schedScrollForce = true;
+    // Same month, repositioned to its 1st. Nothing but the scroll moves.
+    schedScrollToDay = schedISO(a);
     schedApplyScroll();
     return;
   }
-  schedAnchor = new Date(a.getFullYear(), a.getMonth() + delta, 1);
-  schedData = null;
-  // A deliberate step wants the start of the month it lands on, even when that
-  // month happens to contain today.
-  schedScrollToToday = false;
-  schedScrollForce = true;
-  openScheduleView();
+  const next = new Date(a.getFullYear(), a.getMonth() + delta, 1);
+  // *** A MONTH STEP INSIDE THE STRIP IS A SCROLL, NOT A RELOAD. ***
+  // The strip only changes when the anchor YEAR changes; within one year the
+  // target month is already rendered and already fetched, so this is a scroll.
+  const stripChanged = next.getFullYear() !== a.getFullYear();
+  schedAnchor = next;
+  schedScrollToDay = schedISO(next);
+  if(stripChanged){
+    schedData = null;
+    openScheduleView();
+  } else {
+    // Re-render so the header and the month highlight follow the new anchor;
+    // schedApplyScroll then honours the request above.
+    renderMain();
+  }
 }
 
 // Is the grid already parked at the first of the anchor month? Compares the
@@ -15540,13 +15532,19 @@ document.addEventListener('click', async function(e){
   const schedStep = t.closest('[data-sched-step]');
   if(schedStep){ schedStepMonth(parseInt(schedStep.getAttribute('data-sched-step'), 10) || 0); return; }
   if(t.closest('[data-sched-today]')){
-    schedAnchor = schedMonthStart(new Date());
-    schedData = null;
+    const now = new Date();
+    const prev = schedAnchor;
+    schedAnchor = schedMonthStart(now);
     // Today means today, even if you are already in this month and scrolled
-    // three weeks away from it.
-    schedScrollToToday = true;
-    schedScrollForce = true;
-    openScheduleView();
+    // eight months away from it.
+    schedScrollToDay = schedISO(now);
+    // Only a change of YEAR needs new data; within the strip this is a scroll.
+    if(!prev || prev.getFullYear() !== schedAnchor.getFullYear()){
+      schedData = null;
+      openScheduleView();
+    } else {
+      renderMain();
+    }
     return;
   }
   const qnOpen = t.closest('[data-qn-open]');
