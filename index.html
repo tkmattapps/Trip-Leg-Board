@@ -1171,7 +1171,11 @@
     min-height:44px; min-width:44px;
     display:inline-flex; align-items:center; justify-content:center;
     color:var(--paper-050); cursor:pointer;
-    font-family:system-ui,'Inter',sans-serif; font-size:14px; font-weight:500;
+    /* *** MATCH .btn EXACTLY: 13px / 500. *** Same family as the whole app, but
+       these were briefly set at 14px and the year at 600, which read as a
+       DIFFERENT TYPEFACE next to every other button even though the stack was
+       identical. Size and weight are what the eye reports as "font". */
+    font-family:system-ui,'Inter',sans-serif; font-size:13px; font-weight:500;
     transition:background 0.15s ease, color 0.15s ease;
     -webkit-tap-highlight-color:transparent;
   }
@@ -1184,7 +1188,10 @@
   .sched-hbtn:focus-visible{ outline:2px solid var(--amber-500); outline-offset:-2px; }
   /* The chevrons are glyphs, so they carry more size and less weight. line-height
      1 stops the arrow sitting optically low in the target. */
-  .sched-nav{ font-size:19px; line-height:1; padding:0 6px; }
+  /* The chevrons stay slightly larger than the 13px text on purpose -- a glyph at
+     text size reads as small and faint -- but 16px, not the 19px first tried,
+     which made them look like a different set from Today beside them. */
+  .sched-nav{ font-size:16px; line-height:1; padding:0 6px; }
   /* *** THE GROUP TIGHTENS UP WHEN THE BOXES GO. ***
      .page-header-actions keeps an 8px gap, which was right when every item had a
      border to hold it apart. Without borders that gap plus each button's own
@@ -1197,7 +1204,9 @@
      plus a caret so it reads as OPENING something rather than doing something. */
   .sched-yearbtn{
     gap:5px; font-variant-numeric:tabular-nums; white-space:nowrap;
-    font-weight:600;   /* the only bold item: it is the strip you are looking at */
+    /* No weight override -- inherits 500 from .sched-hbtn like everything else.
+       It was 600 to mark it as "the strip you are looking at"; the caret already
+       does that job without making it look like a different font. */
   }
   /* Year rows: big touch targets, current year marked the same way the status
      sheet marks a current status, so the two sheets read as one family. */
@@ -2573,7 +2582,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T23:35:00Z';
+const BUILD_VERSION = '2026-08-27T23:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
