@@ -2298,7 +2298,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T22:55:00Z';
+const BUILD_VERSION = '2026-08-26T23:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14646,10 +14646,18 @@ function schedDefaultScrollLeft(){
   // schedDayList returns Date objects, not strings, so these are mapped to ISO
   // before comparing -- indexOf on a Date array with a string finds nothing.
   const days = schedDayList().map(schedISO);
-  const todayISO = schedISO(new Date());
-  let i = days.indexOf(todayISO);
+  const now = new Date();
+  // *** TODAY ANCHORS ONLY THE MONTH IT BELONGS TO. ***
+  // Being in the visible WINDOW is not enough. With thirty days of overhang,
+  // today is still on screen when you step to the month either side -- so
+  // anchoring on it there scrolled the grid back to today and showed you the
+  // month you had just left, with the month you asked for pushed off to the
+  // left. Stepping back from this month appeared to skip one entirely.
+  const todayInNamedMonth = now.getMonth() === w.monthFirst.getMonth() &&
+                            now.getFullYear() === w.monthFirst.getFullYear();
+  let i = todayInNamedMonth ? days.indexOf(schedISO(now)) : -1;
   if(i < 0){
-    // A month other than this one: fall back to its first day.
+    // Any other month opens on its own first day.
     i = days.indexOf(schedISO(w.monthFirst));
     if(i < 0) i = 0;
   }
