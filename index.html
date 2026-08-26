@@ -2329,7 +2329,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T13:45:00Z';
+const BUILD_VERSION = '2026-08-27T14:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14113,7 +14113,14 @@ async function openSchedEntry(ownerId, ownerKind, dayISO, endISO){
     // calendar, which is a more deliberate act than typing one, so it does not
     // inherit the provisional-date treatment -- there is no ambiguity about
     // whether a human meant it.
-    category: ownerKind === 'aircraft' ? 'maintenance' : 'pto',
+    // *** NOTHING IS PRE-ARMED. ***
+    // This used to open on 'pto' for a person and 'maintenance' for a tail, so
+    // a single stray tap on Add filed a real record nobody chose -- PTO being
+    // the worst possible default, since it is protected and reads as granted
+    // time off. A default here is the app guessing at intent and then acting on
+    // its own guess. The category must be a deliberate choice: pick the dates,
+    // pick the category, then Add.
+    category: '',
     start: dayISO,
     // A dragged span sets its own end. A single tap sets both to the same day,
     // which is the common case and stays one keystroke from a longer block.
@@ -14133,8 +14140,9 @@ async function openSchedEntry(ownerId, ownerKind, dayISO, endISO){
   // Opening can never inherit a disabled button from a previous pass. The
   // finally above should make this unnecessary; it is here because a dead
   // primary control fails SILENTLY, which is the worst way for it to fail.
-  const sbtn = document.getElementById('schedEntrySaveBtn');
-  if(sbtn) sbtn.disabled = false;
+  // Follows the category rather than force-enabling: a panel that opens with
+  // nothing chosen has nothing to add yet.
+  schedSyncSaveBtn();
   try {
     const rows = await loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO);
     // The panel may have been closed, or another cell opened, while this was
@@ -14482,6 +14490,9 @@ function renderSchedEntry(){
          '</button>';
   });
   h += '</div>';
+  if(!e.category){
+    h += '<div class="sched-cat-note">Pick a category to add an entry for these dates.</div>';
+  }
   if(isPencil){
     h += '<div class="sched-cat-note">Provisional. Shows hollow on the grid so nobody reads it ' +
          'as a booked trip. When the real trip sheet arrives it takes over \u2014 the pencil stays ' +
@@ -14502,7 +14513,18 @@ function renderSchedEntry(){
   h += '<div class="sched-entry-span" id="schedSpan"></div>';
   body.innerHTML = h;
   updateSchedSpan();
+  schedSyncSaveBtn();
   schedPaintSelection();
+}
+
+// *** A CONTROL THAT CANNOT WORK MUST NOT LOOK LIKE IT CAN. ***
+// With no category chosen there is nothing to write, so Add is genuinely
+// disabled rather than clickable-then-refused. The panel says why in the hint
+// line above it, so this reads as a rule rather than as a dead button.
+function schedSyncSaveBtn(){
+  const btn = document.getElementById('schedEntrySaveBtn');
+  if(!btn) return;
+  btn.disabled = !(schedEntry && schedEntry.category);
 }
 
 // Says how many days will be written, in words, before anything is written.
@@ -14604,6 +14626,9 @@ async function saveSchedEntry(){
   const start = startEl ? startEl.value : e.start;
   const end = endEl ? endEl.value : e.end;
   const reason = reasonEl ? reasonEl.value.trim() : '';
+  // Re-checked here, not just on the button: a rule attached to a control is
+  // not a rule.
+  if(!e.category){ showToast('Pick a category first'); return; }
   if(!start || !end){ showToast('A start and an end date are needed'); return; }
   if(end < start){ showToast('The end date is before the start date'); return; }
   if(e.category === 'other' && !reason){ showToast('Other needs a reason'); return; }
@@ -14657,7 +14682,11 @@ async function saveSchedEntry(){
             : /dates_ordered/i.test(msg) ? 'The end date is before the start date'
             : 'Could not save that \u2014 try again');
   } finally {
-    if(btn) btn.disabled = false;
+    // Restores the button to whatever the CATEGORY warrants, not unconditionally
+    // on. After a successful save the panel closes and schedEntry is cleared, so
+    // an unconditional re-enable would leave a live Add button attached to
+    // nothing.
+    schedSyncSaveBtn();
   }
 }
 
