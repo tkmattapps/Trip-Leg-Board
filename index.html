@@ -2265,7 +2265,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T21:05:00Z';
+const BUILD_VERSION = '2026-08-26T21:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13226,12 +13226,22 @@ function quickNoteBodyHTML(activeTripId){
 
 // Month plus overhang: calendar months alone cut collisions in half, because a
 // trip running into a training block straddles the boundary.
-// Fifteen, not four. The day panel opens over the right-hand side of the grid
-// and covers the very squares you want to click next, so the grid must be able
-// to slide underneath it rather than the panel having to move. Fifteen days
-// either side gives a fortnight of travel in both directions while keeping the
-// view month-based -- the month arrows still do the long-range work.
-const SCHED_OVERHANG_DAYS = 15;
+// Thirty, not four, and not fifteen.
+//
+// Two separate requirements set this. First, the day panel opens over the right
+// of the grid and covers the squares you want to click next, so the grid must be
+// able to slide out from underneath it rather than the panel having to move.
+//
+// Second, and the reason fifteen was not enough: bringing TODAY to the left edge
+// requires enough grid to its RIGHT to scroll into. On the 26th of a month, a
+// fifteen-day overhang leaves only about twenty days beyond today -- the
+// container hits maximum scroll before today reaches the edge, and simply stops
+// short. No arithmetic can fix that; the runway has to exist. Thirty days covers
+// the last day of any month.
+//
+// The view stays month-based either way: the month arrows still do the
+// long-range work.
+const SCHED_OVERHANG_DAYS = 30;
 
 // *** COLOUR IS A RENDERING OF CATEGORY, NEVER THE SOURCE OF IT. ***
 //
