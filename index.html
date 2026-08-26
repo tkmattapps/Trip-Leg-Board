@@ -1145,7 +1145,15 @@
        bottom:0 and would otherwise put Cancel and Add under the home indicator. */
     padding:0 20px 20px;
     padding-top:env(safe-area-inset-top, 0px);
-    padding-bottom:max(20px, env(safe-area-inset-bottom)); }
+    padding-bottom:max(20px, env(safe-area-inset-bottom));
+    /* LANDSCAPE. The panel is flush to right:0, so its own 20px was the only
+       thing between the close button and the screen edge -- and in landscape the
+       rounded corner and the notch bezel eat well past 20px, pinching the X.
+       Both sides are padded because which physical edge is unsafe depends on
+       which way the phone was rotated; env() reports whichever it is and 0 for
+       the other, so nothing moves where there is no inset. */
+    padding-right:max(20px, env(safe-area-inset-right));
+    padding-left:max(20px, env(safe-area-inset-left)); }
 
   /* *** UNDER 700px THE PANEL DOCKS TO THE BOTTOM, NOT THE SIDE. ***
      A side panel steals from the HORIZONTAL axis, which is the axis the grid
@@ -2427,7 +2435,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T17:45:00Z';
+const BUILD_VERSION = '2026-08-27T18:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
