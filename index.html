@@ -1007,7 +1007,12 @@
      viewer needs to weigh; a date marker says only "you are here" and must not
      borrow the vocabulary of an alert. A cool light ring reads instantly on the
      dark grid without competing with any category colour. */
-  .sched-cell-today{ box-shadow:inset 0 0 0 1px rgba(184,196,217,0.55); }
+  /* Applied to the HEADER cell only. Stronger than the old 1px ring, because it
+     is now the single place today is marked rather than one of thirty. */
+  .sched-cell-today{ box-shadow:inset 0 0 0 2px var(--fog-300);
+    background:rgba(184,196,217,0.14); }
+  .sched-cell-today .sched-dnum{ color:#fff; font-weight:600; }
+  .sched-cell-today .sched-dow{ color:var(--fog-300); }
   /* THE VIOLATION, GIVEN A STRUCTURAL REGISTER RATHER THAN A COLOUR.
      With PTO already red, a trip landing on a protected day has nowhere louder
      to escalate chromatically -- the constraint and the breach would look
@@ -1020,7 +1025,6 @@
     border-width:0 7px 7px 0; border-style:solid;
     border-color:transparent var(--paper-050) transparent transparent;
   }
-  .sched-cell-clash.sched-cell-today{ box-shadow:inset 0 0 0 2px var(--alert-600); }
   .sched-key-clash{ width:10px; height:10px; border-radius:2px; flex:0 0 auto;
     box-shadow:inset 0 0 0 2px var(--alert-600); }
   .sched-band{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
@@ -2298,7 +2302,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T00:25:00Z';
+const BUILD_VERSION = '2026-08-27T00:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13501,7 +13505,14 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   // Derived from the date itself rather than passed in, so every row draws the
   // boundary in the same place without another argument to keep in step.
   if(String(dayISO).slice(8, 10) === '01') cls += ' sched-cell-mstart';
-  if(isToday)   cls += ' sched-cell-today';
+  // *** TODAY IS MARKED ONCE, IN THE HEADER. ***
+  // A ring on every crew and aircraft row drew a full-height column through the
+  // grid, competing with the category colours that are the actual content. The
+  // header marker plus vertical alignment already answers "which column is
+  // today", so the body cells stay clean. isToday is now unused here and kept
+  // only to leave every caller's argument list unchanged.
+  void isToday;
+  
   if(schedIsClash(entries)) cls += ' sched-cell-clash';
   const attrs = ' data-sched-day="' + dayISO + '" data-sched-owner="' + escapeHtml(ownerId) + '"' +
                 ' data-sched-kind="' + escapeHtml(ownerKind) + '"';
