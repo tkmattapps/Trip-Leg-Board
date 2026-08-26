@@ -2627,7 +2627,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T06:35:00Z';
+const BUILD_VERSION = '2026-08-28T07:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13869,6 +13869,18 @@ function quickNoteBodyHTML(activeTripId){
 // thing distinguishing these from the loud tier is brightness -- one variable,
 // deliberately, which is what makes the tier legible as a tier.
 //
+// ATTEMPT 6, CURRENT -- hues chosen ON DEVICE from a swatch page rather than
+// argued from theory, which is how this should have been done three attempts ago.
+// Every candidate was pre-solved to the SAME luminance (0.150) so the tier could
+// not be broken by the choice; Kyle was picking hue and nothing else.
+// He took the far end of both sweeps: soft_day hue 36->20 (deep orange, now well
+// clear of amber's 36 -- a bonus, since amber proximity was the accepted risk of
+// attempt 4), quarterly_call hue 52->68 (yellow-olive).
+// Hue gap is now 48 degrees, up from 16, so the two-browns failure mode of
+// attempt 2 (14 degrees) is comprehensively dead.
+// Saturation still untouched at 88% and 77% -- brightness remains the only thing
+// separating quiet from loud.
+//
 // SUPERSEDED REASONING, KEPT: attempt 4 argued semantic family over hue spacing.
 // Kyle: "for soft days, can we make soft days orange and just a little bit
 // fainter, less bright than the red" and quarterly call "yellow and, again, less
@@ -13920,8 +13932,8 @@ const SCHED_COLORS = {
   away_on_trip:   '#3DBE6B',   // ONE TRIP, ONE COLOUR -- see schedCellHTML
   training:       '#4A9DE0',
   pto:            '#E0574A',
-  quarterly_call: '#7A6C10',   // QUIET. #E8D44F DIMMED -- same hue 52, same sat 77%
-  soft_day:       '#985F0A',   // QUIET. #F2A93B DIMMED -- same hue 36, same sat 88%
+  quarterly_call: '#65730F',   // QUIET. hue 68, sat 77%, lum 0.150 -- Kyle picked Q-E
+  soft_day:       '#BB460C',   // QUIET. hue 20, sat 88%, lum 0.150 -- Kyle picked S-E
   other:          '#5059A2',   // QUIET indigo. was #7E8FAC -- was --fog-500, i.e. body text
   // *** ONE PALETTE ACROSS SURFACES. ***
   // An aircraft's state should look the same wherever it is drawn, so these two
