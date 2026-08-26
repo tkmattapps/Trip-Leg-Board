@@ -1051,6 +1051,12 @@
      to zero width and vanish entirely. Vertical centring is a MAIN-axis job here,
      so it is done with auto margins instead. */
   /* PROVISIONAL FLIGHT DUTY. Hollow, not tinted -- see schedCellHTML. */
+  /* QUIET-TIER TEXT. The quiet fills sit at ~0.085 relative luminance, where
+     ink-900 measures 2.4:1 and is unreadable -- and these are the categories
+     that most often carry a qualifier letter. paper-050 measures 7:1+ on all
+     three. Colour only; weight and size stay identical so the tier is not
+     signalled twice. */
+  .sched-blk-quiet{ color:var(--paper-050); }
   .sched-blk-pencil{ background:transparent !important; }
   /* The dot on the category button and in the legend must match the grid, or
      the button teaches the wrong shape. */
@@ -1128,7 +1134,13 @@
      equally urgent. An outline plus a corner mark reads at any zoom, survives
      whichever two categories collided, and does not depend on telling two reds
      apart. */
-  .sched-cell-clash{ box-shadow:inset 0 0 0 2px var(--alert-600); position:relative; }
+  /* THE LOUDEST THING ON THE GRID, BY DESIGN. With the quiet tier demoted a
+     clash competes with five saturated fills instead of eight, and amber is now
+     unused elsewhere on the schedule -- soft_day was the collision and it has
+     gone dark. 3px rather than 2px so the ring still wins against a full-bleed
+     green or red block underneath it. The corner notch stays: it is the
+     structural signal for anyone who cannot separate the ring by hue. */
+  .sched-cell-clash{ box-shadow:inset 0 0 0 3px var(--alert-600); position:relative; }
   .sched-cell-clash::after{
     content:''; position:absolute; top:0; right:0;
     border-width:0 7px 7px 0; border-style:solid;
@@ -2615,7 +2627,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T04:20:00Z';
+const BUILD_VERSION = '2026-08-28T05:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13746,15 +13758,72 @@ function quickNoteBodyHTML(activeTripId){
 // aircraft rows, directly above and below one another. Unlike the amber case
 // these really would sit side by side, and two purples in a 30px cell is a
 // distinction that survives a large monitor and fails on a laptop.
+// *** TWO TIERS, NOT EIGHT CATEGORIES. ***
+// Kyle, 28 Aug 2026, looking at a busy month: "it just kinda looks like a busy
+// colorful palette rather than... it doesn't tell me anything until I really
+// think about it."
+//
+// That was not a complaint about which colours were chosen. Eight categories at
+// equal saturation give the eye nowhere to land, so the grid was being DECODED
+// rather than read. The fix is priority, not new hues.
+//
+// The two readers of this grid mostly want the same thing. A crew member scans
+// one row asking "what am I doing this month"; a scheduler scans every row
+// asking "who is committed, who is protected". Both are answered by the same
+// five facts, so those five stay fully saturated and everything else gets out
+// of their way:
+//
+//   LOUD  -- a real constraint on what can be planned.
+//     flight / away_on_trip   green   committed to a trip
+//     away_from_base          teal    a tail committed to a trip
+//     pto                     red     immovable
+//     training                blue    protected
+//     maintenance             violet  see below
+//
+//   QUIET -- a note about availability, not a commitment.
+//     soft_day, quarterly_call, other
+//
+// *** MAINTENANCE STAYS LOUD, AND THIS REVISES THE NOTE ABOVE. *** The comment
+// above says MX is negotiable, which is why it is violet rather than red -- that
+// still holds for the HUE. But Kyle, same conversation: "it's somewhat malleable,
+// but for the most part it's fairly rigid. We only change maintenance in kind of
+// extreme circumstances." Negotiable in principle, rigid in practice, and the
+// grid should show what it is in practice. Fully saturated.
+//
+// This also retires amber from the schedule entirely. soft_day was #F2A93B --
+// the app's ALERT colour, on a category that means slack in the schedule, so it
+// was not merely colliding with the alert vocabulary but inverting it. Nothing
+// on the grid is amber now, which is what lets .sched-cell-clash own it.
+//
+// It also dissolves the yellow/amber adjacency problem: quarterly_call (#E8D44F)
+// sat one step from soft_day (#F2A93B), a distinction that survives a large
+// monitor and fails on a laptop -- the same failure mode recorded above for two
+// purples. Neither is saturated now, so the pair cannot form.
+//
+// *** THE QUIET TIER IS DARK, NOT MERELY DESATURATED. *** First attempt used
+// muted mid-tones (#8A7A5E, #87825C, #6B7383) and MEASURED WRONG: quietest loud
+// is pto at 0.232 relative luminance, and the loudest of those was 0.219 -- a 6%
+// gap, invisible, because red is inherently dark. Saturation alone cannot carry
+// the tier. Pulling the quiet set down to ~0.085 gives 2.66x separation, which
+// reads regardless of hue.
+//
+// CONSEQUENCE, DELIBERATELY ACCEPTED: soft_day and quarterly_call are 1.02:1
+// against each other -- indistinguishable at a glance. They are the two most
+// malleable categories, the day panel names them in one tap, and a qualifier
+// letter still shows in the cell. Told apart from `other` by warmth.
+//
+// CONSEQUENCE REQUIRING CODE: these fills need LIGHT text. .sched-blk hardcodes
+// ink-900, which is 2.4:1 on them and unreadable -- and these are the categories
+// that most often carry a qualifier. Hence .sched-blk-quiet.
 const SCHED_COLORS = {
   flight:         '#3DBE6B',
   flight_pencil:  '#3DBE6B',   // SAME GREEN AS A REAL FLIGHT, ON PURPOSE
   away_on_trip:   '#3DBE6B',   // ONE TRIP, ONE COLOUR -- see schedCellHTML
   training:       '#4A9DE0',
   pto:            '#E0574A',
-  quarterly_call: '#E8D44F',
-  soft_day:       '#F2A93B',
-  other:          '#7E8FAC',
+  quarterly_call: '#585437',   // QUIET. was #E8D44F
+  soft_day:       '#5C513C',   // QUIET. was #F2A93B -- the alert amber
+  other:          '#454B57',   // QUIET. was #7E8FAC
   // *** ONE PALETTE ACROSS SURFACES. ***
   // An aircraft's state should look the same wherever it is drawn, so these two
   // are now shared with the Settings status pill. Maintenance was #C77DD6 here
@@ -13772,6 +13841,11 @@ const SCHED_COLORS = {
   maintenance:    '#A98BE8',
   away_from_base: '#3FB0A8'
 };
+
+// Which kinds are in the QUIET tier. Kept as a set beside the colours rather than
+// inferred from the hex, so moving a category between tiers is one edit in one
+// place and cannot leave the fill and the text colour disagreeing.
+const SCHED_QUIET_KINDS = { soft_day: true, quarterly_call: true, other: true };
 
 // A day where a person is on flight duty AND holds a protected exception. This
 // is the collision the grid exists to catch, and the only state that must never
@@ -14107,6 +14181,7 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend){
     // departure to return you are away, whether or not you fly that day. The
     // panel still says "Away on trip -- not flying" in words.
     if(e.kind === 'away_on_trip'){
+      // Never quiet -- away_on_trip is green on crew, teal on aircraft, both loud.
       return '<span class="sched-blk" style="background:' + col + '"' +
              ' title="' + escapeHtml(label + (e.trip && e.trip.indexOf('__grp_') !== 0
                                               ? ' \u2014 trip ' + e.trip : '')) + '"></span>';
@@ -14119,7 +14194,11 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend){
     // in the cell when it is short enough to fit, because a reason nobody can
     // see without tapping is a reason nobody reads.
     const short = (e.detail && e.detail.length <= 2) ? escapeHtml(e.detail) : '';
-    return '<span class="sched-blk" style="background:' + col + '" title="' + escapeHtml(title) + '">' + short + '</span>';
+    // The qualifier letter is dark on a loud fill and light on a quiet one --
+    // the quiet fills are too dark for ink-900 to survive on. Driven off
+    // SCHED_QUIET_KINDS rather than off the hex so the two cannot drift apart.
+    const qcls = SCHED_QUIET_KINDS[e.kind] ? ' sched-blk-quiet' : '';
+    return '<span class="sched-blk' + qcls + '" style="background:' + col + '" title="' + escapeHtml(title) + '">' + short + '</span>';
   }).join('');
   return '<div class="' + cls + ' sched-cell-filled"' + attrs + '>' + blocks + '</div>';
 }
