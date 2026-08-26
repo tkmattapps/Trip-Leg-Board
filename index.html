@@ -2590,7 +2590,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T00:10:00Z';
+const BUILD_VERSION = '2026-08-28T00:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15142,7 +15142,11 @@ function renderScheduleView(){
     // produces ("SEPTEMBER 2026") at 11px uppercase with letter-spacing, where
     // 120px did not. Only a sliver run at the very edge of the window falls
     // below this, and a sliver has no room for a word anyway.
+    // data-sched-mkey lets the scroll handler find this cell by MONTH rather than
+    // by index: runs have variable width, so index arithmetic over them would be
+    // wrong at every boundary. See schedSyncMonthToScroll.
     months += '<div class="sched-mcell' + (isCurrent ? ' sched-mcell-on' : '') + '"' +
+                ' data-sched-mkey="' + dt.getFullYear() + '-' + dt.getMonth() + '"' +
                 ' style="width:' + (len * 30) + 'px">' +
                 (len >= 8 ? '<span>' + escapeHtml(label) + '</span>' : '') +
               '</div>';
@@ -15358,6 +15362,80 @@ function schedScrollLeftForDay(iso){
   return Math.max(0, i * schedCellWidth());
 }
 
+// *** STEP 5 OF THE YEAR-STRIP REFACTOR: THE HIGHLIGHTED MONTH FOLLOWS THE
+// SCROLL. ***
+//
+// Until now the highlight was computed at RENDER time from schedAnchor, and the
+// only thing that re-rendered was an arrow press. So you could scroll eight
+// months across the strip and both the highlight and the header kept naming the
+// month you left -- the complaint that opened this work: "you've got a
+// highlighted month that you can't change until you use the arrows."
+//
+// WHICH MONTH COUNTS AS CURRENT: the one at the LEFT EDGE (design note question
+// 1), not the one occupying the most width. It is simpler, it is already how the
+// sticky month label behaves, and with a name column pinned over the left edge
+// it is also where the eye starts.
+//
+// *** THIS DOES NOT RE-RENDER. *** It moves one class and rewrites one string.
+// Re-rendering six thousand cells on a scroll event would fight the finger doing
+// the scrolling. Everything it touches already exists in the DOM.
+//
+// *** IT ALSO DOES NOT CHANGE THE YEAR. *** schedAnchor decides which year the
+// STRIP covers, so writing a different year into it mid-scroll would invalidate
+// schedData and fire a fetch triggered by nothing but a swipe. Scrolling into the
+// December lead-in or the January tail-out therefore updates the visible month
+// and deliberately leaves the strip alone. The strip changes only when a year is
+// chosen.
+// *** DO NOT ADD THE NAME-COLUMN WIDTH HERE. ***
+// The instinct is to, because the sticky name column covers the left edge. But
+// schedScrollLeftForDay has ALREADY SUBTRACTED it when parking, precisely so the
+// requested day lands where it visually appears. Adding it back when reading
+// applies the same correction twice in opposite directions and lands ~3 cells
+// (88px / 30px) to the right of the truth. That was caught only because parking
+// on 1 September read back as 3 September; it survived a month-level test purely
+// because months are ~30 cells wide, and it would have named the WRONG MONTH
+// within three days of any boundary. Measure against the same origin the parker
+// uses: bare scrollLeft.
+function schedMonthAtScroll(){
+  const el = document.querySelector('.sched-scroll');
+  if(!el) return null;
+  const cw = schedCellWidth();
+  if(!cw) return null;
+  const days = schedDayList();
+  let i = Math.floor(el.scrollLeft / cw);
+  if(i < 0) i = 0;
+  if(i > days.length - 1) i = days.length - 1;
+  return days[i];
+}
+
+// Track what is currently shown so the DOM is only touched when it actually
+// changes. A scroll fires this many times a second; almost every call is a no-op
+// and should cost nothing.
+let schedShownMonthKey = null;
+
+function schedSyncMonthToScroll(){
+  const dt = schedMonthAtScroll();
+  if(!dt) return;
+  const key = dt.getFullYear() + '-' + dt.getMonth();
+  if(key === schedShownMonthKey) return;
+  schedShownMonthKey = key;
+
+  // Move the highlight. The month band renders one cell per RUN of days, and a
+  // run is identified by the month it belongs to -- so the cell is found by
+  // matching, not by index arithmetic over variable-width cells.
+  const cells = document.querySelectorAll('.sched-mcell');
+  cells.forEach(function(c){
+    c.classList.toggle('sched-mcell-on', c.getAttribute('data-sched-mkey') === key);
+  });
+
+  // Keep schedAnchor's MONTH in step, so Back, Today and schedAtMonthStart all
+  // reason about the month you are looking at rather than the one you arrived
+  // from. The YEAR is left exactly as it was -- see the note above.
+  if(schedAnchor && schedAnchor.getFullYear() === dt.getFullYear()){
+    schedAnchor = new Date(dt.getFullYear(), dt.getMonth(), 1);
+  }
+}
+
 // ONE RULE: a pending request wins, otherwise stay where you were.
 //
 // The month-keyed memory is gone with the month-shaped window. There is one
@@ -15381,12 +15459,20 @@ function schedApplyScroll(){
       el.scrollLeft = schedScrollLeftForDay(schedISO(new Date()));
     }
     schedScrollLeft = el.scrollLeft;
+    // The render painted the highlight from schedAnchor, but the scroll may have
+    // just landed somewhere else entirely -- restoring a remembered position, for
+    // instance. Force a re-read so the two can never disagree at rest.
+    schedShownMonthKey = null;
+    schedSyncMonthToScroll();
     // Bound ONCE per element. schedApplyScroll runs on every render and on every
     // in-place reposition, and a fresh listener each time would stack up dozens
     // of them on the same node.
     if(!el._schedScrollBound){
       el._schedScrollBound = true;
-      el.addEventListener('scroll', function(){ schedScrollLeft = el.scrollLeft; }, { passive: true });
+      el.addEventListener('scroll', function(){
+        schedScrollLeft = el.scrollLeft;
+        schedSyncMonthToScroll();
+      }, { passive: true });
     }
   });
 }
