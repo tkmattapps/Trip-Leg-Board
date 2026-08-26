@@ -932,6 +932,11 @@
      rather than to any conceivable one. Longer names ellipsise, which is honest:
      the abbreviation underneath still identifies the person, and the same applies
      to the fallback where a row has no display name and shows an email. */
+  .set-actype{ display:block; width:100%; max-width:220px; margin-top:4px;
+    background:transparent; border:1px solid var(--hairline); border-radius:6px;
+    padding:4px 8px; font-size:12px; font-family:inherit; color:var(--fog-300); }
+  .set-actype:focus{ outline:none; border-color:var(--fog-500); color:#fff; }
+  .set-actype::placeholder{ color:var(--fog-500); opacity:0.7; }
   .sched-name{ position:sticky; left:0; z-index:2; flex:0 0 auto; width:88px;
     display:flex; flex-direction:column; justify-content:center; gap:1px;
     padding:0 10px; background:var(--panel-800);
@@ -2309,7 +2314,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T09:30:00Z';
+const BUILD_VERSION = '2026-08-27T10:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7501,6 +7506,13 @@ function aircraftRowHTML(a){
     '<div class="set-row' + (a.is_active ? '' : ' is-inactive') + '" data-aircraft-id="' + escapeHtml(a.id) + '">' +
       '<div class="set-row-main">' +
         '<div class="set-tail">' + escapeHtml(a.tail_number) + '</div>' +
+        // Type is edited in place rather than behind a dialogue: it is one short
+        // field, and an aircraft's type effectively never changes, so a row that
+        // simply accepts a correction is less machinery than an edit mode.
+        '<input class="set-actype" type="text" data-ac-type="' + escapeHtml(a.id) + '"' +
+          ' value="' + escapeHtml(a.aircraft_type || '') + '"' +
+          ' placeholder="Aircraft type" maxlength="60"' +
+          ' aria-label="Aircraft type for ' + escapeHtml(a.tail_number) + '" />' +
         (a.is_active ? '' : '<div class="set-row-sub">Retired \u2014 hidden from the tail picker</div>') +
       '</div>' +
       (a.is_active
@@ -7624,6 +7636,16 @@ function renderSettingsView(){
   });
   main.querySelectorAll('[data-ac-toggle]').forEach(btn => {
     btn.addEventListener('click', function(){ handleToggleAircraftActive(btn.getAttribute('data-ac-toggle')); });
+  });
+  // Saved on blur and on Enter, NOT on every keystroke: a write per character
+  // would be dozens of round trips to record one short string.
+  main.querySelectorAll('[data-ac-type]').forEach(inp => {
+    inp.addEventListener('change', function(){
+      handleAircraftTypeChange(inp.getAttribute('data-ac-type'), inp.value);
+    });
+    inp.addEventListener('keydown', function(ev){
+      if(ev.key === 'Enter'){ ev.preventDefault(); inp.blur(); }
+    });
   });
   // Only rendered for admins, but the handler re-checks anyway: a rule attached
   // to a control is not a rule. openPersonEditSheet guards, savePersonEdit
@@ -8563,6 +8585,30 @@ async function handleAddAircraft(){
     await loadAircraft();
   } catch(e){
     showToast('Could not add aircraft.');
+  }
+}
+
+// Records an aircraft's type. Empty is stored as NULL so the app has ONE empty
+// case rather than two -- matching what migration 23 does to existing rows.
+async function handleAircraftTypeChange(id, value){
+  const ac = (aircraftCache || []).find(function(a){ return a.id === id; });
+  const clean = String(value || '').trim();
+  const next = clean === '' ? null : clean;
+  // Nothing typed that differs from what is stored: no write, no toast.
+  if(ac && (ac.aircraft_type || null) === next) return;
+  try {
+    const { error } = await sb.from('aircraft')
+      .update({ aircraft_type: next, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if(error) throw error;
+    if(ac) ac.aircraft_type = next;
+    showToast(next ? ((ac ? ac.tail_number + ' \u2014 ' : '') + next) : 'Aircraft type cleared.');
+    // The schedule reads aircraftCache, so drop its data to pick this up.
+    schedData = null;
+  } catch(e){
+    console.error('aircraft type', e);
+    showToast('Could not save the aircraft type.');
+    await loadAircraft();
   }
 }
 
@@ -14561,7 +14607,11 @@ function renderScheduleView(){
     if(ao !== bo) return ao - bo;
     return 0;   // loadRoster already sorted alphabetically; keep that as the tail
   });
-  const acRows   = (aircraftCache || []).map(function(a){ return { id: a.id, tail: a.tail_number || '', type: a.model || a.aircraft_type || '' }; });
+  // aircraft.aircraft_type, added in migration 23. This previously read
+  // `a.model || a.aircraft_type` -- neither column existed, so the sub-line was
+  // silently always blank. A fallback chain over guessed column names looks
+  // careful and hides the fault; one real column does not.
+  const acRows   = (aircraftCache || []).map(function(a){ return { id: a.id, tail: a.tail_number || '', type: a.aircraft_type || '' }; });
 
   // One band per JOB TITLE, not one Crew band.
   //
