@@ -239,7 +239,7 @@
   .set-row-sub{ font-size:12px; color:var(--fog-500); margin-top:2px; }
   .set-status{ -webkit-appearance:none; appearance:none; font-family:inherit; cursor:pointer; flex:0 0 auto; font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; padding:4px 9px; border-radius:999px; border:1px solid transparent; white-space:nowrap; }
   .set-status.st-home{ color:#3DBE6B; border-color:rgba(61,190,107,0.45); background:rgba(61,190,107,0.10); }
-  .set-status.st-away{ color:#4A9DE0; border-color:rgba(74,157,224,0.45); background:rgba(74,157,224,0.10); }
+  .set-status.st-away{ color:#3FB0A8; border-color:rgba(63,176,168,0.45); background:rgba(63,176,168,0.10); }
   .set-status.st-maintenance{ color:#A98BE8; border-color:rgba(169,139,232,0.45); background:rgba(169,139,232,0.10); }
   .set-row-actions{ flex:0 0 auto; display:flex; gap:6px; }
   .set-mini-btn{ font:inherit; font-size:12px; padding:5px 10px; border-radius:7px; background:transparent; border:1px solid var(--hairline,#24384f); color:var(--fog-300); cursor:pointer; }
@@ -932,10 +932,14 @@
      rather than to any conceivable one. Longer names ellipsise, which is honest:
      the abbreviation underneath still identifies the person, and the same applies
      to the fallback where a row has no display name and shows an email. */
-  /* Status shown to a non-admin: the same information, without pretending to be
-     a control. */
-  .set-status-ro{ font-size:12px; color:var(--fog-300); padding:4px 8px;
-    border:1px solid var(--hairline); border-radius:6px; white-space:nowrap; }
+  /* Status shown to a non-admin. Deliberately keeps the .set-status pill and its
+     st- colour, because the colour says WHERE THE AIRCRAFT IS -- green home, blue
+     away, violet maintenance -- and that is worth reading whether or not you can
+     change it. An earlier version used a neutral grey border for all three and
+     threw that information away. This rule only removes the affordance: no
+     pointer, no select styling. It sets no colour of its own, so it cannot
+     override the st- rules. */
+  .set-status-ro{ cursor:default; display:inline-block; }
   .set-actype{ display:block; width:100%; max-width:220px; margin-top:4px;
     background:transparent; border:1px solid var(--hairline); border-radius:6px;
     padding:4px 8px; font-size:12px; font-family:inherit; color:var(--fog-300); }
@@ -2318,7 +2322,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T10:45:00Z';
+const BUILD_VERSION = '2026-08-27T11:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7544,7 +7548,11 @@ function aircraftRowHTML(a){
             ? '<select class="set-status st-' + st + '" data-ac-status="' + escapeHtml(a.id) + '">' + opts + '</select>'
             // Status is information a crew member needs -- where the aircraft is
             // -- so it is still shown, just not as a control.
-            : '<span class="set-status-ro st-' + st + '">' + escapeHtml(AIRCRAFT_STATUS_LABELS[st]) + '</span>')
+            // Carries .set-status TOO, so the st- colour rules apply: those
+            // colours are information -- where the aircraft is -- and are not a
+            // property of being able to change it. .set-status-ro only removes
+            // the pointer affordance.
+            : '<span class="set-status set-status-ro st-' + st + '">' + escapeHtml(AIRCRAFT_STATUS_LABELS[st]) + '</span>')
         : '') +
       (canEdit
         ? '<div class="set-row-actions">' +
@@ -13427,7 +13435,21 @@ const SCHED_COLORS = {
   quarterly_call: '#E8D44F',
   soft_day:       '#F2A93B',
   other:          '#7E8FAC',
-  maintenance:    '#C77DD6',
+  // *** ONE PALETTE ACROSS SURFACES. ***
+  // An aircraft's state should look the same wherever it is drawn, so these two
+  // are now shared with the Settings status pill. Maintenance was #C77DD6 here
+  // and #A98BE8 on the pill; both are now #A98BE8. Away was #3FB0A8 here and
+  // #4A9DE0 on the pill; both are now #3FB0A8.
+  //
+  // THE TEAL DECISION ABOVE IS UNAFFECTED. The concern recorded there was two
+  // near-identical PURPLES on adjacent aircraft rows -- maintenance and
+  // away-from-base. Away stays teal, so that pair never forms; only the shade of
+  // violet changed.
+  //
+  // The pill side also RESOLVED a real collision: away was #4A9DE0, the exact
+  // blue this table uses for training, so one colour meant two unrelated things
+  // depending on which screen you were on.
+  maintenance:    '#A98BE8',
   away_from_base: '#3FB0A8'
 };
 
