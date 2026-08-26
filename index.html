@@ -952,7 +952,10 @@
     padding:4px 8px; font-size:12px; font-family:inherit; color:var(--fog-300); }
   .set-actype:focus{ outline:none; border-color:var(--fog-500); color:#fff; }
   .set-actype::placeholder{ color:var(--fog-500); opacity:0.7; }
-  .sched-name{ position:sticky; left:0; z-index:2; flex:0 0 auto; width:88px;
+  /* The sticky month label has to park exactly clear of this column, so the
+     width is a variable rather than two hard-coded numbers that would drift. */
+  .sched-wrap{ --sched-name-w:88px; }
+  .sched-name{ position:sticky; left:0; z-index:2; flex:0 0 auto; width:var(--sched-name-w);
     display:flex; flex-direction:column; justify-content:center; gap:1px;
     padding:0 10px; background:var(--panel-800);
     border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
@@ -971,8 +974,12 @@
   /* MONTH BAND. Sticks above the day numbers, so scrolling into a neighbouring
      month tells you so. */
   .sched-months{ position:sticky; top:0; z-index:3; }
+  /* overflow:CLIP, not hidden. Both clip the overflowing text, but hidden makes
+     the element a scroll container -- which would trap the sticky label inside
+     this cell and stop it moving at all. clip does not, so the label still
+     resolves against .sched-scroll. */
   .sched-mcell{ flex:0 0 auto; display:flex; align-items:center; padding:5px 8px;
-    box-sizing:border-box; background:var(--panel-700); overflow:hidden;
+    box-sizing:border-box; background:var(--panel-700); overflow:clip;
     white-space:nowrap; font-size:11px; letter-spacing:0.04em;
     text-transform:uppercase; color:var(--fog-500);
     border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
@@ -980,6 +987,16 @@
      different hue -- one visual language for "where you are", varied by
      intensity. */
   .sched-mcell-on{ color:#fff; background:var(--panel-800); }
+  /* *** THE MONTH FOLLOWS THE SCROLL AND PARKS BESIDE THE NAME COLUMN. ***
+     Sized to its run, a month's label scrolled away with its own cell -- so on a
+     narrow screen, mid-month, nothing on screen said which month you were
+     looking at. Sticky at the left edge, the label travels with you while its
+     month is in view and is pushed off by the next month's label at the
+     boundary, which reads as a handover rather than a jump.
+     The offset clears the sticky name column; sticky keeps the label inside its
+     own cell, so it can never stray over a month it does not belong to. */
+  .sched-mcell > span{ position:sticky; left:calc(var(--sched-name-w) + 8px);
+    display:inline-block; }
   /* Offset by the band above it so the two stack rather than overlap. */
   .sched-head{ position:sticky; top:27px; z-index:3; }
   .sched-name-head{ z-index:4; }
@@ -2435,7 +2452,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T18:00:00Z';
+const BUILD_VERSION = '2026-08-27T18:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
