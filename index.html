@@ -2329,7 +2329,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T14:30:00Z';
+const BUILD_VERSION = '2026-08-27T14:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5760,7 +5760,7 @@ function crewListRowHTML(label, slot, values, leg){
 //   SIC  exactly one, optional
 //   ACM  a LIST, additional crew members, ALWAYS PILOTS (never a mechanic
 //        riding along)
-//   FA   a LIST, flight attendants
+//   FA   a LIST, cabin crew (users.role is still 'flight attendant')
 // ACM and FA are FULLY INDEPENDENT: an FA with no ACM is valid.
 //
 // Pickers FILTER BY JOB TITLE. Dispatchers and maintenance never appear in any
@@ -7622,7 +7622,7 @@ function renderSettingsView(){
           : '') +
       '</div>' +
       '<p class="set-section-note">Job titles decide who appears in each crew slot. ' +
-        'Pilots fill PIC, SIC and ACM; flight attendants fill FA. Titles are set in Supabase.' +
+        'Pilots fill PIC, SIC and ACM; cabin crew fill FA. Titles are set in Supabase.' +
         (rosterViewerIsAdmin()
           ? ' As an admin you can add people, edit names and crew abbreviations, and reset passwords here.'
           : '') + '</p>' +
@@ -7714,7 +7714,7 @@ function renderSettingsView(){
 
 // ---- Department roster -------------------------------------------------
 // JOB TITLES ARE A FIXED LIST, NOT FREE TEXT. Crew pickers filter on this value
-// (PIC/SIC/ACM show pilots, FA shows flight attendants), so a hand-typed
+// (PIC/SIC/ACM show pilots, FA shows cabin crew), so a hand-typed
 // "Chief Pilot" would silently remove that person from every picker they belong
 // in. A dropdown makes that class of bug impossible.
 //
@@ -7728,16 +7728,29 @@ const JOB_TITLES = ['pilot', 'dispatcher', 'flight attendant', 'maintenance'];
 // original order deliberately -- the crew pickers and the create dropdown both
 // read it, so display order lives here instead.
 const ROSTER_GROUP_ORDER = ['pilot', 'flight attendant', 'dispatcher', 'maintenance'];
+// *** THE KEY IS THE STORED VALUE; ONLY THE LABEL IS EDITABLE. ***
+// 'flight attendant' is what lives in users.role, and it must stay exactly that
+// string. Three things match on it: CREW_SLOT_TITLES.fa, the roster grouping,
+// and -- the one that bites -- the DEPLOYED EDGE FUNCTION, which carries its own
+// hard-coded JOB_TITLES list and rejects anything not on it. Renaming the value
+// here would break creating a person the moment it shipped, with the server
+// answering "Choose a job title" and no clue why. Every existing user row
+// carries the old string too.
+//
+// So the department's preferred wording lives in these lookups and nowhere else.
+// 'Cabin crew' is used in BOTH the plural and the singular: it reads as a
+// collective for a band header and acceptably for one person, and inventing
+// "Cabin crew member" for the singular would put two names on one thing.
 const ROSTER_GROUP_LABELS = {
   'pilot': 'Pilots',
-  'flight attendant': 'Flight attendants',
+  'flight attendant': 'Cabin crew',
   'dispatcher': 'Dispatchers',
   'maintenance': 'Maintenance'
 };
 const JOB_TITLE_LABELS = {
   'pilot': 'Pilot',
   'dispatcher': 'Dispatcher',
-  'flight attendant': 'Flight attendant',
+  'flight attendant': 'Cabin crew',
   'maintenance': 'Maintenance'
 };
 
