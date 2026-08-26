@@ -298,11 +298,10 @@
   /* margin-top REMOVED -- it moved to .page-header-right. Leaving it here as
      well would double the offset on every page that has actions. */
   .page-header-actions{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
-  /* Sits directly under the controls it describes. Collapses when empty so no
-     other page gains a gap. Slightly dimmer than the title's subtext: this is a
-     caption for the buttons, not a second heading. margin-top is negative
-     against the stack's 6px gap so it tucks under the pills rather than
-     floating a clear row below them. */
+  /* Caption under the right-hand controls. NO CALLER TODAY -- see the note on
+     #pageHeaderSubRight in the markup. Collapses when empty, so it is inert
+     rather than costly. Dimmer than the title's subtext on purpose: a caption
+     for the buttons, not a second heading. */
   .page-header-subright{
     font-size:12px; color:var(--fog-300);
     font-family:system-ui,'Inter',sans-serif;
@@ -2194,10 +2193,14 @@ a.chat-open{ text-decoration:none; display:inline-block; }
          in here may be written once at boot. -->
     <div class="page-header-right">
       <div class="page-header-actions" id="pageHeaderActions"></div>
-      <!-- CAPTION FOR THE CONTROLS ABOVE IT. Used by the Schedule, whose month
-           label belongs next to the chevrons that change it rather than across
-           the header under the title -- eyes are already in this corner. Empty
-           and collapsed on every other page. -->
+      <!-- CAPTION SLOT FOR THE CONTROLS ABOVE IT. *** CURRENTLY UNUSED BY EVERY
+           PAGE. *** Built for the Schedule's month label; that label was then
+           dropped altogether because the sticky month band in the grid already
+           does the job and a third stacked line made the corner busy. Left in
+           place because it is inert -- it collapses when empty, so it costs a
+           wiped textContent per render and nothing else -- and a right-hand
+           caption is a plausible want. Feed it via setPageHeader({ subRight }).
+           If it is still unused when someone next reads this, delete it. -->
       <div class="page-header-subright" id="pageHeaderSubRight"></div>
       <div class="page-header-docs" id="pageHeaderDocSlot"></div>
     </div>
@@ -2533,7 +2536,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T22:45:00Z';
+const BUILD_VERSION = '2026-08-27T23:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14992,7 +14995,6 @@ function renderScheduleView(){
   const main = document.getElementById('mainPanel');
   if(!main) return;
   const w = schedWindow();
-  const monthLabel = w.monthFirst.toLocaleDateString([], { month: 'long', year: 'numeric' });
 
   // *** THE YEAR IS A CHOOSER, NOT A STEPPER. ***
   // Year arrows were built first and were wrong: six controls did not fit the
@@ -15003,27 +15005,32 @@ function renderScheduleView(){
   // that a first-time user needs no instructions -- and a bare year reads as a
   // label, not a button. A value plus a caret is about as close to a universal
   // "this opens something" as convention offers. Month arrows are untouched.
-  // *** THE KEY IS `sub`, NOT `subtitle`. ***
-  // It read `subtitle` from the day this view was written, so setPageHeader --
-  // which looks for o.sub -- blanked the line on every render and the schedule
-  // was the only page in the app with no subtitle. monthLabel was computed and
-  // thrown away. Predates the year-strip work; found while checking whether the
-  // month chevrons needed labels. They do not, now that the month is on screen.
+  // *** NO MONTH LABEL IN THE HEADER AT ALL. ***
+  // It was tried under the title (far from the controls that change it) and then
+  // as a caption under the buttons (three stacked lines, too busy). Both were
+  // redundant: the STICKY MONTH BAND in the grid already names the month you are
+  // looking at, and it is the more honest source because it follows the scroll
+  // rather than an anchor.
+  //
+  // A HISTORICAL NOTE WORTH KEEPING: this view passed `subtitle:` to
+  // setPageHeader from the day it was written, and setPageHeader reads `sub`.
+  // So the label was computed and silently binned on every render for months --
+  // the schedule was the only page in the app with no subtitle and nobody
+  // noticed, because a wrong key in an options object fails silently, exactly
+  // like a wrong jsonb path returns null instead of erroring. Fixing it is what
+  // led to dropping the label on purpose instead.
+  //
+  // Control order is one CLUSTER then the year: the three month controls belong
+  // together, and putting the year between them split the group in half.
   setPageHeader({
     title: 'Schedule',
-    // *** THE MONTH LABEL SITS UNDER THE CONTROLS, NOT UNDER THE TITLE. ***
-    // Under the title it was both far from the chevrons that change it and
-    // redundant against the sticky month band a few pixels below. Beneath the
-    // buttons it captions them, which is what makes a bare chevron read as
-    // "month" without a label on it.
-    subRight: monthLabel,
     actionsHTML:
-      '<button type="button" class="btn sched-yearbtn" data-sched-yearpick="1" aria-haspopup="listbox" aria-label="Choose year. Currently ' + w.year + '">' +
-        w.year + '<span class="sched-caret" aria-hidden="true"></span>' +
-      '</button>' +
       '<button type="button" class="btn sched-nav" data-sched-step="-1" aria-label="Previous month">\u2039</button>' +
       '<button type="button" class="btn sched-nav" data-sched-today="1">Today</button>' +
-      '<button type="button" class="btn sched-nav" data-sched-step="1" aria-label="Next month">\u203A</button>'
+      '<button type="button" class="btn sched-nav" data-sched-step="1" aria-label="Next month">\u203A</button>' +
+      '<button type="button" class="btn sched-yearbtn" data-sched-yearpick="1" aria-haspopup="listbox" aria-label="Choose year. Currently ' + w.year + '">' +
+        w.year + '<span class="sched-caret" aria-hidden="true"></span>' +
+      '</button>'
   });
 
   if(schedLoading || !schedData){
