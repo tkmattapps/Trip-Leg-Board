@@ -2627,7 +2627,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T05:40:00Z';
+const BUILD_VERSION = '2026-08-28T06:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13831,17 +13831,52 @@ function quickNoteBodyHTML(activeTripId){
 // plum reaches at 41% and indigo at 47%. Uniform lightness is exactly what put
 // attempt 2 in the mud.
 //
-// Hues chosen to land in the widest gaps around the loud tier (occupied: 5 red,
-// 141 green, 176 teal, 207 blue, 259 violet) so a quiet colour never reads as a
-// dim version of a loud one:
-//   soft_day        73   olive   -- widest gap; still warm, which suits slack
-//   quarterly_call  312  plum    -- second widest
-//   other           233  indigo  -- neutral-leaning but unmistakably PRESENT
+// ATTEMPT 3 was hue-gap-driven: olive 73, plum 312, indigo 233, picked to sit in
+// the widest gaps around the loud tier (occupied: 5 red, 141 green, 176 teal,
+// 207 blue, 259 violet). Mathematically clean, and Kyle rejected the olive: "it
+// just clashes with our primary colors." Filling gaps on the wheel is not the
+// same as belonging to a palette.
 //
-// NOTE ON MEASURING THIS: luminance ratio between two quiet colours is ~1.00 BY
-// DESIGN and says nothing about whether they can be told apart -- they are 79 to
-// 160 degrees apart in hue. Judging hue separation by contrast ratio is what
-// produced attempt 2.
+// *** ATTEMPT 4, CURRENT -- SEMANTIC FAMILY BEATS HUE SPACING. ***
+// Kyle: "for soft days, can we make soft days orange and just a little bit
+// fainter, less bright than the red" and quarterly call "yellow and, again, less
+// bright than the rest."
+//
+// This is a better organising idea than gap-filling. Orange beside red reads as
+// SAME FAMILY, LESS URGENT, which is exactly what a soft day is next to PTO. The
+// tier is then carried entirely by BRIGHTNESS -- 1.53x below pto -- rather than
+// by hue distance, so a category can share a hue family with a louder one and
+// still visibly rank below it.
+//   soft_day        28   burnt orange
+//   quarterly_call  50   dark yellow
+//   other           233  indigo (unchanged from attempt 3; never objected to)
+//
+// *** KNOWN AND ACCEPTED: THIS RE-ENTERS THE AMBER NEIGHBOURHOOD. ***
+// Retiring amber from the grid was the original point of this work -- soft_day
+// was #F2A93B, byte-identical to --amber-500 -- and an orange soft day walks back
+// toward it. Raised explicitly; Kyle: "I know. I know... but I don't think we
+// have a choice." He is right that the alternatives are thin: very few hues read
+// as "less urgent than red".
+//
+// What makes it survivable, and what must not be eroded later:
+//   1. BRIGHTNESS. --amber-500 is 0.476 luminance; soft_day is 0.151, a 2.6x
+//      gap. An alert is bright by definition, so the dark orange cannot be
+//      mistaken for one. IF SOMEONE LIGHTENS soft_day, THAT PROTECTION IS GONE.
+//   2. ROLE. Alert amber appears on rings, flags and status pills -- never as a
+//      grid block fill. The clash ring is a 3px outline, not a fill, so the two
+//      never perform the same visual job in the same place.
+//
+// soft_day and quarterly_call are only 22 degrees apart, uncomfortably close to
+// the 14 degrees that produced two identical browns in attempt 2. The difference
+// is saturation: at 62% these are a clear orange and a clear yellow rather than
+// two low-saturation muds. Flagged to Kyle as the weak point of this attempt and
+// built anyway to be judged on device -- if they merge, the fix is to push
+// quarterly_call toward 60 rather than to change its brightness, which is the
+// only thing holding the tier.
+//
+// NOTE ON MEASURING THIS: luminance ratio BETWEEN two quiet colours is ~1.00 by
+// design and says nothing about whether they can be told apart. Judging hue
+// separation by contrast ratio is what produced attempt 2.
 //
 // CONSEQUENCE REQUIRING CODE: these fills need LIGHT text. .sched-blk hardcodes
 // ink-900, which is unreadable on them -- and these are the categories that most
@@ -13853,8 +13888,8 @@ const SCHED_COLORS = {
   away_on_trip:   '#3DBE6B',   // ONE TRIP, ONE COLOUR -- see schedCellHTML
   training:       '#4A9DE0',
   pto:            '#E0574A',
-  quarterly_call: '#8D457E',   // QUIET plum.   was #E8D44F
-  soft_day:       '#596431',   // QUIET olive.  was #F2A93B -- the alert amber
+  quarterly_call: '#7C6C1D',   // QUIET dark yellow.  was #E8D44F
+  soft_day:       '#9D5D25',   // QUIET burnt orange. was #F2A93B, the alert amber
   other:          '#5059A2',   // QUIET indigo. was #7E8FAC -- was --fog-500, i.e. body text
   // *** ONE PALETTE ACROSS SURFACES. ***
   // An aircraft's state should look the same wherever it is drawn, so these two
