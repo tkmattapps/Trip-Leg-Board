@@ -2241,7 +2241,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T16:10:00Z';
+const BUILD_VERSION = '2026-08-26T16:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13385,6 +13385,22 @@ function indexBusyDays(rows, ownerKey, sourceKey){
 // trip number the legs stay as they are -- an unresolvable trip must not become
 // an assumption about someone's availability.
 function schedFillAwayDays(idx){
+  // TEMPORARY DIAGNOSTIC -- remove once the away bars are confirmed.
+  try{
+    let flightRows = 0, resolved = 0;
+    Object.keys(idx || {}).forEach(function(o){
+      Object.keys(idx[o] || {}).forEach(function(dy){
+        (idx[o][dy] || []).forEach(function(en){
+          if(en.kind === 'flight' && en.ref){
+            flightRows++;
+            if(schedFlightRefInfo(en.ref)) resolved++;
+          }
+        });
+      });
+    });
+    console.log('[away-days] state.legs =', (window.state && state.legs ? state.legs.length : 'MISSING'),
+                '| flight rows =', flightRows, '| resolved to a trip =', resolved);
+  }catch(err){ console.log('[away-days] diagnostic threw', err); }
   Object.keys(idx || {}).forEach(function(ownerId){
     const byDay = idx[ownerId] || {};
     // trip key -> sorted list of that person's flight days on that trip
