@@ -1074,6 +1074,22 @@
     box-shadow:inset 0 0 0 2px var(--alert-600); }
   .sched-band{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
     color:var(--fog-500); padding:12px 0 5px 2px; position:sticky; left:0; }
+  .sched-keywrap{ display:flex; flex-direction:column; gap:10px; }
+  .sched-key-toggle{ align-self:flex-start; display:inline-flex; align-items:center;
+    gap:6px; background:transparent; border:0; padding:0; cursor:pointer;
+    font-family:inherit; font-size:11px; letter-spacing:0.06em;
+    text-transform:uppercase; color:var(--fog-500); }
+  .sched-key-toggle:hover{ color:var(--fog-300); }
+  .sched-key-caret{ font-size:9px; line-height:1; }
+  /* Closed hides the swatches AND the note, and the gap with them, so the folded
+     state really is one line rather than a line plus dead space. */
+  .sched-wrap.is-key-closed .sched-keywrap{ gap:0; }
+  .sched-wrap.is-key-closed .sched-key,
+  .sched-wrap.is-key-closed .sched-note{ display:none; }
+  /* And the grid claims what the legend gave up. Without this the fold would
+     hide the key and leave the space empty. */
+  .sched-wrap.is-key-closed .sched-scroll{
+    max-height:calc(100vh - var(--page-header-h, 84px) - 66px); }
   .sched-key{ display:flex; flex-wrap:wrap; gap:12px; }
   .sched-key-item{ display:inline-flex; align-items:center; gap:6px;
     font-size:11px; color:var(--fog-300); }
@@ -2347,7 +2363,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T15:20:00Z';
+const BUILD_VERSION = '2026-08-27T15:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14721,6 +14737,27 @@ async function saveSchedEntry(){
   }
 }
 
+// Remembered per DEVICE, not per user and not on the server: whether the key is
+// folded away is a preference about this screen on this machine, not a fact
+// about the department. Wrapped in try/catch like the other storage helpers --
+// private browsing and full storage both throw, and a legend that will not fold
+// is a nuisance, never a failure.
+const SCHED_KEY_OPEN_KEY = 'tlb_sched_key_open';
+
+function schedKeyIsOpen(){
+  try {
+    const v = localStorage.getItem(SCHED_KEY_OPEN_KEY);
+    // Default OPEN: someone seeing the grid for the first time needs the key,
+    // and the schedule has to be figure-out-able without a manual.
+    return v === null ? true : v === '1';
+  } catch(e){ return true; }
+}
+
+function schedSetKeyOpen(open){
+  try { localStorage.setItem(SCHED_KEY_OPEN_KEY, open ? '1' : '0'); }
+  catch(e){ /* preference only -- not worth telling anyone about */ }
+}
+
 function renderScheduleView(){
   const main = document.getElementById('mainPanel');
   if(!main) return;
@@ -14890,7 +14927,18 @@ function renderScheduleView(){
 
   // The key is not decoration. Colour is a RENDERING of category here, never
   // the source of it, so the grid has to say out loud what each colour means.
-  let key = '<div class="sched-key">';
+  // COLLAPSIBLE, and collapsed state is REMEMBERED. The key earns its space the
+  // first few times and then stops -- someone who has learned the colours should
+  // not have to fold it away on every visit. Vertical room is the scarcest thing
+  // on this screen, so the closed state is a single line.
+  const keyOpen = schedKeyIsOpen();
+  let key = '<div class="sched-keywrap">' +
+    '<button type="button" class="sched-key-toggle" id="schedKeyToggle" ' +
+      'aria-expanded="' + (keyOpen ? 'true' : 'false') + '">' +
+      '<span class="sched-key-caret" aria-hidden="true">' + (keyOpen ? '\u25be' : '\u25b8') + '</span>' +
+      'Key' +
+    '</button>';
+  key += '<div class="sched-key">';
   ['flight','training','pto','quarterly_call','soft_day','other','maintenance','away_from_base'].forEach(function(k){
     key += '<span class="sched-key-item"><span class="sched-key-dot" style="background:' + SCHED_COLORS[k] + '"></span>' +
            escapeHtml(SCHED_LABELS[k]) + '</span>';
@@ -14900,15 +14948,21 @@ function renderScheduleView(){
   key += '<span class="sched-key-item"><span class="sched-key-clash" aria-hidden="true"></span>' +
          'Flying on a protected day</span>';
   key += '</div>';
+  // The note is part of the same explanation, so it folds with it rather than
+  // being left behind as an orphan line.
+  key += '<div class="sched-note">Flight duty is read from the trips themselves and cannot be edited here. ' +
+         'Everything else is entered by hand.</div>';
+  key += '</div>';
 
   // A non-admin gets the same grid with no pointer affordance. The RLS policies
   // are the actual gate -- this only avoids offering something that would fail.
   const editCls = rosterViewerIsAdmin() ? ' sched-can-edit' : '';
-  main.innerHTML = '<div class="sched-wrap' + editCls + '">' +
+  // The state lives on the OUTER wrapper, not on the key itself, because the
+  // grid's max-height has to respond to it -- hiding the legend without giving
+  // the freed space to the grid would be a fold that gains nothing.
+  main.innerHTML = '<div class="sched-wrap' + editCls + (keyOpen ? '' : ' is-key-closed') + '">' +
       '<div class="sched-scroll">' + months + head + body + '</div>' +
       key +
-      '<div class="sched-note">Flight duty is read from the trips themselves and cannot be edited here. ' +
-      'Everything else is entered by hand.</div>' +
     '</div>';
   schedApplyScroll();
 }
@@ -15280,6 +15334,24 @@ document.addEventListener('click', async function(e){
     if(schedDragMoved){ schedDragMoved = false; return; }
     openSchedEntry(schedCell.getAttribute('data-sched-owner'), schedCell.getAttribute('data-sched-kind'),
                    schedCell.getAttribute('data-sched-day'));
+    return;
+  }
+
+  if(t.closest('#schedKeyToggle')){
+    // Toggled in place. Re-rendering the whole view would re-fetch and reset the
+    // scroll, which is a lot of machinery for folding a legend.
+    const wrap = document.querySelector('.sched-wrap');
+    if(wrap){
+      const nowOpen = wrap.classList.contains('is-key-closed');
+      wrap.classList.toggle('is-key-closed', !nowOpen);
+      const btn = document.getElementById('schedKeyToggle');
+      if(btn){
+        btn.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+        const caret = btn.querySelector('.sched-key-caret');
+        if(caret) caret.textContent = nowOpen ? '\u25be' : '\u25b8';
+      }
+      schedSetKeyOpen(nowOpen);
+    }
     return;
   }
 
