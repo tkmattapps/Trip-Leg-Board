@@ -2245,7 +2245,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T17:05:00Z';
+const BUILD_VERSION = '2026-08-26T17:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13206,7 +13206,12 @@ function quickNoteBodyHTML(activeTripId){
 
 // Month plus overhang: calendar months alone cut collisions in half, because a
 // trip running into a training block straddles the boundary.
-const SCHED_OVERHANG_DAYS = 4;
+// Fifteen, not four. The day panel opens over the right-hand side of the grid
+// and covers the very squares you want to click next, so the grid must be able
+// to slide underneath it rather than the panel having to move. Fifteen days
+// either side gives a fortnight of travel in both directions while keeping the
+// view month-based -- the month arrows still do the long-range work.
+const SCHED_OVERHANG_DAYS = 15;
 
 // *** COLOUR IS A RENDERING OF CATEGORY, NEVER THE SOURCE OF IT. ***
 //
@@ -14278,6 +14283,54 @@ function renderScheduleView(){
       '<div class="sched-note">Flight duty is read from the trips themselves and cannot be edited here. ' +
       'Everything else is entered by hand.</div>' +
     '</div>';
+  schedApplyScroll();
+}
+
+// *** THE GRID SLIDES UNDER THE PANEL; THE PANEL DOES NOT MOVE. ***
+//
+// The day panel is pinned right and covers the squares you would click next.
+// Rather than pushing the grid sideways -- which costs visible days, the one
+// thing the grid exists to give you -- the month now carries fifteen days of
+// overhang so it can be scrolled out from underneath it.
+//
+// The month opens with its FIRST DAY four days in from the left, not centred and
+// not hard against the edge. The grid's job is forward-looking, so the month's
+// own days get the room; four days of run-in is enough to see what just happened
+// without spending space on it.
+const SCHED_LEAD_IN_DAYS = 4;
+
+// MUST TRACK .sched-cell / .sched-hcell IN CSS. Measured from the DOM rather
+// than duplicated as a number here, so a change to the cell width cannot
+// silently put the opening scroll position on the wrong day.
+function schedCellWidth(){
+  const c = document.querySelector('.sched-hcell');
+  const w = c ? c.getBoundingClientRect().width : 0;
+  return w > 0 ? w : 30;
+}
+
+// Scroll position is REMEMBERED PER MONTH. renderScheduleView runs again after
+// every add or remove, and resetting the scroll each time would throw you back
+// to the start of the month the instant you filed an entry -- exactly when you
+// are mid-task. The default position is applied only when the month changes.
+let schedScrollKey = null;
+let schedScrollLeft = null;
+
+function schedApplyScroll(){
+  const w = schedWindow();
+  const key = w.monthFirst.getFullYear() + '-' + w.monthFirst.getMonth();
+  const sameMonth = (key === schedScrollKey) && (schedScrollLeft !== null);
+  // Deferred a frame: the grid has only just been written and has no measurable
+  // width until layout settles, so scrollLeft would be clamped to zero.
+  requestAnimationFrame(function(){
+    const el = document.querySelector('.sched-scroll');
+    if(!el) return;
+    el.scrollLeft = sameMonth
+      ? schedScrollLeft
+      : Math.max(0, (SCHED_OVERHANG_DAYS - SCHED_LEAD_IN_DAYS) * schedCellWidth());
+    schedScrollKey = key;
+    schedScrollLeft = el.scrollLeft;
+    el.addEventListener('scroll', function(){ schedScrollLeft = el.scrollLeft; }, { passive: true });
+  });
 }
 
 async function openScheduleView(){
