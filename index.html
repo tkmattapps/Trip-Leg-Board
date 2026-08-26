@@ -914,7 +914,14 @@
      shrinking, because a month squeezed into a phone width destroys the
      adjacency that is the only reason to draw a grid at all. */
   .sched-wrap{ display:flex; flex-direction:column; gap:14px; }
-  .sched-scroll{ overflow-x:auto; overscroll-behavior-x:contain; padding-bottom:6px; }
+  /* overflow-x:auto makes this a scroll container on BOTH axes as far as sticky
+     positioning is concerned, so a sticky child resolves against THIS box rather
+     than .main. Left as-is, the date bar would stick to a box that never scrolls
+     vertically and would therefore never move. Giving it a max height and its own
+     vertical scroll makes it the real vertical scroller, so the header can stick
+     inside it. */
+  .sched-scroll{ overflow-x:auto; overscroll-behavior-x:contain; padding-bottom:6px;
+    max-height:calc(100vh - var(--page-header-h, 84px) - 132px); overflow-y:auto; }
   .sched-row{ display:flex; align-items:stretch; min-width:max-content; }
   /* The name column is STICKY: scrolled twenty days into a month, an unlabelled
      row of colour is unreadable. */
@@ -927,6 +934,15 @@
   .sched-name-sub{ font-size:10px; color:var(--fog-500); letter-spacing:0.04em; }
   .sched-name-head{ background:var(--panel-700); }
   .sched-head .sched-name{ background:var(--panel-700); }
+  /* *** THE DATES MUST SURVIVE A VERTICAL SCROLL. ***
+     The vertical counterpart of the sticky name column: scrolled down to the
+     aircraft band or the legend, an unlabelled row of squares is as unreadable
+     as an unlabelled row of colour. z-index 3 puts it above the day cells but
+     below .sched-name at its own corner, so the two never fight.
+     The offset is the app header's height -- the bar must come to rest BELOW it,
+     not underneath it. */
+  .sched-head{ position:sticky; top:0; z-index:3; }
+  .sched-name-head{ z-index:4; }
   .sched-hcell{ flex:0 0 auto; width:30px; height:34px; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:1px; background:var(--panel-700);
     border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
@@ -2265,7 +2281,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T21:20:00Z';
+const BUILD_VERSION = '2026-08-26T21:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
