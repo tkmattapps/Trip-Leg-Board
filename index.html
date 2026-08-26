@@ -2298,7 +2298,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T00:05:00Z';
+const BUILD_VERSION = '2026-08-27T00:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14707,7 +14707,13 @@ function schedApplyScroll(){
     schedScrollForce = false;
     schedScrollKey = key;
     schedScrollLeft = el.scrollLeft;
-    el.addEventListener('scroll', function(){ schedScrollLeft = el.scrollLeft; }, { passive: true });
+    // Bound ONCE per element. schedApplyScroll runs on every render and on every
+    // in-place reposition, and a fresh listener each time would stack up dozens
+    // of them on the same node.
+    if(!el._schedScrollBound){
+      el._schedScrollBound = true;
+      el.addEventListener('scroll', function(){ schedScrollLeft = el.scrollLeft; }, { passive: true });
+    }
   });
 }
 
@@ -14734,8 +14740,27 @@ async function openScheduleView(){
   if(state.view === 'schedule') renderMain();
 }
 
+// *** THE FIRST STEP BACK GOES TO THE START OF THE MONTH YOU ARE IN. ***
+//
+// Stepping back from today in August gave July, because the step works on the
+// ANCHOR month and August was already the anchor -- so the start of August, the
+// thing most obviously "one step back" from the 26th, could not be reached by
+// the back arrow at all.
+//
+// The rule does not depend on scroll POSITION, which would make one button mean
+// two things: it is simply that back means "the start of this month" whenever
+// the grid is not already showing it, and a whole month once it is. Forward is
+// unaffected and always steps a month.
 function schedStepMonth(delta){
   const a = schedAnchor || schedMonthStart(new Date());
+  if(delta < 0 && !schedAtMonthStart()){
+    // Same month, repositioned to its 1st. No re-fetch: the window is unchanged,
+    // so only the scroll moves.
+    schedScrollToToday = false;
+    schedScrollForce = true;
+    schedApplyScroll();
+    return;
+  }
   schedAnchor = new Date(a.getFullYear(), a.getMonth() + delta, 1);
   schedData = null;
   // A deliberate step wants the start of the month it lands on, even when that
@@ -14743,6 +14768,25 @@ function schedStepMonth(delta){
   schedScrollToToday = false;
   schedScrollForce = true;
   openScheduleView();
+}
+
+// Is the grid already parked at the first of the anchor month? Compares the
+// container's actual scrollLeft against where that day sits, with a cell's
+// tolerance so a pixel of rounding does not read as "not there yet".
+function schedAtMonthStart(){
+  const sc = document.querySelector('.sched-scroll');
+  if(!sc) return true;
+  const w = schedWindow();
+  const days = schedDayList().map(schedISO);
+  const i = days.indexOf(schedISO(w.monthFirst));
+  if(i < 0) return true;
+  const cells = document.querySelectorAll('.sched-hcell');
+  const target = cells[i];
+  if(!target) return true;
+  const nameEl = document.querySelector('.sched-name');
+  const nameW = nameEl ? nameEl.getBoundingClientRect().width : 152;
+  const want = Math.max(0, target.offsetLeft - nameW);
+  return Math.abs(sc.scrollLeft - want) < schedCellWidth();
 }
 
 function renderChatSheet(){
