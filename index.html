@@ -2627,7 +2627,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T06:10:00Z';
+const BUILD_VERSION = '2026-08-28T06:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13837,7 +13837,39 @@ function quickNoteBodyHTML(activeTripId){
 // just clashes with our primary colors." Filling gaps on the wheel is not the
 // same as belonging to a palette.
 //
-// *** ATTEMPT 4, CURRENT -- SEMANTIC FAMILY BEATS HUE SPACING. ***
+// *** ATTEMPT 5, CURRENT -- THE ORIGINAL COLOURS, DIMMED, SATURATION HELD. ***
+// Kyle: "would it be possible to go back to the original colors... that brighter
+// yellow, and the amber, but just tone down the saturation on them? Or is that
+// how we got into the original problem of them turning brown?" -- then, catching
+// it himself: "is there a way to retain the color but just decrease the
+// intensity?"
+//
+// That question identifies the actual bug in attempt 2, which no amount of
+// re-picking hues would have found. THE MEASUREMENTS:
+//   original amber  #F2A93B  hue 36  sat 88%  light 59%
+//   attempt 2       #5C513C  hue 39  sat 21%  light 30%
+//   original yellow #E8D44F  hue 52  sat 77%  light 61%
+//   attempt 2       #585437  hue 53  sat 23%  light 28%
+// The HUES BARELY MOVED. Saturation collapsed from ~80% to ~22%. Brown is not a
+// hue, it is a DESATURATED dark orange -- so "tone it down" and "wash it out"
+// are different operations and only one of them keeps the colour.
+//
+// So: hold hue AND saturation exactly as originally chosen, and drop LIGHTNESS
+// alone until the tier separates. soft_day 59%->31.7%, quarterly_call 61%->27.0%,
+// both landing at 0.150 luminance, 1.55x below pto. These are recognisably the
+// colours Kyle picked in the first place, only dimmer -- not new colours.
+//
+// This supersedes attempts 3 and 4 (olive/plum by hue-gap; then burnt orange and
+// dark yellow at reduced saturation). `other` keeps its attempt-3 indigo #5059A2,
+// which Kyle explicitly kept: "the other can stay in that new purplish color."
+//
+// WHY THIS BEATS ATTEMPT 4, WHICH LOOKED SIMILAR: attempt 4 reached its dimness
+// partly by cutting saturation to 62%, which is the same lever that made the mud,
+// just pulled less far. Here saturation is untouched at 88% and 77%, so the only
+// thing distinguishing these from the loud tier is brightness -- one variable,
+// deliberately, which is what makes the tier legible as a tier.
+//
+// SUPERSEDED REASONING, KEPT: attempt 4 argued semantic family over hue spacing.
 // Kyle: "for soft days, can we make soft days orange and just a little bit
 // fainter, less bright than the red" and quarterly call "yellow and, again, less
 // bright than the rest."
@@ -13888,8 +13920,8 @@ const SCHED_COLORS = {
   away_on_trip:   '#3DBE6B',   // ONE TRIP, ONE COLOUR -- see schedCellHTML
   training:       '#4A9DE0',
   pto:            '#E0574A',
-  quarterly_call: '#7C6C1D',   // QUIET dark yellow.  was #E8D44F
-  soft_day:       '#9D5D25',   // QUIET burnt orange. was #F2A93B, the alert amber
+  quarterly_call: '#7A6C10',   // QUIET. #E8D44F DIMMED -- same hue 52, same sat 77%
+  soft_day:       '#985F0A',   // QUIET. #F2A93B DIMMED -- same hue 36, same sat 88%
   other:          '#5059A2',   // QUIET indigo. was #7E8FAC -- was --fog-500, i.e. body text
   // *** ONE PALETTE ACROSS SURFACES. ***
   // An aircraft's state should look the same wherever it is drawn, so these two
