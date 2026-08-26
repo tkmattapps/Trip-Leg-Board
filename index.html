@@ -2265,7 +2265,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T19:55:00Z';
+const BUILD_VERSION = '2026-08-26T20:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13735,14 +13735,38 @@ function schedAwayTripForDay(ownerId, dayISO){
   return found;
 }
 
-async function loadSchedDayRecords(ownerId, ownerKind, dayISO){
+// Reads the records the selection TOUCHES -- the whole span, not just the day
+// the drag began on.
+//
+// *** THE PANEL MUST SHOW WHAT THE SELECTION TOUCHES, NOT WHERE IT STARTED. ***
+// Filtering on the anchor day alone broke extending a block BACKWARDS: dragging
+// from the day before a block means the anchor day is empty, so no rows came
+// back, so there was no block on screen to offer to extend -- while dragging
+// forwards worked, because that drag starts ON the block. Same intent, two
+// different outcomes, decided by which end you happened to start from.
+async function loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO){
   // Filter the raw derivation rows. The rendered index is local to the render
   // pass and deliberately not cached -- one source of truth, not two.
   const rows = (ownerKind === 'aircraft' ? schedData.aircraft : schedData.crew) || [];
   const ownerKey = ownerKind === 'aircraft' ? 'aircraft_id' : 'user_id';
   const srcKey   = ownerKind === 'aircraft' ? 'status' : 'source';
+  const spanLo = (endISO && endISO < dayISO) ? endISO : dayISO;
+  const spanHi = (endISO && endISO > dayISO) ? endISO : dayISO;
+  // One day EITHER SIDE, so a selection that merely TOUCHES a block still finds
+  // it -- which is exactly the case that was failing.
+  const reachLo = schedShiftISO(spanLo, -1);
+  const reachHi = schedShiftISO(spanHi, 1);
+  const seenRef = {};
   const cell = rows.filter(function(r){
-    return r[ownerKey] === ownerId && String(r.day || '').slice(0,10) === dayISO;
+    if(r[ownerKey] !== ownerId) return false;
+    const dy = String(r.day || '').slice(0,10);
+    if(dy < reachLo || dy > reachHi) return false;
+    // A five-day block returns one row PER DAY. Keeping them all would list the
+    // same block five times in the panel.
+    const k = String(r[srcKey]) + '|' + String(r.ref_id || dy);
+    if(seenRef[k]) return false;
+    seenRef[k] = true;
+    return true;
   }).map(function(r){ return { kind: r[srcKey], ref: r.ref_id || '', detail: r.detail || '' }; });
   const out = [];
   const refs = [];
@@ -13824,10 +13848,14 @@ async function openSchedEntry(ownerId, ownerKind, dayISO, endISO){
   const sbtn = document.getElementById('schedEntrySaveBtn');
   if(sbtn) sbtn.disabled = false;
   try {
-    const rows = await loadSchedDayRecords(ownerId, ownerKind, dayISO);
+    const rows = await loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO);
     // The panel may have been closed, or another cell opened, while this was
     // in flight. Only apply the result if it still belongs to what is on screen.
-    if(schedEntry && schedEntry.ownerId === ownerId && schedEntry.day === dayISO){
+    // Compares the END as well as the anchor. A drag from the same start day to
+    // a different end is a DIFFERENT question, and matching on the anchor alone
+    // would let a slower earlier fetch land on top of a later one.
+    if(schedEntry && schedEntry.ownerId === ownerId && schedEntry.day === dayISO &&
+       schedEntry.end === (endISO || dayISO)){
       schedEntry.existing = rows;
       schedEntry.loadingExisting = false;
       renderSchedEntry();
