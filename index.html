@@ -2607,7 +2607,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T01:35:00Z';
+const BUILD_VERSION = '2026-08-28T01:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15457,7 +15457,10 @@ let schedShownMonthKey = null;
 //
 // This is hysteresis. The buffer applies only when RETREATING to an earlier
 // month -- moving forward is never buffered, or the crisp click would be lost.
-const SCHED_MONTH_HOLD_DAYS = 3;
+//
+// Tuned ON DEVICE: 3 days was close but still caught the odd overscroll; 5 is
+// the value that felt right. It is one number and nothing else depends on it.
+const SCHED_MONTH_HOLD_DAYS = 5;
 
 function schedSyncMonthToScroll(){
   const dt = schedMonthAtScroll();
