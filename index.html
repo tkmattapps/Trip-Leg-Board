@@ -2265,7 +2265,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-26T20:20:00Z';
+const BUILD_VERSION = '2026-08-26T20:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14543,19 +14543,44 @@ function schedCellWidth(){
 // are mid-task. The default position is applied only when the month changes.
 let schedScrollKey = null;
 let schedScrollLeft = null;
+let schedScrollForce = false;   // set by Today; overrides the remembered position
+
+// Where the grid should sit when a month is first shown.
+//
+// *** TODAY IS THE ANCHOR, NOT THE FIRST OF THE MONTH. ***
+// Anchoring on the 1st was wrong: three weeks into a month it puts most of the
+// visible grid in the PAST, which is the opposite of what a forward-looking
+// board is for. So the anchor is TODAY where today is in view, and the 1st only
+// for a month that does not contain it.
+function schedDefaultScrollLeft(){
+  const w = schedWindow();
+  // schedDayList returns Date objects, not strings, so these are mapped to ISO
+  // before comparing -- indexOf on a Date array with a string finds nothing.
+  const days = schedDayList().map(schedISO);
+  const todayISO = schedISO(new Date());
+  let i = days.indexOf(todayISO);
+  if(i < 0){
+    // A month other than this one: fall back to its first day.
+    i = days.indexOf(schedISO(w.monthFirst));
+    if(i < 0) i = 0;
+  }
+  return Math.max(0, (i - SCHED_LEAD_IN_DAYS) * schedCellWidth());
+}
 
 function schedApplyScroll(){
   const w = schedWindow();
   const key = w.monthFirst.getFullYear() + '-' + w.monthFirst.getMonth();
-  const sameMonth = (key === schedScrollKey) && (schedScrollLeft !== null);
+  // schedScrollForce is set by the Today button. Without it, returning to this
+  // month would restore the position you last left it at, which is precisely
+  // what Today is meant to override.
+  const sameMonth = (key === schedScrollKey) && (schedScrollLeft !== null) && !schedScrollForce;
   // Deferred a frame: the grid has only just been written and has no measurable
   // width until layout settles, so scrollLeft would be clamped to zero.
   requestAnimationFrame(function(){
     const el = document.querySelector('.sched-scroll');
     if(!el) return;
-    el.scrollLeft = sameMonth
-      ? schedScrollLeft
-      : Math.max(0, (SCHED_OVERHANG_DAYS - SCHED_LEAD_IN_DAYS) * schedCellWidth());
+    el.scrollLeft = sameMonth ? schedScrollLeft : schedDefaultScrollLeft();
+    schedScrollForce = false;
     schedScrollKey = key;
     schedScrollLeft = el.scrollLeft;
     el.addEventListener('scroll', function(){ schedScrollLeft = el.scrollLeft; }, { passive: true });
@@ -14777,6 +14802,9 @@ document.addEventListener('click', async function(e){
   if(t.closest('[data-sched-today]')){
     schedAnchor = schedMonthStart(new Date());
     schedData = null;
+    // Today means today, even if you are already in this month and scrolled
+    // three weeks away from it.
+    schedScrollForce = true;
     openScheduleView();
     return;
   }
