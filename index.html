@@ -2329,7 +2329,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T13:25:00Z';
+const BUILD_VERSION = '2026-08-27T13:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14057,6 +14057,41 @@ async function loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO){
                  reason: r.reason || '', removable: true });
     });
   }
+
+  // *** A LIST OF LEGS READS IN LEG ORDER. ***
+  //
+  // The RPC returns rows in whatever order the planner produced -- there is no
+  // ordering guarantee in the function -- so a two-leg day could list leg 2
+  // above leg 1. That is not a data fault, it is the absence of a sort, and the
+  // fix belongs here rather than in SQL: the panel is the only place the order
+  // is read, and the trip already owns the canonical leg order.
+  //
+  // Derived flight duty leads, then hand-entered blocks. Within the flight rows,
+  // TRIP first and leg number second, so a day carrying legs from two different
+  // trips groups them rather than interleaving 1,1,2,2 across both.
+  out.sort(function(a, b){
+    const aF = a.kind === 'flight', bF = b.kind === 'flight';
+    if(aF !== bF) return aF ? -1 : 1;
+    // Array.prototype.sort is stable, so non-flight blocks keep the order they
+    // were fetched in rather than being shuffled by an arbitrary tie-break.
+    if(!aF) return 0;
+    const ai = schedFlightRefInfo(a.id), bi = schedFlightRefInfo(b.id);
+    // An unreadable or archived leg has no trip and no number to sort on. It
+    // goes last rather than to the top, where a missing value would otherwise
+    // put it.
+    const at = (ai && ai.tripNumber) || '\uffff';
+    const bt = (bi && bi.tripNumber) || '\uffff';
+    if(at !== bt) return at < bt ? -1 : 1;
+    const an = ai ? parseInt(ai.legNumber, 10) : NaN;
+    const bn = bi ? parseInt(bi.legNumber, 10) : NaN;
+    const av = isNaN(an) ? Infinity : an;
+    const bv = isNaN(bn) ? Infinity : bn;
+    if(av !== bv) return av - bv;
+    // Same trip, same leg number: a collision. Fall back to the id so the list
+    // at least holds still between renders instead of shuffling.
+    return String(a.id) < String(b.id) ? -1 : (String(a.id) > String(b.id) ? 1 : 0);
+  });
+
   return out;
 }
 
