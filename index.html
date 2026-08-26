@@ -1074,22 +1074,39 @@
      element already has: opaque panel in the header, nothing in a body cell,
      which is exactly the old appearance in both places. */
   .sched-cell-wknd{ background-image:linear-gradient(rgba(184,196,217,0.05), rgba(184,196,217,0.05)); }
-  /* Overhang days RECEDE, they are not hidden: a trip running from one month
-     into the next is the collision most easily missed.
-     0.45 was tuned when the overhang was FOUR days and the dimmed part was a
-     hint at the edges. At THIRTY days either side most of the grid is overhang,
-     and at that strength the whole thing looked switched off -- which read as
-     the current month being dim rather than its neighbours. Softened, with the
-     month boundary carried by the month band and the divider below instead of
-     by brightness alone. */
-  .sched-cell-out{ opacity:0.82; }
-  /* opacity applies to the element AND its background, which is fine on a body
-     cell but makes a STICKY header cell see-through. Overhang days in the header
-     therefore keep full opacity and recede by text colour instead -- the same
-     visual weight, without turning the bar into a window. */
-  .sched-hcell.sched-cell-out{ opacity:1; }
-  .sched-hcell.sched-cell-out .sched-dow,
-  .sched-hcell.sched-cell-out .sched-dnum{ color:var(--fog-500); opacity:0.75; }
+  /* *** THE WORKING MONTH IS LIT. THE REST IS NOT DIMMED. ***
+     This replaces .sched-cell-out, which dimmed everything outside the anchor
+     month. That was right for a one-month window with a few overhang days, and
+     wrong for a fourteen-month strip: thirteen months dimmed read as the grid
+     being switched off rather than as one month being current. It also cost the
+     trip colours -- teal and green carry MEANING, and dropping their opacity
+     made them look less real instead of further away.
+     So the contrast is made by LIFTING the current month rather than sinking the
+     other thirteen. Nothing outside it is degraded; the working month glows.
+     background-IMAGE, not background-color, for the same reason the weekend tint
+     uses one: it LAYERS over whatever the cell already has, so a weekend inside
+     the lit month keeps its own tint and a sticky header cell stays opaque. Two
+     tints simply stack, which is the correct appearance.
+     NO OPACITY ANYWHERE IN THIS RULE. Opacity on a sticky header cell makes it
+     see-through and the grid scrolls through it -- the trap that cost real time
+     in chat 3. A tint cannot do that. */
+  .sched-col-on{ background-image:linear-gradient(rgba(184,196,217,0.07), rgba(184,196,217,0.07)); }
+  /* Where the lit column meets a weekend, the two tints stack to ~0.12, which is
+     the intended reading: still a weekend, still in the working month. */
+  .sched-col-on.sched-cell-wknd{
+    background-image:linear-gradient(rgba(184,196,217,0.12), rgba(184,196,217,0.12));
+  }
+  /* The header cell lifts a little harder and brightens its text, because it is
+     the row the eye checks to answer "which month am I in". */
+  .sched-hcell.sched-col-on{
+    background-image:linear-gradient(rgba(184,196,217,0.10), rgba(184,196,217,0.10));
+  }
+  .sched-hcell.sched-col-on .sched-dnum{ color:#fff; }
+  .sched-hcell.sched-col-on .sched-dow{ color:var(--fog-300); }
+  /* today keeps its own stronger tint and ring; listed after so it wins. */
+  .sched-hcell.sched-col-on.sched-cell-today{
+    background-image:linear-gradient(rgba(184,196,217,0.14), rgba(184,196,217,0.14));
+  }
   /* The first day of the named month, marked structurally rather than by
      brightness -- a line holds up at any opacity. */
   .sched-cell-mstart{ border-left:1px solid var(--fog-500); }
@@ -2590,7 +2607,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T00:40:00Z';
+const BUILD_VERSION = '2026-08-28T01:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13948,10 +13965,15 @@ function schedKindLabel(kind, ownerKind){
   return SCHED_LABELS[kind] || kind;
 }
 
-function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, outside){
+function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend){
   let cls = 'sched-cell';
   if(isWeekend) cls += ' sched-cell-wknd';
-  if(outside)   cls += ' sched-cell-out';
+  // *** THE `outside` PARAMETER IS GONE, NOT VOIDED. ***
+  // It marked a day as belonging to a month other than the anchor's, so the cell
+  // could be dimmed. Nothing dims now -- the working month is LIT instead, via
+  // .sched-col-on applied by schedSyncMonthToScroll. Keeping the argument and
+  // voiding it would leave the caller computing a value that goes nowhere, which
+  // is the same dead-code pattern that hid an unused monthLabel earlier today.
   // Derived from the date itself rather than passed in, so every row draws the
   // boundary in the same place without another argument to keep in step.
   if(String(dayISO).slice(8, 10) === '01') cls += ' sched-cell-mstart';
@@ -13964,7 +13986,11 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   void isToday;
   
   if(schedIsClash(entries)) cls += ' sched-cell-clash';
+  // Month key on every body cell: the lit-column pass selects on this rather than
+  // parsing the date string thousands of times per scroll.
+  const mkey = String(dayISO).slice(0, 4) + '-' + (parseInt(String(dayISO).slice(5, 7), 10) - 1);
   const attrs = ' data-sched-day="' + dayISO + '" data-sched-owner="' + escapeHtml(ownerId) + '"' +
+                ' data-sched-mkey="' + mkey + '"' +
                 ' data-sched-kind="' + escapeHtml(ownerKind) + '"';
   if(!entries || !entries.length){
     return '<div class="' + cls + '"' + attrs + '></div>';
@@ -15158,14 +15184,15 @@ function renderScheduleView(){
   days.forEach(function(dt){
     const iso = schedISO(dt);
     const dow = dt.getDay();
-    const outside = dt.getMonth() !== w.monthFirst.getMonth();
     let cls = 'sched-hcell';
     if(dow === 0 || dow === 6) cls += ' sched-cell-wknd';
-    if(outside) cls += ' sched-cell-out';
-    // A line on the 1st: the month boundary survives any opacity choice.
+    // No dimming here either -- the header cell lights with the rest of its
+    // column, driven by data-sched-mkey below.
+    // A line on the 1st: the month boundary survives any brightness choice.
     if(dt.getDate() === 1) cls += ' sched-cell-mstart';
     if(iso === todayISO) cls += ' sched-cell-today';
-    head += '<div class="' + cls + '">' +
+    head += '<div class="' + cls + '" data-sched-mkey="' +
+              dt.getFullYear() + '-' + dt.getMonth() + '">' +
               '<span class="sched-dow">' + 'SMTWTFS'.charAt(dow) + '</span>' +
               '<span class="sched-dnum">' + dt.getDate() + '</span>' +
             '</div>';
@@ -15186,8 +15213,7 @@ function renderScheduleView(){
         const iso = schedISO(dt);
         const dow = dt.getDay();
         h += schedCellHTML(owned[iso], iso, r.id, kind, iso === todayISO,
-                           dow === 0 || dow === 6,
-                           dt.getMonth() !== w.monthFirst.getMonth());
+                           dow === 0 || dow === 6);
       });
       h += '</div>';
     });
@@ -15420,12 +15446,30 @@ function schedSyncMonthToScroll(){
   if(key === schedShownMonthKey) return;
   schedShownMonthKey = key;
 
-  // Move the highlight. The month band renders one cell per RUN of days, and a
-  // run is identified by the month it belongs to -- so the cell is found by
+  // Move the band highlight. The month band renders one cell per RUN of days, and
+  // a run is identified by the month it belongs to -- so the cell is found by
   // matching, not by index arithmetic over variable-width cells.
-  const cells = document.querySelectorAll('.sched-mcell');
-  cells.forEach(function(c){
+  document.querySelectorAll('.sched-mcell').forEach(function(c){
     c.classList.toggle('sched-mcell-on', c.getAttribute('data-sched-mkey') === key);
+  });
+
+  // *** LIGHT THE WHOLE COLUMN, EVERY ROW. ***
+  // The band alone was not the ask: the working month should read as a lit
+  // vertical slice down the entire grid -- crew rows and aircraft rows alike --
+  // so it announces itself as the area being worked in. Aircraft are in that
+  // month just as much as crew are, so the slice is full height with no
+  // exceptions.
+  //
+  // Only the OUTGOING and INCOMING months are touched, never all 6,400 cells.
+  // Clearing by class and setting by attribute keeps each scroll to roughly two
+  // months' worth of nodes -- a few hundred class flips, not thousands.
+  document.querySelectorAll('.sched-col-on').forEach(function(c){
+    c.classList.remove('sched-col-on');
+  });
+  document.querySelectorAll('[data-sched-mkey="' + key + '"]').forEach(function(c){
+    // The band cell is driven by .sched-mcell-on above and must not also take the
+    // column tint, or the label sits in two stacked backgrounds.
+    if(!c.classList.contains('sched-mcell')) c.classList.add('sched-col-on');
   });
 
   // Keep schedAnchor's MONTH in step, so Back, Today and schedAtMonthStart all
