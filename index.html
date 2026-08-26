@@ -925,12 +925,14 @@
   .sched-row{ display:flex; align-items:stretch; min-width:max-content; }
   /* The name column is STICKY: scrolled twenty days into a month, an unlabelled
      row of colour is unreadable. */
-  /* 104px, down from 152. The widest real content is a first name ("Jessica") or
-     a tail ("N667BB") over a four-letter abbreviation or a type -- none of which
-     needed 152px, and every pixel here is a pixel of grid. Names still ellipsise,
-     which matters for the fallback case where a row has no display name and
-     shows an email address instead. */
-  .sched-name{ position:sticky; left:0; z-index:2; flex:0 0 auto; width:104px;
+  /* 88px, down from 152 via 104. Sized to a LONG COMMON FIRST NAME -- Christopher,
+     Elizabeth, Katherine, around eleven characters at 12px -- over a four-letter
+     abbreviation, and comfortably wider than a tail like N667BB. Every pixel here
+     is a pixel of grid, so this is deliberately sized to the realistic worst case
+     rather than to any conceivable one. Longer names ellipsise, which is honest:
+     the abbreviation underneath still identifies the person, and the same applies
+     to the fallback where a row has no display name and shows an email. */
+  .sched-name{ position:sticky; left:0; z-index:2; flex:0 0 auto; width:88px;
     display:flex; flex-direction:column; justify-content:center; gap:1px;
     padding:0 10px; background:var(--panel-800);
     border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
@@ -2307,7 +2309,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T09:15:00Z';
+const BUILD_VERSION = '2026-08-27T09:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14696,7 +14698,7 @@ function schedDefaultScrollLeft(){
   const cells = document.querySelectorAll('.sched-hcell');
   const target = cells[Math.max(0, i - lead)];
   const nameEl = document.querySelector('.sched-name');
-  const nameW = nameEl ? nameEl.getBoundingClientRect().width : 104;  // fallback only; measured above
+  const nameW = nameEl ? nameEl.getBoundingClientRect().width : 88;  // fallback only; measured above
   if(sc && target){
     // offsetLeft is relative to the scroll container's content box, so this is
     // the exact scroll value that brings the target cell to the left edge --
@@ -14800,7 +14802,7 @@ function schedAtMonthStart(){
   const target = cells[i];
   if(!target) return true;
   const nameEl = document.querySelector('.sched-name');
-  const nameW = nameEl ? nameEl.getBoundingClientRect().width : 104;  // fallback only; measured above
+  const nameW = nameEl ? nameEl.getBoundingClientRect().width : 88;  // fallback only; measured above
   const want = Math.max(0, target.offsetLeft - nameW);
   return Math.abs(sc.scrollLeft - want) < schedCellWidth();
 }
