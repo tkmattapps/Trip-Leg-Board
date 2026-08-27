@@ -2808,7 +2808,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T00:30:00Z';
+const BUILD_VERSION = '2026-08-28T01:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -10086,16 +10086,71 @@ async function processImportFile(file){
     const extractedLegs = Array.isArray(data.legs) ? data.legs : [];
     if(state.importDocType === 'trip_sheet'){
       // Defensive dedup: some source documents repeat a leg reference in a
-      // secondary handling-worksheet section. Keep only the first entry
-      // seen for each unique leg number + dep/arr airport pair.
-      const seenLegKeys = new Set();
+      // secondary handling-worksheet section. Keep only the first entry seen
+      // for each leg.
+      //
+      // *** A DEDUP KEY MUST CARRY EVERY FIELD THAT MAKES A LEG A DIFFERENT LEG. ***
+      // This keyed on leg number + dep + arr alone, which collides outright
+      // between two aircraft flying the same route: trips 414402 (N668BB) and
+      // 414405 (N667BB) BOTH yield 1|kbdl|kfok and 2|kfok|kvis, on different
+      // tails, two days apart. Nothing but the single-file input stopped that
+      // from silently discarding real legs as duplicates -- and a bug held off
+      // by an unrelated piece of UI is not a bug that has been fixed.
+      //
+      // The discriminators cannot simply be appended to the key, though. The
+      // POINT of this pass is collapsing a leg the document mentions twice, and
+      // 414402 does exactly that -- it reprints "LEG 2 (KFOK - KVIS)" in its
+      // ground transport section, where there is no date and no tail to read.
+      // A flat key would stop matching that second mention and leave a phantom
+      // leg on the preview: a collision traded for a duplication.
+      //
+      // So a BLANK field matches anything, and only a POPULATED DISAGREEMENT is
+      // taken as proof that two entries are different legs.
+      const seenLegs = new Map();
+      const fieldsAgree = (a, b) => !a || !b || a === b;
+      const dedupNormDate = (v) => {
+        const raw = String(v == null ? '' : v).trim();
+        if(!raw) return '';
+        try { return String(toISODate(raw) || raw).toLowerCase(); }
+        catch(e){ return raw.toLowerCase(); }
+      };
       const dedupedLegs = extractedLegs.filter(ex => {
-        const key = [ex.legNumber || '', ex.dep?.airportId || '', ex.arr?.airportId || ''].join('|').toLowerCase();
-        if(seenLegKeys.has(key)) return false;
-        seenLegKeys.add(key);
+        const base = [
+          String(ex.legNumber || '').trim(),
+          String((ex.dep && ex.dep.airportId) || '').trim(),
+          String((ex.arr && ex.arr.airportId) || '').trim()
+        ].join('|').toLowerCase();
+        const mark = {
+          trip: String(ex.tripNumber || '').trim().toLowerCase(),
+          tail: String(ex.tailNumber || '').trim().toLowerCase(),
+          date: dedupNormDate(ex.date)
+        };
+        const seen = seenLegs.get(base) || [];
+        const isDup = seen.some(s =>
+          fieldsAgree(s.trip, mark.trip) &&
+          fieldsAgree(s.tail, mark.tail) &&
+          fieldsAgree(s.date, mark.date));
+        if(isDup) return false;
+        seen.push(mark);
+        seenLegs.set(base, seen);
         return true;
       });
-      const tripNumber = (dedupedLegs[0] && dedupedLegs[0].tripNumber || '').trim();
+      // ONE UPLOAD IS ONE TRIP, AND THAT IS CHECKED RATHER THAN ASSUMED. The
+      // batch number was read off dedupedLegs[0] alone, so a batch holding two
+      // documents would file every leg under whichever trip sorted first --
+      // silently, and under a number wrong for half of them. Also fixes the
+      // narrower case where leg one happened to carry no trip number while the
+      // rest of the document did: that used to send a perfectly well numbered
+      // trip down the numberless path.
+      const batchTripNumbers = Array.from(new Set(
+        dedupedLegs.map(ex => String(ex.tripNumber || '').trim()).filter(Boolean)
+      ));
+      if(batchTripNumbers.length > 1){
+        throw new Error('That file looks like it holds more than one trip (' +
+          batchTripNumbers.join(', ') + '). Beacon imports one trip at a time, so each ' +
+          'keeps its own trip number and tail. Please upload them separately.');
+      }
+      const tripNumber = batchTripNumbers[0] || '';
       // ONE group id for every leg in this upload. Only load-bearing when the
       // paperwork carries NO trip number: groupIntoTrips groups numberless legs
       // by groupId, so this is what keeps a numberless trip as ONE card instead
