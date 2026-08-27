@@ -1736,10 +1736,22 @@
   .sheet-danger, .sheet-section{ margin-top:22px; padding-top:16px; border-top:1px solid var(--hairline); }
   .sheet-danger-head, .sheet-section-head{ font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600;
     letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); margin-bottom:10px; }
-  .sheet-danger-btn, .sheet-section-btn{ display:block; width:100%; font-family:system-ui,'Inter',sans-serif; font-size:15px;
-    text-align:left; background:transparent; color:var(--paper-050); border:1px solid var(--hairline);
-    border-radius:4px; padding:11px 12px; margin-top:12px; cursor:pointer; -webkit-appearance:none; appearance:none; }
-  .sheet-danger-btn:first-of-type, .sheet-section-btn:first-of-type{ margin-top:0; }
+  /* A STATE, THEN A BUTTON. The full-width bordered block that used to live
+     here read as a FIELD, because that is what every other bordered full-width
+     thing on this sheet is -- so a control shaped like one looked like a field
+     whose label happened to be a verb. Now the line states what is TRUE and the
+     button does the CHANGE, which is the only arrangement where the two cannot
+     be mistaken for each other. */
+  .sheet-actline{ display:flex; align-items:center; justify-content:space-between; gap:14px; }
+  .sheet-actline-state{ flex:1 1 auto; font-family:system-ui,'Inter',sans-serif; font-size:15px;
+    color:var(--paper-050); line-height:1.35; }
+  /* Larger than .set-mini-btn on purpose: a roster row is scanned on an iPad,
+     this is tapped on a phone, and it commits something. */
+  .sheet-act-btn{ flex:0 0 auto; font-family:system-ui,'Inter',sans-serif; font-size:13px; font-weight:500;
+    padding:9px 15px; border-radius:7px; background:transparent; border:1px solid var(--hairline);
+    color:var(--fog-300); cursor:pointer; white-space:nowrap; -webkit-appearance:none; appearance:none; }
+  .sheet-act-btn:active{ background:var(--panel-700); }
+  .sheet-act-btn.is-danger{ color:var(--alert-600); border-color:rgba(226,87,76,0.45); }
   /* The preview line. This is the whole point of the warning: a blanket write
      across a trip like 410303 would flatten a genuine crew change, so the
      numbers are shown BEFORE the write, not reported after it. */
@@ -2796,7 +2808,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T00:05:00Z';
+const BUILD_VERSION = '2026-08-28T00:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8879,8 +8891,11 @@ function personEditBodyHTML(p){
     (personEditCanRemove(p)
       ? '<div class="sheet-danger">' +
           '<div class="sheet-danger-head">Removing this person</div>' +
-          '<button type="button" class="sheet-danger-btn" data-person-remove="' + escapeHtml(p.id) + '">' +
-            'Remove from flight department</button>' +
+          '<div class="sheet-actline">' +
+            '<div class="sheet-actline-state">In this flight department</div>' +
+            '<button type="button" class="sheet-act-btn is-danger" data-person-remove="' + escapeHtml(p.id) + '">' +
+              'Remove</button>' +
+          '</div>' +
           '<div class="sheet-note">Keeps their login. The account is theirs, so it survives leaving ' +
             'the department \u2014 but they will see an empty app until someone adds them again. ' +
             'Crew already recorded on past legs is not affected.</div>' +
@@ -8925,15 +8940,19 @@ function personEditAdminHTML(p){
   const has = !!p.isAdmin;
   return '<div class="sheet-section">' +
     '<div class="sheet-section-head">Admin access</div>' +
-    '<button type="button" class="sheet-section-btn" data-person-admin="' + escapeHtml(p.id) + '" ' +
-      'data-admin-grant="' + (has ? '0' : '1') + '">' +
-      (has ? 'Remove admin access' : 'Give admin access') + '</button>' +
+    '<div class="sheet-actline">' +
+      '<div class="sheet-actline-state">' + (has ? 'Has admin access' : 'No admin access') + '</div>' +
+      '<button type="button" class="sheet-act-btn' + (has ? ' is-danger' : '') + '" ' +
+        'data-person-admin="' + escapeHtml(p.id) + '" ' +
+        'data-admin-grant="' + (has ? '0' : '1') + '">' +
+        (has ? 'Remove' : 'Give') + '</button>' +
+    '</div>' +
     '<div class="sheet-note">' +
       (has
-        ? 'They keep their login and stay in the department. They will no longer be able to add ' +
-          'or remove people, reset passwords, change aircraft, or edit the schedule.'
-        : 'Lets them add and remove people, reset passwords, change aircraft, and edit the ' +
-          'schedule for this department.') +
+        ? 'They keep their login and stay in the department. Removing this means they can no ' +
+          'longer add or remove people, reset passwords, change aircraft, or edit the schedule.'
+        : 'Giving this lets them add and remove people, reset passwords, change aircraft, and ' +
+          'edit the schedule for this department.') +
     '</div>' +
   '</div>';
 }
