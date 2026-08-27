@@ -1726,14 +1726,20 @@
   .sheet-readonly{ font-family:system-ui,'Inter',sans-serif; font-size:15px; color:var(--fog-300); padding:9px 0 2px; }
   .sheet-err{ font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--alert-600); line-height:1.5; margin-top:10px; }
   /* Removal is separated from the editable fields by a rule, not by colour
-     alone: the fields above are routine, these two are not. */
-  .sheet-danger{ margin-top:22px; padding-top:16px; border-top:1px solid var(--hairline); }
-  .sheet-danger-head{ font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600;
+     alone: the fields above are routine, these two are not.
+
+     .sheet-section is the SAME geometry under an honest name. Admin access is
+     consequential enough to sit below the rule with removal, but it is not
+     destructive and calling its container "danger" would be a lie that the
+     next person to read this file has to unpick. One rule, two names, so the
+     two can never drift apart. */
+  .sheet-danger, .sheet-section{ margin-top:22px; padding-top:16px; border-top:1px solid var(--hairline); }
+  .sheet-danger-head, .sheet-section-head{ font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600;
     letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); margin-bottom:10px; }
-  .sheet-danger-btn{ display:block; width:100%; font-family:system-ui,'Inter',sans-serif; font-size:15px;
+  .sheet-danger-btn, .sheet-section-btn{ display:block; width:100%; font-family:system-ui,'Inter',sans-serif; font-size:15px;
     text-align:left; background:transparent; color:var(--paper-050); border:1px solid var(--hairline);
     border-radius:4px; padding:11px 12px; margin-top:12px; cursor:pointer; -webkit-appearance:none; appearance:none; }
-  .sheet-danger-btn:first-of-type{ margin-top:0; }
+  .sheet-danger-btn:first-of-type, .sheet-section-btn:first-of-type{ margin-top:0; }
   /* The preview line. This is the whole point of the warning: a blanket write
      across a trip like 410303 would flatten a genuine crew change, so the
      numbers are shown BEFORE the write, not reported after it. */
@@ -2790,7 +2796,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T23:15:00Z';
+const BUILD_VERSION = '2026-08-28T00:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8869,6 +8875,7 @@ function personEditBodyHTML(p){
       '<div class="sheet-slot-label">Email</div>' +
       '<div class="sheet-readonly">' + escapeHtml(p.email || '\u2014') + '</div>' +
     '</div>' +
+    personEditAdminHTML(p) +
     (personEditCanRemove(p)
       ? '<div class="sheet-danger">' +
           '<div class="sheet-danger-head">Removing this person</div>' +
@@ -8881,6 +8888,54 @@ function personEditBodyHTML(p){
         '</div>'
       : '') +
     '<div class="sheet-err" id="peErr" hidden></div>';
+}
+
+// ---- ADMIN ACCESS ----------------------------------------------------------
+// The words are GIVEN and REMOVED, never promoted and demoted. Two different
+// things sit next to each other on this sheet and must not be confused:
+//   Job title (users.role)        - descriptive, read-only here, grants NOTHING
+//   Admin access (memberships.is_admin) - authority
+// In a flight department "demoted" reads as RANK. A demoted pilot is a very
+// different and much more alarming sentence than one who no longer administers
+// the software.
+//
+// THREE STATES, and the third is the one worth the code:
+//   yourself     -> nothing at all. Nobody removes their own admin access, and
+//                   a control that exists only to refuse is worse than absent.
+//   contractor   -> the reason, no button. is_department_admin() requires
+//                   membership_role = 'member', so a stored true would badge
+//                   them Admin on the roster while every permission check
+//                   refused them -- a worse state than plainly not having it.
+//   member       -> give, or remove.
+//
+// The edge function enforces all of this again, and the last-admin invariant
+// besides. This is only about not offering what cannot happen.
+function personEditAdminHTML(p){
+  if(!rosterViewerIsAdmin()) return '';
+  if(!currentUserProfile || p.id === currentUserProfile.id) return '';
+
+  if(p.membershipRole === 'contractor'){
+    return '<div class="sheet-section">' +
+      '<div class="sheet-section-head">Admin access</div>' +
+      '<div class="sheet-note">Not available for contractors. Admin access is for ' +
+        'department members.</div>' +
+    '</div>';
+  }
+
+  const has = !!p.isAdmin;
+  return '<div class="sheet-section">' +
+    '<div class="sheet-section-head">Admin access</div>' +
+    '<button type="button" class="sheet-section-btn" data-person-admin="' + escapeHtml(p.id) + '" ' +
+      'data-admin-grant="' + (has ? '0' : '1') + '">' +
+      (has ? 'Remove admin access' : 'Give admin access') + '</button>' +
+    '<div class="sheet-note">' +
+      (has
+        ? 'They keep their login and stay in the department. They will no longer be able to add ' +
+          'or remove people, reset passwords, change aircraft, or edit the schedule.'
+        : 'Lets them add and remove people, reset passwords, change aircraft, and edit the ' +
+          'schedule for this department.') +
+    '</div>' +
+  '</div>';
 }
 
 // You never see removal controls for your own row. The edge function enforces
@@ -9049,10 +9104,52 @@ async function removePersonFromDepartment(id){
     { title: 'Remove from department', okLabel: 'Remove', cancelLabel: 'Cancel', danger: true }
   );
   if(!go) return;
-  await runPersonRemoval(id, 'remove_from_department', who + ' removed from the department.');
+  await runPersonAction(id, 'remove_from_department', who + ' removed from the department.');
 }
 
-async function runPersonRemoval(id, action, successMsg){
+// ---- GIVING AND REMOVING ADMIN ACCESS --------------------------------------
+// *** THE GRANT CONFIRMATION SAYS THAT THEY CAN THEN REMOVE YOURS. ***
+// That is the consequence an admin is least likely to have thought through,
+// and it is not a footnote: admin access is symmetric, so giving it is the one
+// action here that can be undone by someone other than you.
+//
+// No confirmation lies about permanence in either direction. Removing admin
+// access is fully reversible by any remaining admin, so it does not get
+// removal's "there is no way back yet" warning -- borrowing that language
+// would make a reversible act sound final.
+async function changeAdminAccess(id, grant){
+  if(!rosterViewerIsAdmin()) return;
+  const p = (rosterCache || []).find(x => x.id === id);
+  if(!p) return;
+  const who = p.name || p.email || 'this person';
+
+  const msg = grant
+    ? who + ' will be able to add and remove people, reset passwords, change aircraft and edit ' +
+      'the schedule for this department. That includes being able to remove your own admin access.'
+    : who + ' keeps their login and stays in the department. They will no longer be able to add ' +
+      'or remove people, reset passwords, change aircraft, or edit the schedule. Any admin can ' +
+      'give it back.';
+
+  const go = await showConfirm(msg, {
+    title: grant ? 'Give admin access' : 'Remove admin access',
+    okLabel: grant ? 'Give access' : 'Remove access',
+    cancelLabel: 'Cancel',
+    danger: !grant
+  });
+  if(!go) return;
+
+  await runPersonAction(
+    id,
+    grant ? 'grant_admin' : 'revoke_admin',
+    grant ? (who + ' now has admin access.') : (who + ' no longer has admin access.')
+  );
+}
+
+// Shared by removal and by both admin-access actions. It was called
+// runPersonRemoval when removal was the only thing it did; the name is now the
+// general one, because a function that grants something while being called
+// "removal" is the kind of small lie that costs an hour later.
+async function runPersonAction(id, action, successMsg){
   const saveBtn = document.getElementById('personEditSaveBtn');
   if(saveBtn) saveBtn.disabled = true;
   setPersonEditError('');
@@ -9100,11 +9197,17 @@ async function runPersonRemoval(id, action, successMsg){
     // complaint on screen while the field already reads correctly is its own
     // small lie.
     body.addEventListener('input', function(){ setPersonEditError(''); });
-    // Removal lives in the sheet body, which is rebuilt on every open, so it is
-    // delegated from the container that persists.
+    // Removal and admin access both live in the sheet body, which is rebuilt on
+    // every open, so they are delegated from the container that persists.
     body.addEventListener('click', function(e){
-      const rm = e.target.closest && e.target.closest('[data-person-remove]');
+      if(!e.target.closest) return;
+      const rm = e.target.closest('[data-person-remove]');
       if(rm){ removePersonFromDepartment(rm.getAttribute('data-person-remove')); return; }
+      const ad = e.target.closest('[data-person-admin]');
+      // The direction is read off the button that was actually drawn, so a
+      // roster that changed underneath the open sheet cannot send the opposite
+      // action. The edge function refuses a no-op regardless.
+      if(ad){ changeAdminAccess(ad.getAttribute('data-person-admin'), ad.getAttribute('data-admin-grant') === '1'); return; }
     });
   }
 })();
