@@ -2790,7 +2790,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T22:50:00Z';
+const BUILD_VERSION = '2026-08-27T23:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14446,10 +14446,32 @@ function schedFillAwayDays(idx){
         const iso = schedISO(cur);
         if(iso >= last) break;
         const dayEntries = byDay[iso] || [];
-        // A day that already carries real flight duty needs nothing added.
+        // A day that already carries real flight duty needs nothing added -- the
+        // leg itself already says the person is committed, and it keys to the
+        // same trip so it joins the same run.
         const flying = dayEntries.some(function(e){ return e.kind === 'flight'; });
         if(flying) continue;
         if(dayEntries.some(function(e){ return e.kind === 'away_on_trip'; })) continue;
+        // *** A BACKFILL DAY DOES NOT BLOCK THE FILL. ***
+        //
+        // Kyle, 27 Aug 2026, on Eric's 26 Jun - 3 Jul trip: "Eric's gone for that
+        // full run of eight days, and I'm showing two, five, one."
+        //
+        // Two plus five plus one is eight, so no day was missing -- the run was
+        // being SEVERED. The interior days of that trip carry pre-Beacon
+        // flight_historical rows, which key to no trip at all, so the real trip's
+        // run broke at the first backfilled day and resumed after the last.
+        //
+        // This loop only ever skipped days holding a REAL leg or an existing away
+        // day. A backfilled day is neither: it is a worse record of the very same
+        // absence, and it must not prevent the trip from claiming the day. Adding
+        // away_on_trip here gives every interior day a key belonging to the trip,
+        // the run becomes continuous, and the span-suppression rule then hides the
+        // redundant backfill because the day is no longer backfill-only.
+        //
+        // NOT skipped for flight_pencil either, deliberately: the same argument
+        // applies, and a pencil inside a confirmed trip is exactly the leftover
+        // the grid is supposed to surface.
         if(!byDay[iso]) byDay[iso] = [];
         byDay[iso].push({ kind: 'away_on_trip', ref: '', detail: '', trip: key });
       }
