@@ -2790,7 +2790,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T22:20:00Z';
+const BUILD_VERSION = '2026-08-27T22:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14540,11 +14540,67 @@ function schedSuppressEntries(entries){
   return out;
 }
 
-// The row-wide view the run detector needs: the same suppression, every day.
+// *** A REAL TRIP SUPERSEDES A BACKFILL ACROSS ITS WHOLE SPAN, NOT JUST THE
+//     DAYS IT HAPPENS TO FLY. ***
+//
+// Kyle, 27 Aug 2026, on Eric's 26 Jun - 3 Jul trip after the trip-merge fix:
+// "It's showing 26, 27 as independent days, 28 through the 2nd as a bar, but the
+// 30th has a little cutout for a pre-Beacon backfill. And then the 3rd is another
+// pre-Beacon backfill date. Are we running into a conflict between pre-Beacon
+// backfill and extracted days here?"
+//
+// Yes -- and it is a conflict I created. The same trip exists TWICE for him: as
+// real extracted legs, and as flight_historical rows from the 2026 backfill. The
+// old rule only hid a backfill row where a real `flight` sat on the SAME DAY, so
+// on days the trip was airborne the backfill vanished, and on days it did not fly
+// the backfill survived and drew its own bar. Hence the cutout.
+//
+// Per-day was always the wrong unit. A trip is a SPAN. Once a real trip covers a
+// stretch of days, a backfilled duty day anywhere inside that stretch is the same
+// fact told twice by a worse source, and the real trip wins for all of it.
+//
+// So: find every real trip's span first, then suppress backfill and pencil days
+// inside any of them. SUPPRESSED AT THE RENDER, never deleted -- the rows survive
+// and the whole backfill can still be cleared by category in one statement.
+function schedRealTripSpans(ownedDays, dayISOList){
+  const spans = [];
+  const byTrip = {};
+  for(let i = 0; i < dayISOList.length; i++){
+    const entries = ownedDays[dayISOList[i]] || [];
+    for(let j = 0; j < entries.length; j++){
+      const e = entries[j];
+      // Only a REAL leg or its derived away day defines a span. A pencil must
+      // never suppress a backfill: a provisional plan is not evidence the day
+      // was flown, and letting it hide history would erase the record.
+      if(e.kind !== 'flight' && e.kind !== 'away_on_trip') continue;
+      const k = schedRunKeyFor(e);
+      if(!byTrip[k]) byTrip[k] = { from: i, to: i };
+      else { if(i < byTrip[k].from) byTrip[k].from = i; if(i > byTrip[k].to) byTrip[k].to = i; }
+    }
+  }
+  Object.keys(byTrip).forEach(function(k){ spans.push(byTrip[k]); });
+  return spans;
+}
+
+// The row-wide view the run detector needs: the same per-day suppression, plus
+// the span rule above.
 function schedSuppressedDays(ownedDays, dayISOList){
+  const spans = schedRealTripSpans(ownedDays, dayISOList);
   const out = {};
   for(let i = 0; i < dayISOList.length; i++){
-    out[dayISOList[i]] = schedSuppressEntries(ownedDays[dayISOList[i]]);
+    const iso = dayISOList[i];
+    let ents = schedSuppressEntries(ownedDays[iso]);
+    const inSpan = spans.some(function(s){ return i >= s.from && i <= s.to; });
+    if(inSpan){
+      const filtered = ents.filter(function(e){
+        return e.kind !== 'flight_historical' && e.kind !== 'flight_pencil';
+      });
+      // Never empty a day that had something in it. If a backfill row were the
+      // ONLY entry on a day inside the span, dropping it would punch a hole
+      // through the middle of the bar -- worse than the duplicate it fixes.
+      if(filtered.length) ents = filtered;
+    }
+    out[iso] = ents;
   }
   return out;
 }
@@ -14805,7 +14861,7 @@ function schedRunText(run){
   return String(run.len);
 }
 
-function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, isMe, dayRuns){
+function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, isMe, dayRuns, visible){
   let cls = 'sched-cell';
   // isWeekend is now unused -- see "THERE ARE NO WEEKENDS IN AVIATION" in the
   // stylesheet. Kept in the signature only to leave every caller's argument list
@@ -14886,11 +14942,17 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   // decision. Erasing the record would destroy the evidence that the plan moved.
   // Clearing a leftover day stays a MANUAL delete, per Kyle -- by then the trip
   // is the record of what happened and the pencil has done its job.
-  // *** THE SAME FUNCTION THE RUN DETECTOR USED -- NOT A SECOND COPY. ***
-  // The run map was built from schedSuppressedDays. If this filter ever
-  // disagreed with that one, runs would sever on days the cell hides and draw
-  // seams with nothing in them. One rule, two readers (trap T-2).
-  schedSuppressEntries(entries).forEach(function(e){ shown.push(e); });
+  // *** SUPPRESSION IS COMPUTED ONCE PER ROW AND HANDED IN. ***
+  // It cannot be done here any more: the span rule needs to see the whole row to
+  // know which days a real trip covers, and a cell sees exactly one day. The
+  // caller computes it with schedSuppressedDays and passes the result as
+  // `visible`, so the run map and the cells read the SAME list by construction
+  // rather than by two functions agreeing (trap T-2, and trap 30: two copies of
+  // one rule will drift).
+  //
+  // Fall back to the raw per-day rule if a caller has not been updated -- worse
+  // than the span rule, but never worse than drawing nothing.
+  (visible || schedSuppressEntries(entries)).forEach(function(e){ shown.push(e); });
   const blocks = shown.map(function(e){
     const col = schedKindColor(e.kind, ownerKind);
     const label = schedKindLabel(e.kind, ownerKind);
@@ -16194,12 +16256,15 @@ function renderScheduleView(){
       // trap T-2: a suppressed day left in the sequence severs a run and leaves a
       // seam with nothing in it.
       const rowISOs = days.map(function(dt){ return schedISO(dt); });
-      const rowRuns = schedBuildRuns(schedSuppressedDays(owned, rowISOs), rowISOs);
+      // ONE suppressed view of the row, read by both the run detector and every
+      // cell. Computing it twice is how the run map and the cells drift apart.
+      const rowVisible = schedSuppressedDays(owned, rowISOs);
+      const rowRuns = schedBuildRuns(rowVisible, rowISOs);
       days.forEach(function(dt){
         const iso = schedISO(dt);
         const dow = dt.getDay();
         h += schedCellHTML(owned[iso], iso, r.id, kind, iso === todayISO,
-                           dow === 0 || dow === 6, isMe, rowRuns[iso]);
+                           dow === 0 || dow === 6, isMe, rowRuns[iso], rowVisible[iso]);
       });
       h += '</div>';
     });
