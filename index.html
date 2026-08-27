@@ -1057,6 +1057,51 @@
      note there for the measurements. Colour only: weight and size stay
      identical, so nothing is signalled twice. */
   .sched-blk-lighttext{ color:var(--paper-050); }
+
+  /* ---- RUN BARS ---------------------------------------------------------
+     A DATE RANGE MUST LOOK LIKE ONE OBJECT.
+
+     Kyle, 27 Aug 2026, on the day-per-cell render: "if you look at the
+     spreadsheet, it's got solid blocks for everything, like a solid date range,
+     with a number in the middle. That's coherent. Here we've got individual
+     days... it just doesn't read well."
+
+     Eight rounded rectangles with eight gaps are eight things to count. One bar
+     is one thing to recognise. The information was always identical; only the
+     legibility differed.
+
+     SQUARE THE INSIDE, ROUND THE OUTSIDE, and cancel the cell padding on the
+     edges that face into the run so no gap survives between members. A one-day
+     run gets no .sched-blk-run class at all and is therefore untouched.
+
+     The negative margins are what actually close the seam: .sched-cell carries
+     2px padding and a 1px right hairline, so a bar must bleed 3px past its own
+     box to meet its neighbour. Bleeding OVER the hairline is deliberate -- the
+     day grid stays visible everywhere except through a continuous run, which is
+     precisely where a gridline would contradict the continuity. */
+  .sched-blk-run{ border-radius:0; }
+  .sched-blk-run-first{ border-radius:2px 0 0 2px; margin-right:-3px; }
+  .sched-blk-run-last{  border-radius:0 2px 2px 0; margin-left:-3px; }
+  .sched-blk-run-mid{   border-radius:0; margin-left:-3px; margin-right:-3px; }
+
+  /* The label sits on the FIRST day of the run but the run is wider than that
+     cell, so the text must be allowed to escape its box. Without this it would
+     wrap or clip at 30px and "Global 6000 Recurrent" would render as a smear.
+     overflow:visible on the block, and the text is not a flex child so it does
+     not stretch the cell. */
+  .sched-blk-run-first{ overflow:visible; white-space:nowrap; justify-content:flex-start;
+    padding-left:3px; }
+
+  /* A run that is the ONLY thing in its cell fills the cell height, as before.
+     A run crossing a collision is pinched by the flex column in .sched-cell --
+     two blocks share the height and each takes half. That pinch is the point:
+     Kyle, 27 Aug 2026, "if there's a true collision between blocks, then it
+     should probably show half-half." The run continues THROUGH the pinch rather
+     than terminating, so the eye still follows one object across the week while
+     the collision remains impossible to miss. Nothing wins a z-order fight and
+     nothing vanishes -- a silent loss is the failure mode that cost a whole day
+     of debugging on 27 Aug 2026. */
+
   .sched-blk-pencil{ background:transparent !important; }
   /* The dot on the category button and in the legend must match the grid, or
      the button teaches the wrong shape. */
@@ -2737,7 +2782,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T20:40:00Z';
+const BUILD_VERSION = '2026-08-27T21:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14447,7 +14492,220 @@ function schedKindLabel(kind, ownerKind){
   return SCHED_LABELS[kind] || kind;
 }
 
-function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, isMe){
+// *** ONE SUPPRESSION RULE, READ TWICE. ***
+//
+// The run map and the cells MUST agree about which entries draw, or a day the
+// cell hides will still sever a run and leave a visible seam with nothing in it
+// (trap T-2). The way to get that wrong is to reimplement the filter; so this
+// function IS the rule, and schedCellHTML calls it too.
+//
+// Unchanged from before run bars: where a real leg exists on a day, a penciled or
+// backfilled flight on that day does not draw. SUPPRESSED AT THE RENDER, never
+// deleted -- the records survive, the day panel still lists them, and the whole
+// backfill can still be cleared by category.
+//
+// A clash is two DIFFERENT kinds and survives untouched. Only repetition of the
+// SAME kind is collapsed, which never carried information: crew_busy_days
+// returns one row per leg per person per day, and four legs never meant four
+// blocks in one cell.
+function schedSuppressEntries(entries){
+  if(!entries || !entries.length) return [];
+  const hasRealFlight = entries.some(function(e){ return e.kind === 'flight'; });
+  const seen = {};
+  const out = [];
+  entries.forEach(function(e){
+    if(e.kind === 'flight_pencil' && hasRealFlight) return;
+    if(e.kind === 'flight_historical' && hasRealFlight) return;
+    if(seen[e.kind]) return;
+    seen[e.kind] = true;
+    out.push(e);
+  });
+  return out;
+}
+
+// The row-wide view the run detector needs: the same suppression, every day.
+function schedSuppressedDays(ownedDays, dayISOList){
+  const out = {};
+  for(let i = 0; i < dayISOList.length; i++){
+    out[dayISOList[i]] = schedSuppressEntries(ownedDays[dayISOList[i]]);
+  }
+  return out;
+}
+
+// ---- RUN DETECTION -------------------------------------------------------
+//
+// *** THE SPREADSHEET READS AS RUNS. THE GRID READ AS CONFETTI. ***
+//
+// Kyle, 27 Aug 2026: "If you look at the spreadsheet, it's got solid blocks for
+// everything, like a solid date range, with a number in the middle. That's
+// coherent. Here we've got individual days. It just doesn't read well."
+//
+// He was right, and the cause was geometric, not informational. Eric's soft days
+// 7-14 Aug are ONE object on the sheet and were EIGHT on screen: eight rounded
+// rectangles with eight gaps, because the grid paints one cell per day and each
+// cell rounds its own corners. A continuous range was structurally incapable of
+// looking continuous. Nothing was missing -- crew_exceptions holds a single
+// date-ranged row, crew_busy_days expands it per day for indexing, and the
+// render simply never put it back together.
+//
+// So we put it back together HERE, once per row, before any cell is drawn.
+//
+// A run is a maximal sequence of days sharing owner, kind, AND reason. Reason is
+// part of the identity on purpose: two PTO blocks that merely abut are two
+// events, and merging them would invent a single longer absence that never
+// happened. AWEI's real data proves the point -- pto 11-15 Aug and pto 19 Aug
+// "FAA Medical" must never become one bar.
+//
+// *** MONTH BOUNDARIES ARE IGNORED, DELIBERATELY. ***
+// Kyle: "The bar should continue if it crosses over from month to month, for
+// sure. That's one thing that we can get a win in over the spreadsheet."
+// The sheet CANNOT do this -- each month is its own tab, so every run is severed
+// at the edge and the reader rejoins it mentally. AWEI's training 27 Aug - 2 Sep
+// appears there as two blocks. Beacon scrolls continuously and has no excuse.
+//
+// Runs never span owners. Nine crew on quarterly_call on 20 Aug is nine one-day
+// runs that happen to align; that solid yellow column is emergent, not an object.
+function schedBuildRuns(ownedDays, dayISOList){
+  // ownedDays: { 'YYYY-MM-DD': [entry,...] }  ->  { iso: { key: {pos, len, label} } }
+  //
+  // *** SORT EXPLICITLY (trap 7 / trap T-4). *** The database promises no row
+  // order, and object key order must never be trusted to be chronological. The
+  // caller's day list is already in calendar order, so we walk THAT, not the keys.
+  const runs = {};
+  const openRuns = {};   // key -> { startIdx, len, detail }
+
+  function runKey(e){
+    // Reason is part of the identity -- see above.
+    return e.kind + '\u0000' + (e.detail || '');
+  }
+
+  for(let i = 0; i < dayISOList.length; i++){
+    const iso = dayISOList[i];
+    const entries = ownedDays[iso] || [];
+    const presentKeys = {};
+    for(let j = 0; j < entries.length; j++){
+      const e = entries[j];
+      // *** SUPPRESSION MUST BE APPLIED BEFORE RUN DETECTION (trap T-2). ***
+      // A suppressed day left in the sequence would sever a run and leave a
+      // visible seam with nothing in it. The caller has already filtered, so
+      // whatever arrives here is what will actually draw.
+      presentKeys[runKey(e)] = e;
+    }
+    // Close any run that did not continue into this day.
+    Object.keys(openRuns).forEach(function(k){
+      if(!presentKeys[k]) delete openRuns[k];
+    });
+    // Open or extend.
+    Object.keys(presentKeys).forEach(function(k){
+      if(openRuns[k]) openRuns[k].len += 1;
+      else openRuns[k] = { startIdx: i, len: 1, detail: presentKeys[k].detail || '' };
+    });
+    // Record this day's membership, keyed so the cell can look itself up.
+    if(!runs[iso]) runs[iso] = {};
+    Object.keys(presentKeys).forEach(function(k){
+      runs[iso][k] = openRuns[k];
+    });
+  }
+
+  // Second pass: now that every run's final length is known, stamp each day with
+  // its POSITION so the cell can decide which corners to round. Done separately
+  // because a run's length is not known until it ends.
+  for(let i = 0; i < dayISOList.length; i++){
+    const iso = dayISOList[i];
+    const dayRuns = runs[iso];
+    if(!dayRuns) continue;
+    Object.keys(dayRuns).forEach(function(k){
+      const r = dayRuns[k];
+      const offset = i - r.startIdx;
+      dayRuns[k] = {
+        len: r.len,
+        offset: offset,
+        isFirst: offset === 0,
+        isLast: offset === r.len - 1,
+        detail: r.detail
+      };
+    });
+  }
+  return runs;
+}
+
+// *** LABEL IF IT FITS, ELSE THE COUNT. ***
+// Kyle's rule, 27 Aug 2026. A run bar has room a single 30px cell never had, so
+// the old constraint -- qualifier text only when detail.length <= 2 -- was a
+// CONSEQUENCE OF THE OLD GEOMETRY, not a design intent. With a bar to write on,
+// the reason itself is more useful than its length: for a five-day block
+// "Global 6000 Recurrent" tells you something, whereas "5" tells you what you
+// can already see by looking.
+//
+// Never truncate with an ellipsis. A half-word is worse than a number, because a
+// number is at least true and complete.
+//
+// The same block therefore shows different text at different widths -- the reason
+// when columns are wide, the count when they are tight. That is intended.
+// A run's geometry, expressed as classes rather than inline style, so the
+// stylesheet keeps ownership of the shape and one rule can change every bar.
+//
+// *** SQUARE THE INSIDE, ROUND THE OUTSIDE. ***
+// A one-day run is unchanged from before: rounded at both ends, which is simply
+// "first and last on the same day". No special case needed.
+function schedRunAt(e, dayRuns){
+  if(!dayRuns) return null;
+  const k = e.kind + '\u0000' + (e.detail || '');
+  return dayRuns[k] || null;
+}
+
+function schedRunCls(e, dayRuns){
+  const r = schedRunAt(e, dayRuns);
+  if(!r || r.len < 2) return '';
+  let c = ' sched-blk-run';
+  if(r.isFirst) c += ' sched-blk-run-first';
+  if(r.isLast)  c += ' sched-blk-run-last';
+  if(!r.isFirst && !r.isLast) c += ' sched-blk-run-mid';
+  return c;
+}
+
+function schedRunLabel(e, dayRuns){
+  const r = schedRunAt(e, dayRuns);
+  if(!r) return '';
+  return escapeHtml(schedRunText(r));
+}
+
+// The pencil outline, drawn edge by edge. A continuous hollow run must read as
+// ONE outlined shape, so the internal verticals are omitted -- otherwise the
+// outline draws a rule at every day boundary and the run looks like the confetti
+// it replaced. Top and bottom always draw; left only on the first day, right
+// only on the last.
+function schedPencilShadow(col, e, dayRuns){
+  const r = schedRunAt(e, dayRuns);
+  const parts = [];
+  if(!r || r.len < 2){
+    return 'box-shadow:inset 0 0 0 2px ' + col;
+  }
+  parts.push('inset 0 2px 0 0 ' + col);
+  parts.push('inset 0 -2px 0 0 ' + col);
+  if(r.isFirst) parts.push('inset 2px 0 0 0 ' + col);
+  if(r.isLast)  parts.push('inset -2px 0 0 0 ' + col);
+  return 'box-shadow:' + parts.join(',');
+}
+
+const SCHED_RUN_CELL_W = 30;   // .sched-cell width, px -- keep in step with the stylesheet
+const SCHED_RUN_CHAR_W = 5.4;  // approx advance of the 9px/700 face used on .sched-blk
+
+function schedRunText(run){
+  if(!run || run.len < 1) return '';
+  // Only the FIRST day of a run carries text -- the bar is one object and one
+  // object gets one label. Every other day draws bare fill.
+  if(!run.isFirst) return '';
+  const avail = (run.len * SCHED_RUN_CELL_W) - 8;   // less padding at both ends
+  const detail = run.detail || '';
+  if(detail && (detail.length * SCHED_RUN_CHAR_W) <= avail) return detail;
+  // Fall back to the day count, as the spreadsheet does. A single day with no
+  // room for its reason shows nothing rather than a pointless "1".
+  if(run.len < 2) return '';
+  return String(run.len);
+}
+
+function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, isMe, dayRuns){
   let cls = 'sched-cell';
   // isWeekend is now unused -- see "THERE ARE NO WEEKENDS IN AVIATION" in the
   // stylesheet. Kept in the signature only to leave every caller's argument list
@@ -14506,7 +14764,6 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   // *** A CLASH STILL STACKS. *** Flight-plus-PTO is two DIFFERENT categories,
   // so it survives collapsing untouched -- the only thing removed is repetition
   // of the SAME category, which never carried information in the first place.
-  const seenKinds = {};
   const shown = [];
   // *** A REAL TRIP SUPERSEDES A PENCIL, PER DAY, WITHOUT ANYONE TIDYING UP. ***
   //
@@ -14529,19 +14786,11 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   // decision. Erasing the record would destroy the evidence that the plan moved.
   // Clearing a leftover day stays a MANUAL delete, per Kyle -- by then the trip
   // is the record of what happened and the pencil has done its job.
-  const hasRealFlight = entries.some(function(e){ return e.kind === 'flight'; });
-  entries.forEach(function(e){
-    if(e.kind === 'flight_pencil' && hasRealFlight) return;
-    // Same suppression, same reason. Once a real trip is imported over a
-    // backfilled day, the leg is the better record and two green blocks in one
-    // cell would say nothing except "something is duplicated". Suppressed at
-    // the RENDER, never deleted -- the backfill row survives so the whole year
-    // can still be cleared in one statement by category.
-    if(e.kind === 'flight_historical' && hasRealFlight) return;
-    if(seenKinds[e.kind]) return;
-    seenKinds[e.kind] = true;
-    shown.push(e);
-  });
+  // *** THE SAME FUNCTION THE RUN DETECTOR USED -- NOT A SECOND COPY. ***
+  // The run map was built from schedSuppressedDays. If this filter ever
+  // disagreed with that one, runs would sever on days the cell hides and draw
+  // seams with nothing in them. One rule, two readers (trap T-2).
+  schedSuppressEntries(entries).forEach(function(e){ shown.push(e); });
   const blocks = shown.map(function(e){
     const col = schedKindColor(e.kind, ownerKind);
     const label = schedKindLabel(e.kind, ownerKind);
@@ -14572,24 +14821,35 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
     // panel still says "Away on trip -- not flying" in words.
     if(e.kind === 'away_on_trip'){
       // Never quiet -- away_on_trip is green on crew, teal on aircraft, both loud.
-      return '<span class="sched-blk" style="background:' + col + '"' +
+      return '<span class="sched-blk' + schedRunCls(e, dayRuns) + '" style="background:' + col + '"' +
              ' title="' + escapeHtml(label + (e.trip && e.trip.indexOf('__grp_') !== 0
-                                              ? ' \u2014 trip ' + e.trip : '')) + '"></span>';
+                                              ? ' \u2014 trip ' + e.trip : '')) + '">' +
+             schedRunLabel(e, dayRuns) + '</span>';
     }
     if(e.kind === 'flight_pencil'){
-      return '<span class="sched-blk sched-blk-pencil" style="box-shadow:inset 0 0 0 2px ' + col + '"' +
-             ' title="' + escapeHtml(title + ' \u2014 provisional, not a confirmed trip') + '"></span>';
+      // A pencil run keeps its outline, so the inset shadow is drawn only on the
+      // edges the run actually has -- an internal edge would draw a rule THROUGH
+      // a continuous bar and break exactly the continuity we are building.
+      return '<span class="sched-blk sched-blk-pencil' + schedRunCls(e, dayRuns) + '"' +
+             ' style="' + schedPencilShadow(col, e, dayRuns) + '"' +
+             ' title="' + escapeHtml(title + ' \u2014 provisional, not a confirmed trip') + '">' +
+             schedRunLabel(e, dayRuns) + '</span>';
     }
-    // The qualifier (the spreadsheet's "M" for a medical appointment) is shown
-    // in the cell when it is short enough to fit, because a reason nobody can
-    // see without tapping is a reason nobody reads.
-    const short = (e.detail && e.detail.length <= 2) ? escapeHtml(e.detail) : '';
+    // The qualifier -- the spreadsheet's "M" for a medical appointment -- is
+    // shown in the cell, because a reason nobody can see without tapping is a
+    // reason nobody reads. What has changed is HOW MUCH of it fits.
+    // *** THE `detail.length <= 2` RULE IS GONE -- SUPERSEDED BY THE RUN BAR. ***
+    // It existed because a lone 30px cell has room for two characters and no
+    // more. A run bar is as wide as the run, so the text decision belongs to
+    // schedRunText, which shows the reason when it fits and the day count when
+    // it does not. Audited: this was the only reader (trap T-1).
+    const short = schedRunLabel(e, dayRuns);
     // The qualifier letter is dark by default and light on the dark fills.
     // Driven off SCHED_LIGHTTEXT_KINDS rather than off the hex, so a fill and
     // its text colour cannot drift apart.
     // .sched-blk defaults to ink-900. Only the dark fills override it.
     const qcls = SCHED_LIGHTTEXT_KINDS[e.kind] ? ' sched-blk-lighttext' : '';
-    return '<span class="sched-blk' + qcls + '" style="background:' + col + '" title="' + escapeHtml(title) + '">' + short + '</span>';
+    return '<span class="sched-blk' + qcls + schedRunCls(e, dayRuns) + '" style="background:' + col + '" title="' + escapeHtml(title) + '">' + short + '</span>';
   }).join('');
   return '<div class="' + cls + ' sched-cell-filled"' + attrs + '>' + blocks + '</div>';
 }
@@ -15816,11 +16076,19 @@ function renderScheduleView(){
                (subOf(r) ? '<span class="sched-name-sub">' + escapeHtml(subOf(r)) + '</span>' : '') +
              '</div>';
       const owned = idx[r.id] || {};
+      // *** RUNS ARE COMPUTED ONCE PER ROW, NOT PER CELL. ***
+      // A cell cannot see its neighbours, which is precisely why the grid read as
+      // confetti. The row can. Suppression is applied inside schedCellHTML, so the
+      // run map is built from the same filtered view the cells will draw -- see
+      // trap T-2: a suppressed day left in the sequence severs a run and leaves a
+      // seam with nothing in it.
+      const rowISOs = days.map(function(dt){ return schedISO(dt); });
+      const rowRuns = schedBuildRuns(schedSuppressedDays(owned, rowISOs), rowISOs);
       days.forEach(function(dt){
         const iso = schedISO(dt);
         const dow = dt.getDay();
         h += schedCellHTML(owned[iso], iso, r.id, kind, iso === todayISO,
-                           dow === 0 || dow === 6, isMe);
+                           dow === 0 || dow === 6, isMe, rowRuns[iso]);
       });
       h += '</div>';
     });
