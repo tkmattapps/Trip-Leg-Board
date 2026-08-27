@@ -2737,7 +2737,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T14:05:00Z';
+const BUILD_VERSION = '2026-08-27T20:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14269,6 +14269,51 @@ function schedDayList(){
   return out;
 }
 
+// *** PostgREST CAPS A RESPONSE AND DOES NOT TELL YOU. ***
+//
+// Kyle, 27 Aug 2026: August went blank. Not deleted -- never delivered. The
+// backfill pushed crew_busy_days to 1100 rows across the year window, the
+// server returned the first 1000, and the client believed it. No error, no
+// warning, just a shorter array. The 100 rows lost were the tail of the
+// result, which is why AUGUST specifically vanished while July was perfect.
+//
+// These RPCs return ONE ROW PER OWNER PER DAY, so the count is roster size
+// times window length -- it grows with hiring and with the window, and it
+// crossed the line the moment a year of history landed. It will cross it
+// again. Paging is not a workaround here, it is the correct way to read a
+// row-per-day derivation.
+//
+// *** NEVER CAP THE NUMBER OF PAGES. *** A "three passes is surely enough"
+// guard reproduces this exact bug at three times the size, and the next
+// person to hit it gets the same silent truncation with a longer fuse. The
+// loop ends when a SHORT PAGE arrives -- the only trustworthy end-of-data
+// signal -- or when it hits an absurdity ceiling, and the ceiling SHOUTS.
+const SCHED_PAGE_SIZE = 1000;    // must not exceed the server's own cap
+const SCHED_PAGE_MAX  = 50000;   // absurdity ceiling: ~10 years x 12 people
+
+async function schedRpcPaged(fnName, args){
+  const out = [];
+  let from = 0;
+  for(;;){
+    const res = await sb.rpc(fnName, args).range(from, from + SCHED_PAGE_SIZE - 1);
+    if(res.error) throw res.error;
+    const page = res.data || [];
+    out.push.apply(out, page);
+    // A short page means the server had nothing more to give. An exactly-full
+    // page is ambiguous, so we always ask again -- the extra round trip on a
+    // clean multiple of the page size is the price of not guessing.
+    if(page.length < SCHED_PAGE_SIZE) break;
+    from += SCHED_PAGE_SIZE;
+    if(from >= SCHED_PAGE_MAX){
+      // Loud on purpose. Silence is what cost a day of debugging.
+      console.error('schedRpcPaged: ' + fnName + ' exceeded ' + SCHED_PAGE_MAX +
+                    ' rows -- data is being truncated. Narrow the window or raise the ceiling.');
+      break;
+    }
+  }
+  return out;
+}
+
 // Both derivations are asked SEPARATELY and never joined. crew_busy_days and
 // aircraft_busy_days share a shape but nothing else; a caller wanting both asks
 // twice. Joining them in the client would quietly recreate the spreadsheet's
@@ -14277,15 +14322,13 @@ async function loadScheduleData(){
   const w = schedWindow();
   const deptId = await getFlightDepartmentId();
   const args = { p_department_id: deptId, p_start: schedISO(w.start), p_end: schedISO(w.end) };
-  const [crewRes, acRes] = await Promise.all([
-    sb.rpc('crew_busy_days', args),
-    sb.rpc('aircraft_busy_days', args)
+  const [crew, aircraft] = await Promise.all([
+    schedRpcPaged('crew_busy_days', args),
+    schedRpcPaged('aircraft_busy_days', args)
   ]);
-  if(crewRes.error) throw crewRes.error;
-  if(acRes.error) throw acRes.error;
   if(!rosterCache || !rosterCache.length) await loadRoster();
   if(!aircraftCache || !aircraftCache.length) await loadAircraft();
-  return { crew: crewRes.data || [], aircraft: acRes.data || [] };
+  return { crew: crew, aircraft: aircraft };
 }
 
 // Index day-rows into { ownerId: { 'YYYY-MM-DD': [entry, ...] } }.
