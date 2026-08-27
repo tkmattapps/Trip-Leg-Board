@@ -1097,6 +1097,34 @@
      see-through and the grid scrolls through it -- the trap that cost real time
      in chat 3. A tint cannot do that. */
   .sched-col-on{ background-image:linear-gradient(rgba(184,196,217,0.07), rgba(184,196,217,0.07)); }
+
+  /* *** YOUR OWN ROW. ***
+     The grid is a department view, but the question people arrive with is "what
+     am I doing this month". Rather than pull the signed-in user's row out of its
+     band -- which would break the by-title grouping the grid is organised around,
+     and hide where you sit relative to your peers -- the row is marked IN PLACE.
+
+     *** THE TINT IS ON EMPTY CELLS ONLY. Kyle's idea, and it is the thing that
+     makes this safe. *** A wash across the whole row would sit behind the
+     category blocks and read as a colour in its own right, which is exactly the
+     confusion the palette work spent all night removing. Restricting it to cells
+     with no entry means the tint can NEVER be mistaken for a category, because
+     it only ever appears where no category exists. The filled blocks are left
+     completely alone.
+
+     Applied via background-image, matching .sched-cell-wknd and .sched-col-on.
+     Two reasons, both load-bearing: a `background` shorthand on a sticky element
+     is a known trap in this file, and gradients STACK -- so your row still shows
+     the weekend shading and the lit working month underneath this, rather than
+     one tint overwriting another. A me-cell on a weekend in the current month
+     carries all three, which is the intended reading. */
+  .sched-cell-me{ background-image:linear-gradient(rgba(184,196,217,0.10), rgba(184,196,217,0.10)); }
+
+  /* The left edge is sticky, so this is the one marker guaranteed to stay on
+     screen however far the grid is scrolled -- the tint runs off to the right
+     with the days, but this does not. */
+  .sched-row-me .sched-name{ box-shadow:inset 3px 0 0 var(--amber-500); }
+  .sched-row-me .sched-name-main{ color:var(--paper-050); font-weight:700; }
   /* Where the lit column meets a weekend, the two tints stack to ~0.12, which is
      the intended reading: still a weekend, still in the working month. */
   .sched-col-on.sched-cell-wknd{
@@ -2627,7 +2655,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T10:15:00Z';
+const BUILD_VERSION = '2026-08-28T10:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14281,9 +14309,15 @@ function schedKindLabel(kind, ownerKind){
   return SCHED_LABELS[kind] || kind;
 }
 
-function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend){
+function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, isMe){
   let cls = 'sched-cell';
   if(isWeekend) cls += ' sched-cell-wknd';
+  // *** ONLY WHEN THE CELL IS EMPTY -- see .sched-cell-me. ***
+  // Deliberately tested against `entries` here rather than being added by the
+  // caller: the empty-vs-filled distinction is decided in this function, and
+  // splitting it across two would let the two drift apart the first time the
+  // empty branch moved.
+  if(isMe && (!entries || !entries.length)) cls += ' sched-cell-me';
   // *** THE `outside` PARAMETER IS GONE, NOT VOIDED. ***
   // It marked a day as belonging to a month other than the anchor's, so the cell
   // could be dimmed. Nothing dims now -- the working month is LIT instead, via
@@ -15539,6 +15573,12 @@ function renderScheduleView(){
 
   const days = schedDayList();
   const todayISO = schedISO(new Date());
+  // Resolved ONCE for the whole render rather than per row. currentUserProfile is
+  // populated at sign-in; if it is somehow absent, meId is empty and every row
+  // simply renders unmarked -- the grid is still correct, just not personalised.
+  // No fallback to matching on name or email: a wrong match here would put
+  // somebody else's schedule under your marker, which is worse than no marker.
+  const meId = (currentUserProfile && currentUserProfile.id) || '';
   const crewIdx = schedFillAwayDays(indexBusyDays(schedData.crew, 'user_id', 'source'));
   // *** A TRIP IS A CONTINUOUS ABSENCE FOR THE AIRCRAFT TOO. ***
   // schedFillAwayDays is owner-agnostic -- it reads only the index -- so the
@@ -15619,7 +15659,11 @@ function renderScheduleView(){
     if(!rows.length) return '';
     let h = '<div class="sched-band">' + escapeHtml(label) + '</div>';
     rows.forEach(function(r){
-      h += '<div class="sched-row">' +
+      // Crew only. An aircraft is not anybody's row, and matching an aircraft id
+      // against a user id could only ever be a coincidence, but the kind check
+      // makes that explicit rather than relying on ids never colliding.
+      const isMe = kind === 'crew' && !!meId && r.id === meId;
+      h += '<div class="sched-row' + (isMe ? ' sched-row-me' : '') + '">' +
              '<div class="sched-name">' +
                '<span class="sched-name-main">' + escapeHtml(nameOf(r)) + '</span>' +
                (subOf(r) ? '<span class="sched-name-sub">' + escapeHtml(subOf(r)) + '</span>' : '') +
@@ -15629,7 +15673,7 @@ function renderScheduleView(){
         const iso = schedISO(dt);
         const dow = dt.getDay();
         h += schedCellHTML(owned[iso], iso, r.id, kind, iso === todayISO,
-                           dow === 0 || dow === 6);
+                           dow === 0 || dow === 6, isMe);
       });
       h += '</div>';
     });
