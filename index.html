@@ -2627,7 +2627,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T08:30:00Z';
+const BUILD_VERSION = '2026-08-28T09:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13817,18 +13817,28 @@ function quickNoteBodyHTML(activeTripId){
 //
 // FLAGGED BEFORE BUILDING, AND BUILT ANYWAY AT KYLE'S DIRECTION. Recorded so that
 // nobody later mistakes these for oversights:
-//   1. PTO IS NOW THE QUIETEST BLOCK ON THE GRID. pto #AD1F1F measures 0.100;
-//      soft_day #D9AE2A measures 0.452, so a soft day is 4.5x louder than time
-//      off. The grid was reworked in the first place because it did not rank
-//      what mattered, and Kyle named PTO as one of the three that matter most.
-//   2. soft_day IS EFFECTIVELY THE ALERT AMBER. 9 degrees from --amber-500 at a
-//      1.05x brightness gap. Earlier attempts treated a 2.6x gap as the only
-//      thing making amber proximity survivable; there is no such gap now.
-//   3. quarterly_call #96B6D7 IS 8 DEGREES FROM --fog-300, the secondary-text
-//      token. The original 'other' bug was exactly this -- it was --fog-500, the
-//      body-text colour, and read as an empty cell rather than an assignment.
-// If any of these three is ever reported as "the grid looks wrong", the cause is
-// written down here rather than needing to be rediscovered.
+//   1. PTO IS THE QUIETEST BLOCK ON THE GRID. pto #AB1E41 measures 0.100 against
+//      0.449 for flight and 0.299 for soft_day. The grid was reworked in the
+//      first place because it did not rank what mattered, and Kyle named PTO as
+//      one of the three that matter most. Raised across two successive palettes
+//      and knowingly kept both times, so this is a decision, not an oversight.
+//   2. soft_day #D87F26 IS 6 DEGREES FROM --amber-500. What makes it survivable
+//      is a 1.59x brightness gap plus role separation -- alert amber appears on
+//      rings, flags and pills, never as a grid fill. IF ANYONE LIGHTENS soft_day
+//      THAT PROTECTION IS GONE. (The palette before this one sat at 1.05x, i.e.
+//      no protection at all; this is the fix for it.)
+//   3. other #9DB2EE IS 6 DEGREES FROM --fog-300, the secondary-text token. It
+//      survives on SATURATION -- 70% against fog's 30% -- so it reads as a
+//      colour rather than as chrome. The original 'other' bug was this same
+//      adjacency at 22% saturation, where it read as an empty cell.
+//
+// THREE BLUES SIT WITHIN 23 DEGREES: training 210, other 224, maintenance 233.
+// They are separated by BRIGHTNESS, not hue -- 2.53x and 3.94x apart. This is the
+// one place where the tier idea from the superseded narrative below survived, and
+// it is the reason those three do not merge into each other.
+//
+// If any of this is ever reported as "the grid looks wrong", the cause is written
+// down here rather than needing to be rediscovered.
 //
 // --- BEGIN SUPERSEDED NARRATIVE ---
 //
@@ -13994,45 +14004,45 @@ function quickNoteBodyHTML(activeTripId){
 // two-tier scheme -- the quiet tier now contains soft_day and other only.
 // NOTE: #E8D44F is the one fill in this table that needs DARK text, not paper.
 const SCHED_COLORS = {
-  flight:         '#24CF24',
-  flight_pencil:  '#24CF24',   // SAME GREEN AS A REAL FLIGHT, ON PURPOSE
-  away_on_trip:   '#24CF24',   // ONE TRIP, ONE COLOUR -- see schedCellHTML
-  training:       '#496EDF',
-  pto:            '#AD1F1F',
-  quarterly_call: '#96B6D7',
-  soft_day:       '#D9AE2A',
-  other:          '#7F5EE3',
+  flight:         '#24CC78',
+  flight_pencil:  '#24CC78',   // SAME GREEN AS A REAL FLIGHT, ON PURPOSE
+  away_on_trip:   '#24CC78',   // ONE TRIP, ONE COLOUR -- see schedCellHTML
+  training:       '#2477CB',
+  pto:            '#AB1E41',
+  quarterly_call: '#B8B846',
+  soft_day:       '#D87F26',
+  other:          '#9DB2EE',
   // *** ONE PALETTE ACROSS SURFACES. ***
   // An aircraft's state should look the same wherever it is drawn, so these two
   // are shared with the Settings status pill.
   //
-  // *** REGRESSION KNOWINGLY ACCEPTED HERE -- READ BEFORE "FIXING" IT. ***
-  // The pill previously drew away_from_base in #4A9DE0, the exact blue this table
-  // used for training, and that was deliberately changed because one colour meant
-  // two unrelated things depending on which screen you were on. This palette
-  // reintroduces the same shape of problem twice over: maintenance now equals
-  // training, and away_from_base now equals flight. Kyle's argument for allowing
-  // it is that maintenance and away_from_base are AIRCRAFT-row kinds while
-  // training and flight are CREW-row kinds, so the pairs can never appear in the
-  // same place -- position disambiguates and the colour does not have to.
+  // *** ONE DELIBERATE COLLISION REMAINS -- READ BEFORE "FIXING" IT. ***
+  // away_from_base is the same green as flight and away_on_trip. Kyle's argument
+  // for allowing it: away_from_base is an AIRCRAFT-row kind while the other two
+  // are CREW-row kinds, so they can never appear in the same place -- position
+  // disambiguates and the colour does not have to.
   //
   // That argument holds ON THE GRID. It does NOT cover the Settings status pill,
-  // which is a different surface with no row context. If away_from_base ever
-  // looks like flight duty somewhere outside the grid, this is why.
-  maintenance:    '#496EDF',
-  away_from_base: '#24CF24'
+  // which is a different surface with no row context. The pill previously drew
+  // away_from_base in #4A9DE0, the exact blue this table used for training, and
+  // that was deliberately changed because one colour meant two unrelated things
+  // depending on the screen. If away_from_base ever reads as flight duty outside
+  // the grid, this is the same problem wearing a different colour.
+  //
+  // A briefly-shipped palette also had maintenance identical to training. That is
+  // gone -- maintenance #5059A2 and training #2477CB sit 23 degrees and 1.56x
+  // brightness apart.
+  maintenance:    '#5059A2',
+  away_from_base: '#24CC78'
 };
 
-// Which kinds are in the QUIET tier. Kept as a set beside the colours rather than
-// inferred from the hex, so moving a category between tiers is one edit in one
-// place and cannot leave the fill and the text colour disagreeing.
 // Which fills need PAPER text. .sched-blk defaults to ink-900, which wins on most
 // of this palette, so only the genuinely dark fills are listed here. Measured
 // against the real tokens -- ink-900 #0E1A2B and paper-050 #EFEBDF, not white:
-//   pto        #AD1F1F  lum 0.100  cream 5.9   ink 2.2
-//   training   #496EDF  lum 0.179  cream 3.8   ink 3.1
-//   maintenance #496EDF (same fill as training)
-// Everything else takes the ink default and measures 8.3 or better.
+//   pto         #AB1E41  lum 0.100  cream 5.9   ink 2.2
+//   training    #2477CB  lum 0.179  cream 3.9   ink 3.1
+//   maintenance #5059A2  lum 0.115  cream 5.4   ink 2.4
+// Everything else takes the ink default; the weakest of those is soft_day at 5.8.
 //
 // KEPT AS A SET BESIDE THE COLOURS, not inferred from the hex, so that changing a
 // fill and changing its text colour are one edit in one place. This has already
@@ -14040,9 +14050,9 @@ const SCHED_COLORS = {
 // yellow to a pale blue across three attempts, and the text followed each time
 // without a separate hunt through the CSS.
 //
-// NOTE: training and maintenance measure 3.8, below the usual 4.5 target, and
-// these blocks can carry a one-or-two-letter qualifier. Legible at the sizes used
-// here, but if that qualifier ever looks weak, this pair is why.
+// NOTE: training measures 3.9, below the usual 4.5 target, and these blocks can
+// carry a one-or-two-letter qualifier. Legible at the size used here, but if that
+// qualifier ever looks weak on a training day, this is why.
 const SCHED_LIGHTTEXT_KINDS = { pto: true, training: true, maintenance: true };
 
 // A day where a person is on flight duty AND holds a protected exception. This
