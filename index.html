@@ -2790,7 +2790,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T21:55:00Z';
+const BUILD_VERSION = '2026-08-27T22:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14520,8 +14520,21 @@ function schedSuppressEntries(entries){
   entries.forEach(function(e){
     if(e.kind === 'flight_pencil' && hasRealFlight) return;
     if(e.kind === 'flight_historical' && hasRealFlight) return;
-    if(seen[e.kind]) return;
-    seen[e.kind] = true;
+    // *** DEDUPE BY RUN KEY, NOT BY KIND. ***
+    // This used to key on e.kind, which meant a day holding both a real leg and
+    // the derived away_on_trip for THE SAME TRIP drew two blocks stacked in one
+    // cell -- the vertical split Kyle found inside Eric's 26 Jun - 3 Jul trip.
+    // They are not two facts. They are one trip, and schedRunKeyFor now buckets
+    // both under it, so keying the dedupe off the same function collapses them
+    // to one block automatically.
+    //
+    // A genuine CLASH still survives untouched, which is the whole point: PTO and
+    // a flight produce different keys, both draw, and the cell splits half and
+    // half. Only same-trip repetition is removed, and that never carried
+    // information.
+    const k = schedRunKeyFor(e);
+    if(seen[k]) return;
+    seen[k] = true;
     out.push(e);
   });
   return out;
@@ -14576,11 +14589,50 @@ const SCHED_TRIP_KINDS = { flight:1, away_on_trip:1, flight_pencil:1, flight_his
 //
 // Runs never span owners. Nine crew on quarterly_call on 20 Aug is nine one-day
 // runs that happen to align; that solid yellow column is emergent, not an object.
+// *** WHAT MAKES A RUN ONE OBJECT DEPENDS ON THE KIND. ***
+//
+// For a hand-entered category the REASON is the identity: two PTO blocks that
+// merely abut are two events, and merging them would invent a single longer
+// absence that never happened.
+//
+// For a trip, the identity is THE TRIP -- and crucially, NOT THE KIND.
+//
+// Kyle, 27 Aug 2026, on Eric's 26 Jun - 3 Jul trip: "it's all chopped up. It's
+// got two days, then two days, then a single day that's split into two separate
+// chunks, then two days, then a single day on the third."
+//
+// Two faults, both mine. First, schedFillAwayDays pushes its derived days with
+// ref:'' and the trip on a `trip` property, so resolving through e.ref found
+// nothing and every away day became its own one-day run. Second and worse, even
+// with the trip resolved, `flight` and `away_on_trip` were different KINDS and so
+// could never merge -- a trip would draw flight, flight, away, flight as separate
+// bars with a vertical split wherever the two met in one cell.
+//
+// But a trip is ONE CONTINUOUS ABSENCE. That is already settled policy here:
+// "from the day of departure to the day of return, you are on flight duty and
+// away", and schedKindColor deliberately paints flight and away_on_trip the SAME
+// colour per band precisely so a trip reads as one unbroken run. The run key was
+// the last place still treating them as two things.
+//
+// So every trip kind collapses to a single bucket, 'trip', and a trip draws as
+// one bar from departure to return whether or not you fly on any given day. The
+// day panel still says which is which, in words.
+//
+// An UNRESOLVABLE leg falls back to its own ref, keeping it a one-day run rather
+// than letting a failed lookup merge it into a neighbouring trip -- a wrong join
+// here would silently claim someone was away when they were not.
 function schedRunKeyFor(e){
   if(SCHED_TRIP_KINDS[e.kind]){
-    const info = (typeof schedFlightRefInfo === 'function') ? schedFlightRefInfo(e.ref) : null;
-    const trip = info ? (info.tripNumber || info.groupId || '') : '';
-    return e.kind + '\u0000trip:' + (trip || ('leg:' + (e.ref || '')));
+    // schedFillAwayDays carries the trip key directly; a real leg resolves
+    // through state.legs. Check the explicit one first -- it needs no lookup.
+    let trip = e.trip || '';
+    if(!trip){
+      const info = (typeof schedFlightRefInfo === 'function') ? schedFlightRefInfo(e.ref) : null;
+      trip = info ? (info.tripNumber || ('__grp_' + (info.groupId || e.ref))) : '';
+    }
+    // *** NOTE THE BUCKET IS 'trip', NOT e.kind. *** That is what merges a flying
+    // day and an away day on the same trip into one bar.
+    return 'trip\u0000' + (trip || ('leg:' + (e.ref || '')));
   }
   return e.kind + '\u0000' + (e.detail || '');
 }
