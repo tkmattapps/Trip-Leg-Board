@@ -1118,7 +1118,45 @@
      the weekend shading and the lit working month underneath this, rather than
      one tint overwriting another. A me-cell on a weekend in the current month
      carries all three, which is the intended reading. */
-  .sched-cell-me{ background-image:linear-gradient(rgba(184,196,217,0.10), rgba(184,196,217,0.10)); }
+  /* *** A LINE, NOT A TINT. ***
+     The first version of this was a 10% grey wash on the empty cells. It failed
+     on device for a reason worth keeping: the weekend shading is the same grey at
+     5% and the lit working month is the same grey at 7%, so a third value of the
+     same treatment read as another piece of grid furniture rather than as
+     something about YOU. Kyle: "it's really similar to, like, the Saturday,
+     Sunday." Raising the opacity would not have helped -- it would have been the
+     same vocabulary spoken louder, and at some point it starts competing with the
+     category blocks.
+
+     A rule is a different DEVICE from area shading, so it cannot be mistaken for
+     a fourth flavour of tint no matter what value it takes. It also does the
+     thing the tint could not: a continuous horizontal line runs the eye ALONG the
+     row, which is the actual job -- following your own schedule across a month.
+
+     No new colour enters the palette. This is --fog-500, already the grid's
+     structural grey, at an opacity chosen to sit above the shading values without
+     approaching the category fills.
+
+     The line is drawn as a centred gradient band rather than a border, because a
+     border would sit on the cell EDGE and break at every boundary; this runs
+     through the middle and reads as continuous across the empty run. Still
+     background-image, so it continues to stack with the weekend and lit-month
+     shading rather than replacing either. */
+  .sched-cell-me{
+    background-image:linear-gradient(to bottom,
+      transparent calc(50% - 1px),
+      rgba(126,143,172,0.85) calc(50% - 1px),
+      rgba(126,143,172,0.85) calc(50% + 1px),
+      transparent calc(50% + 1px));
+  }
+
+  /* The run of empty days ends wherever a block starts, so the line stops dead at
+     a filled cell. That is correct -- the block itself carries the row at that
+     point -- but the very first and last cells of a run would otherwise end in
+     mid-air. They do not need capping: the line meets the cell edge and the next
+     cell either continues it or is a block, so the eye reads one continuous
+     track either way. Recorded so nobody adds caps and wonders why they never
+     show. */
 
   /* The left edge is sticky, so this is the one marker guaranteed to stay on
      screen however far the grid is scrolled -- the tint runs off to the right
@@ -2655,7 +2693,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T10:50:00Z';
+const BUILD_VERSION = '2026-08-28T11:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
