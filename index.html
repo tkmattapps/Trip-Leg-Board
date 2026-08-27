@@ -2737,7 +2737,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T12:20:00Z';
+const BUILD_VERSION = '2026-08-28T14:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14116,6 +14116,17 @@ function quickNoteBodyHTML(activeTripId){
 const SCHED_COLORS = {
   flight:         '#24CC78',
   flight_pencil:  '#24CC78',   // SAME GREEN AS A REAL FLIGHT, ON PURPOSE
+  // *** BACKFILLED DUTY IS DUTY. *** A day flown in March 2026, before the
+  // department adopted Beacon, was as real as one flown today -- it simply has
+  // no leg behind it and never will. Same green, no qualifier, no hollow
+  // outline: the grid's job is to show 2026 as the year it actually was.
+  // The distinction lives in the day panel, in words, where it costs nothing.
+  //
+  // NOTE THIS BREAKS AN ASSUMPTION YOU MAY BE CARRYING: green no longer means
+  // "counts toward the tally". flight_pencil is green and does NOT count;
+  // flight_historical is green and DOES. Green means flying-related. The
+  // counting rules live in the tally and nowhere else.
+  flight_historical: '#24CC78',
   away_on_trip:   '#24CC78',   // ONE TRIP, ONE COLOUR -- see schedCellHTML
   training:       '#2477CB',
   pto:            '#AB1E41',
@@ -14174,7 +14185,8 @@ function schedIsClash(entries){
   if(!entries || entries.length < 2) return false;
   let flying = false, protectedDay = false;
   entries.forEach(function(e){
-    if(e.kind === 'flight' || e.kind === 'flight_pencil' || e.kind === 'away_on_trip') flying = true;
+    if(e.kind === 'flight' || e.kind === 'flight_pencil' || e.kind === 'away_on_trip'
+       || e.kind === 'flight_historical') flying = true;
     else if(SCHED_PROTECTED[e.kind]) protectedDay = true;
   });
   return flying && protectedDay;
@@ -14183,6 +14195,7 @@ function schedIsClash(entries){
 const SCHED_LABELS = {
   flight:         'Flight duty',
   flight_pencil:  'Flight duty (penciled)',
+  flight_historical: 'Flight duty \u2014 before Beacon',
   away_on_trip:   'Away on trip \u2014 not flying',
   training:       'Training / on-site',
   pto:            'PTO',
@@ -14476,6 +14489,12 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   const hasRealFlight = entries.some(function(e){ return e.kind === 'flight'; });
   entries.forEach(function(e){
     if(e.kind === 'flight_pencil' && hasRealFlight) return;
+    // Same suppression, same reason. Once a real trip is imported over a
+    // backfilled day, the leg is the better record and two green blocks in one
+    // cell would say nothing except "something is duplicated". Suppressed at
+    // the RENDER, never deleted -- the backfill row survives so the whole year
+    // can still be cleared in one statement by category.
+    if(e.kind === 'flight_historical' && hasRealFlight) return;
     if(seenKinds[e.kind]) return;
     seenKinds[e.kind] = true;
     shown.push(e);
