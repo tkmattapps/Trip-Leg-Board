@@ -1129,7 +1129,48 @@
      working month underneath this rather than one tint overwriting the other.
      (This used to say "weekend shading and the lit working month". The weekend
      shading is gone -- there are no weekends in aviation.) */
-  /* *** A TINT, ARRIVED AT THE SECOND TIME ROUND. ***
+  /* *** THE MARK IS THE ABSENCE OF ONE. ***
+     Your empty days are held at the app background -- darker than every other
+     empty cell in the working month, not lighter. This is the version that worked
+     on device, and it took three tries to see why.
+
+     Attempt one: a 10% grey wash. Rejected -- weekends were 5% and the lit month
+     7%, so a third grey read as more grid furniture.
+     Attempt two: a centred rule through each empty day. Distinctive, but a line
+     through thirty cells made the whole grid busier.
+     Attempt three, which is this one: nothing at all. And the reason it works is
+     that attempt two ALREADY HAD IT and neither of us noticed at the time -- the
+     line was drawn on transparency, so those cells fell through to the dark navy
+     while their neighbours carried a tint. Kyle: "you had my empty days
+     transparent, which allowed the dark background to show through, and that was
+     sufficient to truly identify my line as mine." The line was never doing the
+     work. The hole around it was.
+
+     *** SO THIS MARK POINTS THE OTHER WAY FROM EVERY OTHER MARK IN THE GRID. ***
+     Everything else here announces itself by adding light: the working month, the
+     today ring, the category fills. Your row announces itself by declining to.
+     That is exactly why it cannot be confused with any of them -- it is not a
+     fourth value in the same scale, it is the other direction entirely, and it
+     needs no new colour to do it.
+
+     It reads most strongly in the lit working month, where surrounding empty
+     cells carry .sched-col-on at 7% and yours carries nothing. Outside the lit
+     month there is nothing to subtract, so the row is identified by the amber
+     edge and bold name instead -- see .sched-row-me below. That asymmetry is
+     acceptable because the working month is where the reading happens.
+
+     *** STILL EMPTY CELLS ONLY, which is Kyle's idea and remains load-bearing.
+     *** The filled blocks keep their category colour untouched: this suppresses a
+     background the blocks sit on top of, so it cannot alter a single fill.
+
+     Implemented as `background-image:none` rather than a colour, so it neutralises
+     whatever gradient .sched-col-on laid down without introducing a background of
+     its own -- the cell simply shows the panel behind it, which is the point.
+     Ordered AFTER .sched-col-on in this stylesheet, which is what lets it win. */
+  .sched-row-me .sched-cell-me{ background-image:none; }
+
+  /* *** SUPERSEDED, KEPT AS THE RECORD OF THE WRONG TURNING. ***
+     A TINT, ARRIVED AT THE SECOND TIME ROUND. ***
      This was tried as a 10% grey wash, rejected, replaced with a centred rule,
      and is now a wash again -- because what actually changed in between was the
      grid, not the mark.
@@ -1160,8 +1201,11 @@
      as a colour in its own right, which is exactly the confusion the palette work
      spent all night removing. Restricted to cells with no entry, the tint can
      NEVER be mistaken for a category, because it only ever appears where no
-     category exists. The filled blocks are left completely alone. */
-  .sched-cell-me{ background-image:linear-gradient(rgba(184,196,217,0.10), rgba(184,196,217,0.10)); }
+     category exists. The filled blocks are left completely alone.
+
+     This rule is gone rather than commented out -- .sched-cell-me now carries no
+     background of its own and is purely the hook the rule above selects on. If
+     anyone ever puts a tint back here, it will fight the subtraction. */
 
   /* The left edge is sticky, so this is the one marker guaranteed to stay on
      screen however far the grid is scrolled -- the tint runs off to the right
@@ -2693,7 +2737,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T11:55:00Z';
+const BUILD_VERSION = '2026-08-28T12:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
