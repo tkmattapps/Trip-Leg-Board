@@ -1053,8 +1053,8 @@
   /* PROVISIONAL FLIGHT DUTY. Hollow, not tinted -- see schedCellHTML. */
   /* DARK FILLS ONLY. .sched-blk sets ink-900, which wins on most of this
      palette; these few fills are dark enough that it fails, so they take paper
-     instead. Membership is decided in JS by SCHED_LIGHTTEXT_KINDS -- see the
-     note there for the measurements. Colour only: weight and size stay
+     instead. Applied to EVERY block now -- see the note
+     in the JS beside the palette. Colour only: weight and size stay
      identical, so nothing is signalled twice. */
   .sched-blk-lighttext{ color:var(--paper-050); }
 
@@ -1084,13 +1084,21 @@
   .sched-blk-run-last{  border-radius:0 2px 2px 0; margin-left:-3px; }
   .sched-blk-run-mid{   border-radius:0; margin-left:-3px; margin-right:-3px; }
 
-  /* The label sits on the FIRST day of the run but the run is wider than that
-     cell, so the text must be allowed to escape its box. Without this it would
-     wrap or clip at 30px and "Global 6000 Recurrent" would render as a smear.
-     overflow:visible on the block, and the text is not a flex child so it does
-     not stretch the cell. */
-  .sched-blk-run-first{ overflow:visible; white-space:nowrap; justify-content:flex-start;
-    padding-left:3px; }
+  /* THE NUMBER SITS OVER THE WHOLE BAR, NOT OVER ITS FIRST DAY.
+
+     The figure is emitted on the first day's block, because that is the one that
+     knows the run's length -- but a number hugging the left edge of a nine-day
+     bar looks like a label for Monday rather than a count of the run. So the
+     block is allowed to overflow its 30px cell and the text is centred across
+     the run's true width, set as a CSS variable by the renderer.
+
+     A first attempt centred it inside the first cell only; on long runs the
+     number sat visibly off to the left and read as belonging to that one day. */
+  .sched-blk-run-first{ overflow:visible; white-space:nowrap; position:relative; }
+  .sched-blk-run-first > .sched-run-n{
+    position:absolute; top:50%; left:0; transform:translateY(-50%);
+    width:var(--run-w, 30px); text-align:center; pointer-events:none;
+    font-size:9px; font-weight:700; color:var(--paper-050); }
 
   /* A run that is the ONLY thing in its cell fills the cell height, as before.
      A run crossing a collision is pinched by the flex column in .sched-cell --
@@ -2782,7 +2790,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-27T21:20:00Z';
+const BUILD_VERSION = '2026-08-27T21:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14202,24 +14210,20 @@ const SCHED_COLORS = {
   away_from_base: '#24CC78'
 };
 
-// Which fills need PAPER text. .sched-blk defaults to ink-900, which wins on most
-// of this palette, so only the genuinely dark fills are listed here. Measured
-// against the real tokens -- ink-900 #0E1A2B and paper-050 #EFEBDF, not white:
-//   pto         #AB1E41  lum 0.100  cream 5.9   ink 2.2
-//   training    #2477CB  lum 0.179  cream 3.9   ink 3.1
-//   maintenance #5059A2  lum 0.115  cream 5.4   ink 2.4
-// Everything else takes the ink default; the weakest of those is soft_day at 5.8.
+// *** THERE IS NO PER-KIND TEXT COLOUR ANY MORE. ***
+// A table here used to name the fills needing paper text, so a figure was
+// near-black on soft day and cream on PTO. Per swatch that was correct and the
+// contrast maths was sound. Across a ROW it was wrong: a run of numbers reads as
+// one series, and a series that changes colour reads as though the colour means
+// something. Kyle, 27 Aug 2026 -- "let's make the numbers in white no matter
+// what the bar colour is." One colour, every bar. See .sched-blk-lighttext, now
+// applied unconditionally.
 //
-// KEPT AS A SET BESIDE THE COLOURS, not inferred from the hex, so that changing a
-// fill and changing its text colour are one edit in one place. This has already
-// paid for itself once: quarterly_call moved from a near-black olive to a bright
-// yellow to a pale blue across three attempts, and the text followed each time
-// without a separate hunt through the CSS.
-//
-// NOTE: training measures 3.9, below the usual 4.5 target, and these blocks can
-// carry a one-or-two-letter qualifier. Legible at the size used here, but if that
-// qualifier ever looks weak on a training day, this is why.
-const SCHED_LIGHTTEXT_KINDS = { pto: true, training: true, maintenance: true };
+// The measurements are kept because they still bound the palette: against
+// paper-050 #EFEBDF, pto #AB1E41 scores 5.9, maintenance #5059A2 5.4, training
+// #2477CB 3.9. The pale end is what to watch -- quarterly_call #B8B846 is the
+// weakest for light text. If a figure ever looks thin, darken the swatch rather
+// than bringing the switch back.
 
 // A day where a person is on flight duty AND holds a protected exception. This
 // is the collision the grid exists to catch, and the only state that must never
@@ -14532,6 +14536,13 @@ function schedSuppressedDays(ownedDays, dayISOList){
   return out;
 }
 
+// The kinds whose identity is a TRIP rather than a reason. away_on_trip is the
+// derived interior of a trip and flight_historical is a backfilled duty day, so
+// both belong to a trip in exactly the same sense a leg does. flight_pencil is
+// included too: a penciled span is one intention, and splitting it per note
+// would make a provisional trip look like several.
+const SCHED_TRIP_KINDS = { flight:1, away_on_trip:1, flight_pencil:1, flight_historical:1 };
+
 // ---- RUN DETECTION -------------------------------------------------------
 //
 // *** THE SPREADSHEET READS AS RUNS. THE GRID READ AS CONFETTI. ***
@@ -14565,6 +14576,15 @@ function schedSuppressedDays(ownedDays, dayISOList){
 //
 // Runs never span owners. Nine crew on quarterly_call on 20 Aug is nine one-day
 // runs that happen to align; that solid yellow column is emergent, not an object.
+function schedRunKeyFor(e){
+  if(SCHED_TRIP_KINDS[e.kind]){
+    const info = (typeof schedFlightRefInfo === 'function') ? schedFlightRefInfo(e.ref) : null;
+    const trip = info ? (info.tripNumber || info.groupId || '') : '';
+    return e.kind + '\u0000trip:' + (trip || ('leg:' + (e.ref || '')));
+  }
+  return e.kind + '\u0000' + (e.detail || '');
+}
+
 function schedBuildRuns(ownedDays, dayISOList){
   // ownedDays: { 'YYYY-MM-DD': [entry,...] }  ->  { iso: { key: {pos, len, label} } }
   //
@@ -14574,10 +14594,31 @@ function schedBuildRuns(ownedDays, dayISOList){
   const runs = {};
   const openRuns = {};   // key -> { startIdx, len, detail }
 
-  function runKey(e){
-    // Reason is part of the identity -- see above.
-    return e.kind + '\u0000' + (e.detail || '');
-  }
+  // *** WHAT MAKES A RUN ONE OBJECT DEPENDS ON THE KIND. ***
+  //
+  // For a hand-entered category the REASON is the identity: two PTO blocks that
+  // merely abut are two events, and merging them would invent a single longer
+  // absence that never happened. AWEI's pto 11-15 Aug and pto 19 Aug "FAA
+  // Medical" must stay two bars.
+  //
+  // For a FLIGHT day the reason is the wrong test, and Kyle caught it the moment
+  // he saw the grid: "I'm looking at Luke's trip from the 24th through the 27th,
+  // and for some reason that trip didn't link up. It's got the 24th and 25th as
+  // separate days to the 26th and 27th."
+  //
+  // Correct -- and it was my rule that split it. A flight day's detail comes off
+  // the LEG, so a trip that flies one route on Monday and another on Wednesday
+  // carries different text on different days and my reason test cut the run in
+  // half. But the thing that makes a trip one object is THE TRIP, not the words
+  // describing a leg of it. ref_id already carries the leg id, and a leg resolves
+  // to a trip through state.legs -- the same resolution the day panel and the
+  // away-day fill already use.
+  //
+  // So flights key on the trip and ignore detail entirely. An UNRESOLVABLE leg
+  // falls back to its own ref, which keeps it a one-day run rather than letting
+  // it merge into a neighbouring trip on the strength of a failed lookup. A
+  // wrong join here would silently claim someone was away when they were not.
+  const runKey = schedRunKeyFor;
 
   for(let i = 0; i < dayISOList.length; i++){
     const iso = dayISOList[i];
@@ -14629,29 +14670,36 @@ function schedBuildRuns(ownedDays, dayISOList){
   return runs;
 }
 
-// *** LABEL IF IT FITS, ELSE THE COUNT. ***
-// Kyle's rule, 27 Aug 2026. A run bar has room a single 30px cell never had, so
-// the old constraint -- qualifier text only when detail.length <= 2 -- was a
-// CONSEQUENCE OF THE OLD GEOMETRY, not a design intent. With a bar to write on,
-// the reason itself is more useful than its length: for a five-day block
-// "Global 6000 Recurrent" tells you something, whereas "5" tells you what you
-// can already see by looking.
+// *** THE NUMBER, AND ONLY THE NUMBER. ***
 //
-// Never truncate with an ellipsis. A half-word is worse than a number, because a
-// number is at least true and complete.
+// Kyle, 27 Aug 2026: "I think we just need to get rid of the labels and go --
+// everything goes for numbers. Like, the bars just get a number, not labels."
 //
-// The same block therefore shows different text at different widths -- the reason
-// when columns are wide, the count when they are tight. That is intended.
+// The first version measured the reason against the bar width and fell back to
+// the day count when it would not fit. That failed in a way only a real grid
+// shows: the SAME block rendered different text at different widths, so the eye
+// could never learn one shape. A column of numbers scans. A column of
+// sometimes-words-sometimes-numbers does not. The reason is one tap away in the
+// day panel, which is where detail belongs.
+//
+// It also matches the spreadsheet's own convention -- a block with its length in
+// the middle -- which is the thing Kyle called coherent to begin with.
 // A run's geometry, expressed as classes rather than inline style, so the
 // stylesheet keeps ownership of the shape and one rule can change every bar.
 //
 // *** SQUARE THE INSIDE, ROUND THE OUTSIDE. ***
 // A one-day run is unchanged from before: rounded at both ends, which is simply
 // "first and last on the same day". No special case needed.
+// *** LOOK THE RUN UP WITH THE KEY THAT BUILT IT. ***
+// This function had its own hand-rolled copy of the key -- kind plus detail --
+// which was correct only for as long as that was the whole rule. The moment
+// flights started keying on their TRIP, a flight cell computed a key the run map
+// had never heard of, found nothing, and silently drew as an unrun single day.
+// Exactly the bug Kyle spotted, wearing a different hat. One key function, every
+// reader (and see trap 3: a wrong lookup returns undefined, not an error).
 function schedRunAt(e, dayRuns){
   if(!dayRuns) return null;
-  const k = e.kind + '\u0000' + (e.detail || '');
-  return dayRuns[k] || null;
+  return dayRuns[schedRunKeyFor(e)] || null;
 }
 
 function schedRunCls(e, dayRuns){
@@ -14664,10 +14712,17 @@ function schedRunCls(e, dayRuns){
   return c;
 }
 
+// The figure is wrapped so it can be centred across the RUN rather than across
+// the single cell that emits it. --run-w carries the run's real pixel width; the
+// 30px fallback in the CSS keeps a one-day block correct if it is ever missing.
 function schedRunLabel(e, dayRuns){
   const r = schedRunAt(e, dayRuns);
   if(!r) return '';
-  return escapeHtml(schedRunText(r));
+  const txt = schedRunText(r);
+  if(!txt) return '';
+  // 30px per cell, less the 3px this block already bleeds rightwards.
+  const w = (r.len * 30) - 3;
+  return '<span class="sched-run-n" style="--run-w:' + w + 'px">' + escapeHtml(txt) + '</span>';
 }
 
 // The pencil outline, drawn edge by edge. A continuous hollow run must read as
@@ -14688,20 +14743,13 @@ function schedPencilShadow(col, e, dayRuns){
   return 'box-shadow:' + parts.join(',');
 }
 
-const SCHED_RUN_CELL_W = 30;   // .sched-cell width, px -- keep in step with the stylesheet
-const SCHED_RUN_CHAR_W = 5.4;  // approx advance of the 9px/700 face used on .sched-blk
 
 function schedRunText(run){
-  if(!run || run.len < 1) return '';
-  // Only the FIRST day of a run carries text -- the bar is one object and one
-  // object gets one label. Every other day draws bare fill.
+  // A one-day run gets NO number. "1" is noise -- the cell is already exactly
+  // one day wide and says so by being that wide.
+  if(!run || run.len < 2) return '';
+  // Only the FIRST day carries the figure: the bar is one object, one figure.
   if(!run.isFirst) return '';
-  const avail = (run.len * SCHED_RUN_CELL_W) - 8;   // less padding at both ends
-  const detail = run.detail || '';
-  if(detail && (detail.length * SCHED_RUN_CHAR_W) <= avail) return detail;
-  // Fall back to the day count, as the spreadsheet does. A single day with no
-  // room for its reason shows nothing rather than a pointless "1".
-  if(run.len < 2) return '';
   return String(run.len);
 }
 
@@ -14844,11 +14892,22 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
     // schedRunText, which shows the reason when it fits and the day count when
     // it does not. Audited: this was the only reader (trap T-1).
     const short = schedRunLabel(e, dayRuns);
-    // The qualifier letter is dark by default and light on the dark fills.
-    // Driven off SCHED_LIGHTTEXT_KINDS rather than off the hex, so a fill and
-    // its text colour cannot drift apart.
-    // .sched-blk defaults to ink-900. Only the dark fills override it.
-    const qcls = SCHED_LIGHTTEXT_KINDS[e.kind] ? ' sched-blk-lighttext' : '';
+    // *** THE NUMBER IS ALWAYS WHITE. ***
+    // Kyle, 27 Aug 2026: "let's make the numbers in white no matter what the bar
+    // colour is."
+    //
+    // This replaces a per-kind switch that chose dark or light text from
+    // SCHED_LIGHTTEXT_KINDS, so a figure could be near-black on soft day and
+    // white on PTO. Defensible per swatch and wrong across the row: the eye reads
+    // a run of numbers as one series, and a series that changes colour reads as
+    // though the colour MEANS something. It does not -- the bar already carries
+    // the category. One colour for every number, and the numbers recede into
+    // being data rather than decoration.
+    //
+    // Contrast is acceptable on every fill in the palette; the palest is
+    // quarterly_call at #B8B846, where white at 9px/700 still reads. If a figure
+    // ever looks weak, darken that swatch rather than reintroducing the switch.
+    const qcls = ' sched-blk-lighttext';
     return '<span class="sched-blk' + qcls + schedRunCls(e, dayRuns) + '" style="background:' + col + '" title="' + escapeHtml(title) + '">' + short + '</span>';
   }).join('');
   return '<div class="' + cls + ' sched-cell-filled"' + attrs + '>' + blocks + '</div>';
