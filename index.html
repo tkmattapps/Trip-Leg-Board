@@ -2627,7 +2627,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T09:55:00Z';
+const BUILD_VERSION = '2026-08-28T10:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -16143,11 +16143,26 @@ function schedStepMonth(delta){
   if(stripChanged){
     schedData = null;
     openScheduleView();
-  } else {
-    // Re-render so the header and the month highlight follow the new anchor;
-    // schedApplyScroll then honours the request above.
-    renderMain();
+    return;
   }
+  // *** DO NOT RE-RENDER FOR AN IN-STRIP STEP. ***
+  // This used to call renderMain(). That was harmless while the step was an
+  // instant scrollLeft assignment, and became a visible bug the moment it
+  // animated: renderMain writes fresh HTML, so .sched-scroll is a NEW element
+  // sitting at scrollLeft 0 -- the far left of the strip, December of the
+  // previous year. The smooth scroll then ran from there, so stepping one month
+  // back from April flew the grid to December and swept forward to March.
+  //
+  // The re-render was never doing anything the scroll does not already do. The
+  // target month is inside the strip and therefore already drawn, and
+  // schedSyncMonthToScroll repaints the band, the column tint AND the anchor
+  // month from the resting position. The header shows the YEAR, which by
+  // definition has not changed if the strip has not.
+  //
+  // GENERAL POINT, worth remembering: making something animate turns "this
+  // rebuild is invisible" into "this rebuild is the whole effect". Redundant
+  // renders hide behind instant paints.
+  schedApplyScroll();
 }
 
 // *** STEP 4 OF THE YEAR-STRIP REFACTOR: THE YEAR IS CHOSEN, NOT STEPPED. ***
@@ -16477,13 +16492,18 @@ document.addEventListener('click', async function(e){
     // Today is the longest journey the grid makes -- up to thirteen months in one
     // gesture -- and it is the one where seeing the direction of travel is worth
     // most, since otherwise the grid simply blinks and claims to be somewhere new.
-    schedScrollSmooth = !(!prev || prev.getFullYear() !== schedAnchor.getFullYear());
-    if(!prev || prev.getFullYear() !== schedAnchor.getFullYear()){
+    const yearChanged = !prev || prev.getFullYear() !== schedAnchor.getFullYear();
+    schedScrollSmooth = !yearChanged;
+    if(yearChanged){
       schedData = null;
       openScheduleView();
-    } else {
-      renderMain();
+      return;
     }
+    // Same reason as schedStepMonth: renderMain would reset .sched-scroll to the
+    // far left of the strip and the animation would fly in from December. The
+    // target is already drawn and schedSyncMonthToScroll repaints everything the
+    // re-render was there for.
+    schedApplyScroll();
     return;
   }
   const qnOpen = t.closest('[data-qn-open]');
