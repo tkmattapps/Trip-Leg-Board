@@ -2627,7 +2627,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T09:10:00Z';
+const BUILD_VERSION = '2026-08-28T09:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15956,6 +15956,50 @@ function schedSyncMonthToScroll(){
   }
 }
 
+// *** SMOOTH MONTH STEPS. ***
+// A month step used to be a bare scrollLeft assignment, which lands in one frame
+// and reads as a hard cut -- the grid is simply somewhere else, with nothing to
+// tell you which way it went or how far. Native calendars slide, and on a strip
+// that is fourteen months of ONE continuous surface, sliding is also the honest
+// depiction: the months really are adjacent, and a cut hides that.
+//
+// WHY THIS IS OPT-IN PER CALL RATHER THAN `scroll-behavior:smooth` IN THE CSS.
+// One CSS line would animate every scrollLeft this file sets, and most of them
+// must NOT animate:
+//   - restoring schedScrollLeft after a save or an in-place re-render, where the
+//     grid is supposed to appear not to have moved at all;
+//   - the first paint of the session, which should simply BE at today;
+//   - schedSetYear, which rebuilds the strip -- animating toward a position in a
+//     grid that is being replaced is meaningless.
+// Only a deliberate navigation gesture animates: the month arrows, and Today.
+//
+// Honours prefers-reduced-motion. Nothing else in this app does yet, because
+// nothing else in it moves this far.
+function schedPrefersReducedMotion(){
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+// Set by the navigation handlers, consumed and cleared by schedApplyScroll --
+// exactly like schedScrollToDay, and for the same reason: a request is for ONE
+// render. Left standing it would animate a later restore.
+let schedScrollSmooth = false;
+
+// *** THE LABEL MUST NOT FLICKER THROUGH THE MONTHS IT PASSES. ***
+// schedSyncMonthToScroll is bound to the scroll event, which fires on every frame
+// of a smooth scroll. Stepping from March to April is fine -- they are adjacent.
+// But Today from eight months away would riffle the header through every month in
+// between and repaint the column tint each time: visually noisy, and a few
+// thousand class flips per step for a state nobody asked to see.
+//
+// So the sync is suppressed while an animated scroll is in flight, and run once
+// when it settles. The header changes exactly once, at the end, which is also
+// what it means -- the month you have arrived at.
+let schedSmoothUntil = 0;
+
+function schedIsSmoothScrolling(){
+  return Date.now() < schedSmoothUntil;
+}
+
 // ONE RULE: a pending request wins, otherwise stay where you were.
 //
 // The month-keyed memory is gone with the month-shaped window. There is one
@@ -15967,8 +16011,28 @@ function schedApplyScroll(){
   requestAnimationFrame(function(){
     const el = document.querySelector('.sched-scroll');
     if(!el) return;
+    // Consumed here and cleared below with the same one-render discipline as
+    // schedScrollToDay. Only an explicit navigation sets it.
+    const smooth = schedScrollSmooth && !schedPrefersReducedMotion();
     if(schedScrollToDay){
-      el.scrollLeft = schedScrollLeftForDay(schedScrollToDay);
+      const target = schedScrollLeftForDay(schedScrollToDay);
+      if(smooth && el.scrollTo){
+        // Suppress the month sync for the duration, then read the true resting
+        // position once. 600ms is a ceiling, not a measurement -- there is no
+        // scrollend event on iOS Safari, so the settle is timed rather than
+        // observed. Overshooting the ceiling costs nothing: the sync runs on a
+        // scroll that has already stopped and reads the same value.
+        schedSmoothUntil = Date.now() + 600;
+        el.scrollTo({ left: target, behavior: 'smooth' });
+        setTimeout(function(){
+          schedSmoothUntil = 0;
+          schedScrollLeft = el.scrollLeft;
+          schedShownMonthKey = null;
+          schedSyncMonthToScroll();
+        }, 620);
+      } else {
+        el.scrollLeft = target;
+      }
       // Cleared immediately: a request is for ONE render. Left standing it would
       // drag the grid back on every later save.
       schedScrollToDay = null;
@@ -15978,18 +16042,33 @@ function schedApplyScroll(){
       // First render of the session with nothing asked for.
       el.scrollLeft = schedScrollLeftForDay(schedISO(new Date()));
     }
-    schedScrollLeft = el.scrollLeft;
-    // The render painted the highlight from schedAnchor, but the scroll may have
-    // just landed somewhere else entirely -- restoring a remembered position, for
-    // instance. Force a re-read so the two can never disagree at rest.
-    schedShownMonthKey = null;
-    schedSyncMonthToScroll();
+    schedScrollSmooth = false;
+    // *** BOTH OF THESE ARE SKIPPED MID-GLIDE. ***
+    // el.scrollLeft during a smooth scroll is wherever the animation happens to
+    // be this frame, not where it is going. Recording it would make a later
+    // restore land halfway between two months, and syncing off it would light
+    // whichever month the grid is passing through. The settle callback above
+    // does both once the animation has finished.
+    if(!schedIsSmoothScrolling()){
+      schedScrollLeft = el.scrollLeft;
+      // The render painted the highlight from schedAnchor, but the scroll may
+      // have just landed somewhere else entirely -- restoring a remembered
+      // position, for instance. Force a re-read so the two can never disagree
+      // at rest.
+      schedShownMonthKey = null;
+      schedSyncMonthToScroll();
+    }
     // Bound ONCE per element. schedApplyScroll runs on every render and on every
     // in-place reposition, and a fresh listener each time would stack up dozens
     // of them on the same node.
     if(!el._schedScrollBound){
       el._schedScrollBound = true;
       el.addEventListener('scroll', function(){
+        // A smooth scroll fires this on every frame. Ignoring it there is what
+        // keeps the header from riffling through the months in between -- see
+        // schedSmoothUntil. A FINGER scroll is unaffected and still tracks live,
+        // which is the behaviour that makes the label feel attached to the grid.
+        if(schedIsSmoothScrolling()) return;
         schedScrollLeft = el.scrollLeft;
         schedSyncMonthToScroll();
       }, { passive: true });
@@ -16041,8 +16120,11 @@ async function openScheduleView(){
 function schedStepMonth(delta){
   const a = schedAnchor || schedMonthStart(new Date());
   if(delta < 0 && !schedAtMonthStart()){
-    // Same month, repositioned to its 1st. Nothing but the scroll moves.
+    // Same month, repositioned to its 1st. Nothing but the scroll moves -- which
+    // is precisely the case that most needs the animation, since no re-render
+    // accompanies it to explain where the grid went.
     schedScrollToDay = schedISO(a);
+    schedScrollSmooth = true;
     schedApplyScroll();
     return;
   }
@@ -16053,6 +16135,11 @@ function schedStepMonth(delta){
   const stripChanged = next.getFullYear() !== a.getFullYear();
   schedAnchor = next;
   schedScrollToDay = schedISO(next);
+  // Only animate WITHIN the strip. Crossing a year rebuilds it, so there is no
+  // continuous surface to slide along -- the old grid is gone before the
+  // animation could finish, and what you would see is a cut with a delay in
+  // front of it.
+  schedScrollSmooth = !stripChanged;
   if(stripChanged){
     schedData = null;
     openScheduleView();
@@ -16386,6 +16473,11 @@ document.addEventListener('click', async function(e){
     // eight months away from it.
     schedScrollToDay = schedISO(now);
     // Only a change of YEAR needs new data; within the strip this is a scroll.
+    // Same rule as the arrows: slide within the strip, cut when it is rebuilt.
+    // Today is the longest journey the grid makes -- up to thirteen months in one
+    // gesture -- and it is the one where seeing the direction of travel is worth
+    // most, since otherwise the grid simply blinks and claims to be somewhere new.
+    schedScrollSmooth = !(!prev || prev.getFullYear() !== schedAnchor.getFullYear());
     if(!prev || prev.getFullYear() !== schedAnchor.getFullYear()){
       schedData = null;
       openScheduleView();
