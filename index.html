@@ -3241,7 +3241,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-29T23:00:00Z';
+const BUILD_VERSION = '2026-08-29T23:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13063,6 +13063,28 @@ function notesTripOptionLabel(trip){
   return [ trip.tripNumber, d1 ].filter(Boolean).join('  \u00b7  ');
 }
 
+// The whole chain, so you can confirm at a glance that the trip in the picker
+// is the trip you meant. This is the one place the full route earns its space:
+// the picker deliberately omits it (every trip here is KBDL to KBDL), but the
+// airports IN BETWEEN are exactly what distinguishes one trip from another.
+//
+// Built by WALKING the legs rather than joining dep/arr pairs. If a leg starts
+// somewhere other than where the previous one ended -- a gap in the paperwork,
+// or a repositioning nobody filed -- both airports are shown. Silently
+// printing a continuous chain over a discontinuity would be a lie in the one
+// place being used to verify (trap 76).
+function notesTripRouteChain(trip){
+  const legs = (trip && trip.legs) || [];
+  const chain = [];
+  legs.forEach(function(l){
+    const dep = (((l.dep || {}).airportId) || '').trim().toUpperCase();
+    const arr = (((l.arr || {}).airportId) || '').trim().toUpperCase();
+    if(dep && chain[chain.length - 1] !== dep) chain.push(dep);
+    if(arr) chain.push(arr);
+  });
+  return chain.join(' \u2192 ');
+}
+
 function notesPinControlsHTML(){
   const n = state.notes || {};
   // ACTIVE trips only, using the dashboard's own rule rather than a second
@@ -13131,9 +13153,15 @@ function renderNotesView(){
   const main = document.getElementById('mainPanel');
   if(!main) return;
   const n = state.notes || {};
+  const selTrip = n.tripId
+    ? groupIntoTrips(state.legs).find(function(t){ return t.tripNumber === n.tripId; })
+    : null;
+  const chain = selTrip ? notesTripRouteChain(selTrip) : '';
   setPageHeader({
     title: 'Notes',
-    sub: n.tripId ? 'Trip ' + n.tripId : 'No trip selected',
+    sub: n.tripId
+      ? ('Trip ' + n.tripId + (chain ? '  \u00b7  ' + chain : ''))
+      : 'No trip selected',
     backLabel: notesBackLabel(),
     backTo: 'notesReturn'
   });
