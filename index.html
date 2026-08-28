@@ -3241,7 +3241,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-29T22:15:00Z';
+const BUILD_VERSION = '2026-08-29T22:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13052,7 +13052,18 @@ function notesBackLabel(){
 
 function notesPinControlsHTML(){
   const n = state.notes || {};
-  const trips = groupIntoTrips(state.legs).filter(t => (t.tripNumber || '').trim());
+  // ACTIVE trips only, using the dashboard's own rule rather than a second
+  // definition of "active" that could drift from it (trap 30). The archive
+  // grows without limit; a picker listing every trip ever flown stops being
+  // usable long before it stops being correct.
+  //
+  // Consequence, deliberate: you cannot add a note to an archived trip from
+  // here. That is consistent with the archive being sealed -- see the archive
+  // seal banner -- but it does mean the picker is not a way to reach old notes.
+  // Reading archived notes belongs to the archive views.
+  const trips = groupIntoTrips(state.legs)
+    .filter(t => (t.tripNumber || '').trim())
+    .filter(t => !tripIsArchived(t.tripNumber));
   const tripOpts = ['<option value="">Choose a trip\u2026</option>'].concat(
     trips.map(function(t){
       const sel = t.tripNumber === n.tripId ? ' selected' : '';
