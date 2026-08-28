@@ -1933,9 +1933,25 @@
      time -- instead of a stack, so it occupies one line rather than three. */
   /* Two columns, departure then arrival, filled ROW BY ROW: both airports on
      the first row, both times on the second. */
+  /* ROW THREE IS SPLIT: the BRIEFING side on the left, the ACTION side on the
+     right. The city pair above is deliberately NOT part of this split -- it
+     keeps the full band width and is free to wrap, which is the whole reason
+     "Jijoca de Jericoacoara -> Sao Luis" fits on a phone. */
+  .tb-mid{
+    display:flex; align-items:center; gap:14px;
+    /* Safety net only. At every measured width the ends and the pill fit on
+       one line; if a longer time string ever pushes past, the pill drops to
+       its own line right-aligned rather than overflowing the band. */
+    flex-wrap:wrap;
+  }
+  /* MAX-CONTENT, NOT 1fr. Two equal columns stretched DEP and ARR to the full
+     band width to hold a four-character code -- ~200px of nothing between
+     KBDL and KFOK on the Mac. Sized to their contents, the two ends pack to
+     the left and hand the freed width to the action side. */
   .tb-ends{
-    flex:1 1 auto; min-width:0;
-    display:grid; grid-template-columns:1fr 1fr; column-gap:20px; row-gap:4px;
+    flex:0 1 auto; min-width:0;
+    display:grid; grid-template-columns:max-content max-content;
+    justify-content:start; column-gap:18px; row-gap:4px;
     align-items:baseline;
   }
   .tb-cell{ display:flex; align-items:baseline; gap:8px; min-width:0; }
@@ -1992,6 +2008,44 @@
     font-size:11px; font-weight:700; color:var(--amber-500);
   }
 
+  /* THE WAY IN TO THE CHECKLIST -- the main stage of the app, and until now
+     the only thing on this page with no control of its own. Tapping the card
+     opened it, which is invisible: nothing about a card says "button", which
+     is why the page header had to carry a line of text explaining the gesture
+     and why an iPad needed a capture-phase handler to tell a focus tap from an
+     open tap.
+
+     A PILL, NOT A RECTANGLE. Every other button in Beacon is a 3-6px-radius
+     rectangle (.trip-quick-btn), so a full 999px radius reads as a different
+     KIND of control at a glance rather than a bigger version of the same one.
+     That is the whole point: this is not a third sibling of "Airport brief"
+     and "Add leg note", it is the way through.
+
+     AMBER OUTLINE, NOT AMBER FILL. Solid amber is already spoken for twice on
+     this page -- the tracked band's ring and the planning status dot. A filled
+     pill on all six bands would compete with the ring for exactly the
+     attention the ring exists to claim.
+
+     A CHEVRON, NOT A CHECK MARK. A check means "verified" everywhere else in
+     Beacon -- section verified, leg complete -- so a check on the ENTRY
+     control would say the leg is done when it may be untouched. A chevron
+     says "go in here", which is what the button does, and cannot be misread
+     as state. */
+  .tb-open-btn{
+    flex:0 0 auto; margin-left:auto;
+    display:inline-flex; align-items:center; gap:8px;
+    padding:11px 20px; border-radius:999px;
+    border:1.5px solid var(--amber-500); background:transparent;
+    color:var(--amber-500); cursor:pointer;
+    font-family:system-ui,'Inter',sans-serif; font-size:13px; font-weight:600;
+    letter-spacing:0.03em; white-space:nowrap;
+    transition:background 0.15s ease;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .tb-open-btn:hover{ background:rgba(242,169,59,0.12); }
+  .tb-open-btn:active{ background:rgba(242,169,59,0.22); }
+  .tb-open-chev{ flex:0 0 auto; display:block; }
+
   /* Horizontal, not a stack. Three stacked figures were setting the height of
      the entire band for the sake of three short values. */
   /* THE FOOT. Figures on the left, paperclip and status hard right, under a
@@ -2027,6 +2081,11 @@
        Codes and times are short enough to hold two columns on a phone once
        the year is dropped below. */
     .tb-ends{ column-gap:12px; }
+    /* Trimmed, not shrunk out of recognition. On a 393px phone the two ends
+       take roughly 200px of the band, which leaves the pill about 130 --
+       enough for the label at 12px with the padding pulled in, and no more.
+       If it ever stops fitting, .tb-mid wraps it to its own line. */
+    .tb-open-btn{ padding:9px 13px; gap:5px; font-size:12px; }
     .tb-figs{ gap:20px; }
     /* The year comes off on a narrow screen and only there. Full date, label,
        city and time do not fit on one 390px line, and the year is the least
@@ -3121,7 +3180,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-29T12:20:00Z';
+const BUILD_VERSION = '2026-08-29T16:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8507,6 +8566,11 @@ function tripBriefBandHTML(leg){
       '</div>' +
     '</div>' +
     tripBriefRouteHTML(leg) +
+    // ROW THREE, SPLIT. Briefing left, action right. The two ends no longer
+    // stretch across the whole band; the width that frees up is what the pill
+    // sits in, which is why this could be added without making the band any
+    // taller than it already was.
+    '<div class="tb-mid">' +
     '<div class="tb-ends">' +
       tripBriefAptCellHTML('DEP', leg.dep) +
       tripBriefAptCellHTML('ARR', leg.arr) +
@@ -8515,6 +8579,15 @@ function tripBriefBandHTML(leg){
       // unless it disagrees with the departure date, in which case the cell
       // shows +1 rather than a second full date.
       tripBriefWhenCellHTML('ETA', (leg.arr || {}).date || leg.date, (leg.arr || {}).etaLocal, leg.date) +
+    '</div>' +
+      // Same destination the card tap already reaches -- but visible, named,
+      // and unmistakably not one of the two secondary buttons above it.
+      '<button type="button" class="tb-open-btn" data-tb-open="' + escapeHtml(leg.id) + '">' +
+        'Open checklist' +
+        '<svg class="tb-open-chev" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">' +
+          '<path d="M4 2.5L7.5 6L4 9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '</svg>' +
+      '</button>' +
     '</div>' +
     // THE FOOT, under a hairline on BOTH layouts now. Figures left, then the
     // paperclip and the status hard right. Previously the hairline existed
@@ -12333,6 +12406,15 @@ function renderTripDetailView(){
       // whether it needs a fourth, trip-brief-level note, and whether it
       // should default to shared with the crew -- is a separate decision.
       showToast('Leg notes coming soon');
+    });
+  });
+  // Bound BEFORE the card handler and stops propagation, same rule as the two
+  // buttons above. It reaches the same place the card tap does -- the point is
+  // that you can SEE it.
+  document.querySelectorAll('[data-tb-open]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openLegEditor(btn.getAttribute('data-tb-open'));
     });
   });
   document.querySelectorAll('.dash-card[data-id]').forEach(card => {
