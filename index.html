@@ -1842,24 +1842,34 @@
      Stacked only there -- on a desktop it would make every band taller for
      nothing. Equal width when stacked so the pair reads as one unit. */
   .tb-band-btns{ display:flex; gap:8px; flex:0 0 auto; }
-  @media (max-width: 620px){
-    .tb-band-btns{ flex-direction:column; align-items:stretch; gap:6px; }
-    .tb-band-btns .trip-quick-btn{ width:100%; text-align:center; white-space:nowrap; }
-  }
+  /* SIDE BY SIDE AT EVERY WIDTH. They were stacked on a phone because the
+     status pill sat between them and the leg number and pushed them onto a
+     second line; the status has moved to the foot, so the head now holds only
+     the leg number and these two and there is room. */
+  .tb-band-btns .trip-quick-btn{ white-space:nowrap; }
   /* The status control. A pill rather than bare text: this is the only place
      in Beacon a leg's status can be changed, so it has to look like something
      you press. Sized for a finger, not for the 12px dot that used to carry the
      click on its own. The dot and the word keep their existing status colours,
      so the pill reads at a glance and is actionable on purpose. */
+  /* A SOLID BLOCK OF STATUS COLOUR. No dot, no caret: at this size and weight
+     the colour alone reads as a control, and the word is its own label.
+     Dark ink on the fill rather than coloured text on a dark fill, so it reads
+     as pressable rather than as a label that happens to be tinted.
+     Still the only place in Beacon a leg's status can be changed. */
   .tb-status-btn{
-    display:inline-flex; align-items:center; gap:8px;
-    background:var(--panel-700); border:1px solid var(--hairline);
-    border-radius:999px; padding:6px 12px; min-height:32px;
-    cursor:pointer; font:inherit;
-    transition:border-color 0.15s ease, background 0.15s ease;
+    flex:0 0 auto;
+    border:0; border-radius:6px; padding:7px 14px; min-height:32px;
+    cursor:pointer;
+    font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:700;
+    letter-spacing:0.5px; text-transform:uppercase; color:var(--ink-900);
+    transition:filter 0.15s ease;
   }
-  .tb-status-btn:hover{ border-color:var(--amber-500); background:var(--panel-800); }
-  .tb-status-caret{ font-size:9px; color:var(--fog-500); line-height:1; }
+  .tb-status-btn:hover{ filter:brightness(1.12); }
+  /* Same three colours the status word and dot have always used. */
+  .tb-status-planning{ background:#F2A93B; }
+  .tb-status-ready{ background:#3DBE6B; }
+  .tb-status-flown{ background:#4A9DE0; }
 
   /* An attachment count of zero is not information. Hidden until there is
      something to count -- hydrateTripLegAttachBadges toggles this class, and
@@ -1870,7 +1880,6 @@
   /* Line two: both ends and the figures, side by side.
      The ends still share the slack, but each end is now a ROW -- label, city,
      time -- instead of a stack, so it occupies one line rather than three. */
-  .tb-main{ display:flex; gap:20px; align-items:baseline; }
   /* Two columns, departure then arrival, filled ROW BY ROW: both airports on
      the first row, both times on the second. */
   .tb-ends{
@@ -1915,11 +1924,16 @@
 
   /* Horizontal, not a stack. Three stacked figures were setting the height of
      the entire band for the sake of three short values. */
-  .tb-figs{ flex:0 0 auto; display:flex; gap:18px; align-items:baseline; }
-  /* Pushed to the far right of the last line. On the phone .tb-figs is full
-     width so this has real slack to take; on desktop the figures block is
-     content-sized and it simply trails PAX at the band's right edge. */
-  .tb-figs .leg-attach-badge{ margin-left:auto; }
+  /* THE FOOT. Figures on the left, paperclip and status hard right, under a
+     hairline on BOTH layouts -- the divider used to be a phone-only detail
+     while desktop ran the figures inline beside the ends. */
+  .tb-foot{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    margin-top:11px; padding-top:10px; border-top:1px solid var(--hairline);
+  }
+  .tb-foot-spacer{ flex:1 1 auto; }
+  .tb-figs{ flex:0 1 auto; display:flex; gap:18px; align-items:baseline; }
+  .tb-foot .leg-attach-badge{ flex:0 0 auto; }
   .tb-fig{ display:flex; align-items:baseline; gap:5px; white-space:nowrap; }
   .tb-fig-label{
     font-family:system-ui,'Inter',sans-serif; font-size:9px; letter-spacing:0.08em;
@@ -1938,15 +1952,12 @@
      STILL one line -- label and city left, time hard right -- because the old
      layout spent two lines per end with the right half of both of them empty. */
   @media (max-width: 620px){
-    .tb-main{ flex-direction:column; gap:8px; align-items:stretch; }
     /* The two columns STAY. Stacking them would put the arrival under the
        departure and lose the left-to-right read this layout exists for.
        Codes and times are short enough to hold two columns on a phone once
        the year is dropped below. */
     .tb-ends{ column-gap:12px; }
-    .tb-figs{
-      gap:20px; border-top:1px solid var(--hairline); padding-top:8px;
-    }
+    .tb-figs{ gap:20px; }
     /* The year comes off on a narrow screen and only there. Full date, label,
        city and time do not fit on one 390px line, and the year is the least
        load-bearing part of it -- the trip's dates are in the header above. */
@@ -3040,7 +3051,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T16:30:00Z';
+const BUILD_VERSION = '2026-08-28T17:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8180,18 +8191,7 @@ function tripBriefBandHTML(leg){
     (isUnassigned ? '<div class="dash-card-orphan-banner">No trip number on the paperwork.</div>' : '') +
     '<div class="tb-band-head">' +
       '<span class="tb-band-n">LEG ' + escapeHtml(leg.legNumber || '?') + '</span>' +
-      // ONE CONTROL, dot and word together. The dot alone carried the click,
-      // but a 12px circle is neither a reasonable tap target nor readable as
-      // something you can press -- the status was effectively unreachable from
-      // this page, and the Trip Brief is the only place it can be changed.
-      // The caret is what says "this opens something".
-      '<button type="button" class="tb-status-btn" data-leg-quick="status"' +
-        ' data-leg-id="' + escapeHtml(leg.id) + '" title="Change status">' +
-        '<span class="leg-status-dot leg-status-dot-plain leg-status-' + escapeHtml(leg.status) + '"></span>' +
-        '<span class="ready-room-leg-status-word status-word-' + escapeHtml(leg.status) + '">' + statusLabel(leg.status) + '</span>' +
-        '<span class="tb-status-caret">\u25be</span>' +
-      '</button>' +
-      // NO PENDING COUNT. It sat between the status and the two note buttons and
+      // NO PENDING COUNT. It sat between the leg number and the two buttons and
       // pushed them off the top-right corner on a phone. The readiness detail
       // belongs on the checklist, which is one tap away; the brief carries the
       // status word and nothing finer.
@@ -8217,24 +8217,34 @@ function tripBriefBandHTML(leg){
       '</div>' +
     '</div>' +
     tripBriefRouteHTML(leg) +
-    '<div class="tb-main">' +
-      '<div class="tb-ends">' +
-        tripBriefAptCellHTML('DEP', leg.dep) +
-        tripBriefAptCellHTML('ARR', leg.arr) +
-        tripBriefWhenCellHTML(leg.date, (leg.dep || {}).etdLocal) +
-        // The ARRIVAL date is its own field, not the departure date. An
-        // overnight leg lands on the following day and the band must say so.
-        tripBriefWhenCellHTML((leg.arr || {}).date || leg.date, (leg.arr || {}).etaLocal) +
-      '</div>' +
+    '<div class="tb-ends">' +
+      tripBriefAptCellHTML('DEP', leg.dep) +
+      tripBriefAptCellHTML('ARR', leg.arr) +
+      tripBriefWhenCellHTML(leg.date, (leg.dep || {}).etdLocal) +
+      // The ARRIVAL date is its own field, not the departure date. An
+      // overnight leg lands on the following day and the band must say so.
+      tripBriefWhenCellHTML((leg.arr || {}).date || leg.date, (leg.arr || {}).etaLocal) +
+    '</div>' +
+    // THE FOOT, under a hairline on BOTH layouts now. Figures left, then the
+    // paperclip and the status hard right. Previously the hairline existed
+    // only on a phone and the figures sat inline beside the ends on desktop.
+    '<div class="tb-foot">' +
       '<div class="tb-figs">' +
         tripBriefFigHTML('ETE', leg.ete) +
         tripBriefFigHTML('DIST', nm == null ? '' : (nm + ' NM')) +
         tripBriefFigHTML('PAX', leg.paxCount) +
-        // LAST THING ON THE LAST LINE, hard right. Ships with the zero class
-        // already on, so no "0" flashes before hydrateTripLegAttachBadges
-        // reports the real count.
-        '<span class="leg-attach-badge leg-attach-badge-zero" data-attach-badge="' + escapeHtml(leg.id) + '">' + LEG_PAPERCLIP_BADGE_SVG + '0</span>' +
       '</div>' +
+      '<span class="tb-foot-spacer"></span>' +
+      // Ships with the zero class already on, so no "0" flashes before
+      // hydrateTripLegAttachBadges reports the real count.
+      '<span class="leg-attach-badge leg-attach-badge-zero" data-attach-badge="' + escapeHtml(leg.id) + '">' + LEG_PAPERCLIP_BADGE_SVG + '0</span>' +
+      // A PLAIN COLOURED BUTTON. The dot and the caret are gone: a solid block
+      // of status colour is already unmistakably a control, and the word is
+      // its own label. Still the only place a leg's status can be changed.
+      '<button type="button" class="tb-status-btn tb-status-' + escapeHtml(leg.status) + '"' +
+        ' data-leg-quick="status" data-leg-id="' + escapeHtml(leg.id) + '" title="Change status">' +
+        statusLabel(leg.status) +
+      '</button>' +
     '</div>' +
   '</div>';
 }
