@@ -1907,6 +1907,14 @@
   }
 
 
+/* Carried-hours caption. Fog, not amber: amber on a field means "still empty",
+   and this field is NOT empty -- it holds a value that simply needs a look. */
+  .field-carried-note{
+    display:block; margin-top:4px;
+    font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.35;
+    color:var(--fog-500);
+  }
+
   .tq-legrow{ display:flex; align-items:center; gap:10px; margin-bottom:8px; }
   .tq-legrow-id{
     font-family:system-ui,'Inter',sans-serif; font-size:11px; color:var(--fog-500);
@@ -2975,7 +2983,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T13:05:00Z';
+const BUILD_VERSION = '2026-08-28T14:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4348,8 +4356,8 @@ function blankLeg(){
     crewNames: {},
     eapisRequired: '',
     compliance: { eapisReqd:'', eapisNotes:'', overflightReqd:'', overflightPermits:[], customsReqd:'', customsNotes:'' },
-    dep: { airportId:'', city:'', tz:'', etdLocal:'', etdZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', notes:'' },
-    arr: { airportId:'', city:'', tz:'', date:'', etaLocal:'', etaZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', hotelCarNotes:'', permitReqd:'', permitNumber:'', notes:'' },
+    dep: { airportId:'', city:'', tz:'', etdLocal:'', etdZ:'', hours:'', hoursCarried:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', notes:'' },
+    arr: { airportId:'', city:'', tz:'', date:'', etaLocal:'', etaZ:'', hours:'', hoursCarried:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', hotelCarNotes:'', permitReqd:'', permitNumber:'', notes:'' },
     permitReqd: '', permitNumber: '',
     trim:'', levelOff:'', minBRF:'', fratRelease:'',
     departureNotes:'', paxBagsTransport:'', enrouteNotes:'', maxShear:'', ete:'', windDirection:'', windComponent:'', paxCount:'', paxTotalNotes:'', crewHotelCarNotes:'',
@@ -6068,6 +6076,24 @@ function sectionTitleHTML(label, key, leg){
   sectionTouchLine(leg, key);
 }
 
+/* The carried-hours caption. Rendered ONLY when the carry crossed a date
+   boundary, i.e. an overnight ground stop, where yesterday's hours are a
+   sensible starting point and not a fact.
+
+   DELIBERATELY NOT THE AMBER CRITICAL-FIELD TREATMENT. Amber already means
+   "nothing here yet". Making it also mean "something here, but check it"
+   would collapse two different states into one colour.
+
+   Cleared by typing in the field, or by verifying the section -- pressing
+   verify already means a human has checked this, so it does not need a second
+   confirmation gesture of its own. */
+function hoursCarriedNoteHTML(inputId, endObj){
+  if(!endObj || !endObj.hoursCarried) return '';
+  return '<span class="field-carried-note" id="' + inputId + 'CarriedNote">' +
+    'Carried from the other end of this stop \u2014 different day, please check' +
+  '</span>';
+}
+
 function field(label, id, value, opts){
   opts = opts || {};
   const type = opts.type || 'text';
@@ -6082,7 +6108,7 @@ function field(label, id, value, opts){
   if(type === 'textarea'){
     return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label><textarea id="' + id + '" placeholder="' + escapeHtml(ph) + '"' + ro + '>' + escapeHtml(value) + '</textarea></div>';
   }
-  return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label><input type="' + type + '" id="' + id + '" value="' + escapeHtml(value) + '" placeholder="' + escapeHtml(ph) + '"' + ro + langAttr + ' /></div>';
+  return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label><input type="' + type + '" id="' + id + '" value="' + escapeHtml(value) + '" placeholder="' + escapeHtml(ph) + '"' + ro + langAttr + ' />' + (opts.noteHTML || '') + '</div>';
 }
 
 // A <select> that reuses field()'s wrapper, so provenance classes,
@@ -10645,7 +10671,111 @@ function assignNonBlank(dst, src){
   });
 }
 
+/* ---- GROUND STOP CARRY ----------------------------------------------------
+
+   A GROUND STOP is the arrival end of leg N and the departure end of leg N+1
+   at the SAME airport. One physical visit to one building, so the ground facts
+   belong to both ends and should only be typed once.
+
+   *** THE UNIT IS THE STOP, NOT THE AIRPORT. ***
+   Carrying an airport's details everywhere that airport appears in the trip
+   would be wrong. Per Kyle: the department may use a DIFFERENT handler at the
+   same airport later in the same trip, but never a different handler between
+   arriving and departing on one visit. On trip 415129
+   (KBDL-KFOK-SBFZ-SBJE-SBSL-KFOK-KBDL) KFOK is two separate stops, legs 1->2
+   and legs 5->6, and they share nothing.
+
+   Runs in BOTH directions: leg N+1 may well be filled in before leg N.
+
+   FILLS BLANKS, NEVER OVERWRITES -- the same rule as assignNonBlank. An
+   automated action may offer a value; only a human may replace one. */
+const GROUND_STOP_FIELDS = ['agent', 'agentPhone', 'frequency'];
+
+// The two legs of a stop, given one leg and which end was edited.
+// 'arr' pairs this leg with the NEXT one; 'dep' pairs it with the PREVIOUS.
+function groundStopPartner(leg, end){
+  if(!leg) return null;
+  const tn = (leg.tripNumber || '').trim();
+  const myNum = parseInt(leg.legNumber, 10);
+  if(!tn || isNaN(myNum)) return null;
+  const wantNum = (end === 'arr') ? myNum + 1 : myNum - 1;
+  const partnerEnd = (end === 'arr') ? 'dep' : 'arr';
+  const mine = ((leg[end] || {}).airportId || '').trim().toUpperCase();
+  if(!mine) return null;
+  const other = state.legs.find(function(l){
+    if(l.deleted_at) return false;
+    if((l.tripNumber || '').trim() !== tn) return false;
+    return parseInt(l.legNumber, 10) === wantNum;
+  });
+  if(!other) return null;
+  // Same airport, or it is not the same stop.
+  if((((other[partnerEnd] || {}).airportId) || '').trim().toUpperCase() !== mine) return null;
+  return { leg: other, end: partnerEnd };
+}
+
+// Does this stop cross midnight? Arrival carries its own date; a departure
+// uses the leg's date. Blank on either side means we cannot tell, and we do
+// NOT guess -- an unknown date is treated as a crossing, so hours get flagged
+// rather than silently asserted.
+function groundStopSameDay(aLeg, aEnd, bLeg, bEnd){
+  const dateOf = (l, e) => (e === 'arr' ? ((l.arr || {}).date || '') : (l.date || '')).trim();
+  const a = dateOf(aLeg, aEnd), b = dateOf(bLeg, bEnd);
+  if(!a || !b) return false;
+  return a === b;
+}
+
+/* Push one field from the edited end to its partner across the stop.
+   Returns the partner's leg number if it took the value, or ''.
+
+   `hours` is handled by the caller's flag logic, not excluded here, because
+   hours DO carry across an overnight -- they just arrive flagged. */
+function carryAcrossGroundStop(leg, end, field, value){
+  const v = (value == null ? '' : String(value)).trim();
+  if(!v) return '';
+  const p = groundStopPartner(leg, end);
+  if(!p) return '';
+  p.leg[p.end] = p.leg[p.end] || {};
+  const cur = ((p.leg[p.end][field]) || '').trim();
+  if(cur) return '';                 // never overwrite a typed value
+  p.leg[p.end][field] = v;
+  if(field === 'hours'){
+    // FLAGGED ONLY WHEN THE STOP CROSSES A DATE. Hours change day to day, so
+    // an overnight stop's carried hours are a reasonable starting point and
+    // not a fact. Cleared by typing in the field or by verifying the section.
+    if(groundStopSameDay(leg, end, p.leg, p.end)) delete p.leg[p.end].hoursCarried;
+    else p.leg[p.end].hoursCarried = '1';
+  }
+  saveLeg(p.leg);
+  return p.leg.legNumber || '?';
+}
+
+// Wires every ground-stop field on both ends. Called from the editor render.
+function wireGroundStopCarry(leg){
+  [['dep', 'dep'], ['arr', 'arr']].forEach(function(pair){
+    const end = pair[0];
+    GROUND_STOP_FIELDS.concat(['hours']).forEach(function(field){
+      const id = end + field.charAt(0).toUpperCase() + field.slice(1);
+      const el = document.getElementById(id);
+      if(!el) return;
+      // BLUR, not input: carrying on every keystroke would push half-typed
+      // values across the stop and save the partner leg on each one.
+      el.addEventListener('blur', function(){
+        // Typing in a flagged field is the human confirming it, so the flag
+        // goes regardless of whether anything carries onward.
+        if(field === 'hours' && leg[end] && leg[end].hoursCarried){
+          delete leg[end].hoursCarried;
+          const cap = document.getElementById(id + 'CarriedNote');
+          if(cap) cap.remove();
+        }
+        const moved = carryAcrossGroundStop(leg, end, field, el.value);
+        if(moved) showToast((FIELD_LABELS[end + '.' + field] || field) + ' carried to leg ' + moved);
+      });
+    });
+  });
+}
+
 function applyImportRenumber(legs){
+
   legs.forEach((l, i) => {
     if(!String(l.sourceLegNumber || '').trim()){
       l.sourceLegNumber = String(l.legNumber || '').trim();
@@ -12291,7 +12421,7 @@ function renderMain(){
             field('UTC offset', 'depUtcOffset', leg.dep.utcOffsetManual || '', {placeholder:'auto'}) +
             field('ETD local', 'depEtdLocal', displayLocal12h(leg.dep.etdLocal), {type:'text'}) +
             field('ETD Z (UTC)', 'depEtdZ', leg.dep.etdZ, {type:'text'}) +
-            field('Hours of operation', 'depHours', leg.dep.hours, {placeholder:'local time'}) +
+            field('Hours of operation', 'depHours', leg.dep.hours, {placeholder:'local time', noteHTML: hoursCarriedNoteHTML('depHours', leg.dep)}) +
             // Row 2: slots and who you talk to.
             ynField('Dep slot req\u2019d', 'depSlotReqd', leg.dep.slotReqd) +
             field('Slot time / number', 'depSlotTimeNumber', leg.dep.slotTimeNumber) +
@@ -12324,7 +12454,7 @@ function renderMain(){
             field('UTC offset', 'arrUtcOffset', leg.arr.utcOffsetManual || '', {placeholder:'auto'}) +
             field('ETA local', 'arrEtaLocal', displayLocal12h(leg.arr.etaLocal), {type:'text'}) +
             field('ETA Z (UTC)', 'arrEtaZ', leg.arr.etaZ, {type:'text'}) +
-            field('Hours of operation', 'arrHours', leg.arr.hours, {placeholder:'local time'}) +
+            field('Hours of operation', 'arrHours', leg.arr.hours, {placeholder:'local time', noteHTML: hoursCarriedNoteHTML('arrHours', leg.arr)}) +
             // Row 2: slots and who you talk to.
             ynField('Arr slot req\u2019d', 'arrSlotReqd', leg.arr.slotReqd) +
             field('Slot time / number', 'arrSlotTimeNumber', leg.arr.slotTimeNumber) +
@@ -13081,6 +13211,17 @@ function renderMain(){
           const w = main.querySelector('.field[data-field-id="' + fid + '"]');
           if(w){ w.classList.remove('src-extracted'); w.classList.add('src-human'); }
         });
+        // A carried-hours flag means "this came from the other end of an
+        // overnight stop, please check it". Pressing verify IS that check, so
+        // the flag clears here rather than needing a confirmation of its own.
+        // Only the section that owns the field: verifying Departure must not
+        // clear the Arrival end's flag.
+        const carriedEnd = (key === 'departure') ? 'dep' : (key === 'arrival' ? 'arr' : '');
+        if(carriedEnd && leg[carriedEnd] && leg[carriedEnd].hoursCarried){
+          delete leg[carriedEnd].hoursCarried;
+          const cap = document.getElementById(carriedEnd + 'HoursCarriedNote');
+          if(cap) cap.remove();
+        }
       }
       // Verify now DRIVES status (the old auto-complete hook is retired), so it
       // must promote on full verification AND demote the moment one is cleared.
@@ -13159,6 +13300,7 @@ function renderMain(){
 
   attachHoursOfOperationFormatting('depHours');
   attachHoursOfOperationFormatting('arrHours');
+  wireGroundStopCarry(leg);
 
   ['depFuelPricePerGallon', 'arrFuelPricePerGallon', 'depRampFee', 'arrRampFee'].forEach(attachCurrencyFormatting);
 
@@ -14185,14 +14327,14 @@ async function collectAndSave(id, opts){
   };
   leg.dep = {
     airportId: val('depAirportId'), city: (leg.dep.city || ''), tz: leg.dep.tz || '', etdLocal: val('depEtdLocal'), etdZ: val('depEtdZ'),
-    hours: val('depHours'), slotReqd: val('depSlotReqd'), slotTimeNumber: val('depSlotTimeNumber'),
+    hours: val('depHours'), hoursCarried: (leg.dep.hoursCarried || ''), slotReqd: val('depSlotReqd'), slotTimeNumber: val('depSlotTimeNumber'),
     slotAllowance: val('depSlotAllowance'), agent: val('depAgent'), agentPhone: val('depAgentPhone'), frequency: val('depFrequency'), fuelVendor: val('depFuelVendor'),
     fuelPaymentMethod: val('depFuelPaymentMethod'), fuelPricePerGallon: val('depFuelPricePerGallon'), rampFee: val('depRampFee'), rampFeeWaived: val('depRampFeeWaived'), rampFeeMinGallons: val('depRampFeeMinGallons'), groundTransportReqd: val('depGroundTransportReqd'), groundTransportDetails: val('depGroundTransportDetails'), utcOffsetManual: val('depUtcOffset'),
     notes: (leg.dep.notes || '')
   };
   leg.arr = {
     airportId: val('arrAirportId'), city: (leg.arr.city || ''), tz: leg.arr.tz || '', date: confirmedDateVal('arrDate', (leg.arr && leg.arr.date)), etaLocal: val('arrEtaLocal'), etaZ: val('arrEtaZ'),
-    hours: val('arrHours'), slotReqd: val('arrSlotReqd'), slotTimeNumber: val('arrSlotTimeNumber'),
+    hours: val('arrHours'), hoursCarried: (leg.arr.hoursCarried || ''), slotReqd: val('arrSlotReqd'), slotTimeNumber: val('arrSlotTimeNumber'),
     slotAllowance: val('arrSlotAllowance'), agent: val('arrAgent'), agentPhone: val('arrAgentPhone'), frequency: val('arrFrequency'),
     fuelVendor: val('arrFuelVendor'), fuelPaymentMethod: val('arrFuelPaymentMethod'), fuelPricePerGallon: val('arrFuelPricePerGallon'), rampFee: val('arrRampFee'), rampFeeWaived: val('arrRampFeeWaived'), rampFeeMinGallons: val('arrRampFeeMinGallons'), groundTransportReqd: val('arrGroundTransportReqd'), groundTransportDetails: val('arrGroundTransportDetails'), utcOffsetManual: val('arrUtcOffset'), notes: (leg.arr.notes || ''),
     permitReqd: val('arrPermitReqd'), permitNumber: val('arrPermitNumber')
