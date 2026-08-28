@@ -2837,7 +2837,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T07:30:00Z';
+const BUILD_VERSION = '2026-08-28T08:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13429,23 +13429,63 @@ function setupTZAutofill(cfg){
     }
   }
 
-  function refreshTz(){
+  // Re-derive the OTHER time when this end's timezone changes underneath it.
+  //
+  // ANCHOR IS LOCAL, NOT ZULU. Local is what the paperwork prints and what a
+  // human types; Zulu is derived from it, the same way the offset is derived
+  // and never typed. The usual reason an airport changes on an existing leg is
+  // a corrected code, and the local time already sitting there was read off the
+  // document for the airport that was meant. Anchoring Zulu would silently
+  // rewrite that local time into something the document never said.
+  //
+  // This also keeps one answer to one question: the offset handler below
+  // already anchors local when it can and falls back to Z only when local is
+  // empty. Two paths deriving the same pair must not disagree.
+  function retimeForTz(tz){
+    const dateVal = dateInput ? dateInput.value : '';
+    // No date means no offset (DST), so nothing can be derived. showHint has
+    // already flagged 'enter date' -- leaving both times untouched is correct.
+    if(!dateVal) return;
+    const hhmm24 = parse12hToHHMM(localInput.value);
+    if(hhmm24){
+      const z = localToUTCTime(dateVal, hhmm24, tz);
+      if(z) zInput.value = z;
+      return;
+    }
+    // No local time to anchor to. Z alone is still meaningful, so derive local
+    // from it rather than leave the pair contradicting each other.
+    if(zInput.value){
+      const local = utcToLocalTime(dateVal, zInput.value, tz);
+      if(local) localInput.value = formatHHMMTo12h(local);
+    }
+  }
+
+  function refreshTz(opts){
+    const retime = !!(opts && opts.retime);
+    const prevTz = cfg.leg[cfg.subObjKey].tz;
     const code = airportInput.value.trim().toUpperCase();
     if(!code){ cfg.leg[cfg.subObjKey].tz = ''; if(offsetInput){ offsetInput.value = ''; clearFieldDerived(cfg.leg, cfg.offsetInputId); } flagOffset(''); return; }
     const tz = lookupAirportTZ(code);
     if(tz){
       cfg.leg[cfg.subObjKey].tz = tz;
       showHint(tz);
+      // Only on a genuine change, and only when asked. The init call below
+      // also lands here: an imported leg carries a local AND a Zulu time from
+      // its document but no stored tz, so retiming on open would overwrite the
+      // document's own Zulu with a derived one before anyone touched anything.
+      if(retime && tz !== prevTz) retimeForTz(tz);
     } else {
       cfg.leg[cfg.subObjKey].tz = '';
-      // Kept short so it fits the narrow offset field on a phone. 'checking' is
-      // transient; when the
-      // remote database lands, refreshOpenTZFields() re-renders and resolves it.
-      flagOffset(AIRPORT_TZ_REMOTE_LOADING ? 'checking\u2026' : 'not avail');
+      // Kept short so it fits the narrow offset field on a phone. Both
+      // 'loading' states are transient -- the bundled airport database on
+      // first load, or the legacy remote fetch if that database failed --
+      // and neither must read as the permanent 'not avail'.
+      flagOffset((AIRPORT_DB_STATE === 'loading' || AIRPORT_TZ_REMOTE_LOADING) ? 'checking\u2026' : 'not avail');
     }
   }
 
-  airportInput.addEventListener('blur', refreshTz);
+  // Retime ONLY here: a blur is a person having changed the airport.
+  airportInput.addEventListener('blur', function(){ refreshTz({ retime:true }); });
 
   localInput.addEventListener('change', () => {
     const hhmm24 = parse12hToHHMM(localInput.value);
