@@ -1972,6 +1972,25 @@
   }
   .tb-time{ color:var(--paper-050); font-weight:600; }
   .tb-missing{ color:var(--fog-500); font-style:italic; }
+  /* THE DEPARTURE DATE, up in the head beside the leg number. It used to sit
+     inside both time cells, which left a wide hole in the middle of the head
+     row and printed the same date twice on the overwhelming majority of legs.
+     Fog, not paper: it is context for the leg, not one of its figures. */
+  .tb-band-date{
+    flex:0 0 auto;
+    font-family:system-ui,'Inter',sans-serif; font-size:12px; font-weight:600;
+    letter-spacing:0.03em; color:var(--fog-500); white-space:nowrap;
+  }
+  /* +1 ON AN OVERNIGHT ARRIVAL. With one date in the head, a bare "ETA 6:15AM"
+     on a red-eye reads as landing before it left. This is the ONLY thing that
+     says otherwise, so it is amber rather than fog -- and it appears only when
+     the days actually differ, which is almost never, so it costs nothing on a
+     normal leg. Signed, because a westbound dateline crossing arrives on the
+     PREVIOUS day and -1 is a real answer. */
+  .tb-daymark{
+    flex:0 0 auto; margin-left:4px;
+    font-size:11px; font-weight:700; color:var(--amber-500);
+  }
 
   /* Horizontal, not a stack. Three stacked figures were setting the height of
      the entire band for the sake of three short values. */
@@ -3102,7 +3121,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T21:45:00Z';
+const BUILD_VERSION = '2026-08-29T12:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8339,6 +8358,34 @@ function wireTripBriefScrollSpy(trip, legs){
    not fit, which on a phone meant a long city name -- Jijoca de Jericoacoara,
    say -- ate the code. The identifier is the one thing that must always read,
    so the cities live on their own line above and this holds the code alone. */
+/* Whole days between two ISO dates, or null if either is missing/malformed.
+   Parsed as UTC on purpose: local-time construction round a DST boundary can
+   land 23 or 25 hours apart and round to the wrong day. */
+function isoDayDelta(baseISO, otherISO){
+  const a = (baseISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const b = (otherISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!a || !b) return null;
+  const ta = Date.UTC(+a[1], +a[2] - 1, +a[3]);
+  const tb = Date.UTC(+b[1], +b[2] - 1, +b[3]);
+  return Math.round((tb - ta) / 86400000);
+}
+
+/* The departure date, rendered once, in the head. leg.date IS the anchor --
+   "when do we depart for this airport" -- so the arrival cell carries no date
+   of its own and only flags a day change. */
+function tripBriefHeadDateHTML(leg){
+  const iso = ((leg && leg.date) || '').trim();
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return '';
+  const day = dayNameFromISO(iso);
+  // Same .tb-year wrapper the cells used, so the year still drops below 620px
+  // where the head is holding the leg number and both buttons as well.
+  return '<span class="tb-band-date">' +
+      (day ? escapeHtml(day.slice(0,3)) + ' ' : '') +
+      m[2] + '/' + m[3] + '<span class="tb-year">/' + m[1] + '</span>' +
+    '</span>';
+}
+
 function tripBriefAptCellHTML(label, end){
   const code = ((end && end.airportId) || '').trim().toUpperCase();
   return '<div class="tb-cell">' +
@@ -8349,21 +8396,25 @@ function tripBriefAptCellHTML(label, end){
 }
 
 // The matching time cell, sitting directly under its airport.
-function tripBriefWhenCellHTML(isoDate, timeVal){
-  const day = dayNameFromISO(isoDate);
-  const t = (timeVal || '').trim();
-  // The year is wrapped so the phone stylesheet can drop it. Split rather than
-  // reformatted, so the desktop string stays exactly what it was.
-  const m = (isoDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const dateTxt = m ? (m[2] + '/' + m[3] + '<span class="tb-year">/' + m[1] + '</span>') : '';
+/* LABEL + TIME, mirroring the airport cell directly above it: DEP/KBDL over
+   ETD/8:00PM. The date is gone from here entirely -- it lives in the head now,
+   which is what balances the two rows against each other.
 
-  const parts = [];
-  if(day) parts.push(escapeHtml(day.slice(0,3)));
-  if(dateTxt) parts.push(dateTxt);
-  let when = parts.join(' ');
-  if(t) when += (when ? ' \u00b7 ' : '') + '<span class="tb-time">' + escapeHtml(t) + '</span>';
-  if(!when) when = '<span class="tb-missing">No date or time</span>';
-  return '<div class="tb-when">' + when + '</div>';
+   `baseISO` is the leg's anchor date. When this cell's own date differs from
+   it the cell appends a signed day marker; on every same-day leg, which is
+   nearly all of them, it renders nothing. */
+function tripBriefWhenCellHTML(label, isoDate, timeVal, baseISO){
+  const t = (timeVal || '').trim();
+  const delta = isoDayDelta(baseISO, isoDate);
+  const mark = (delta !== null && delta !== 0)
+    ? '<span class="tb-daymark">' + (delta > 0 ? '+' : '-') + Math.abs(delta) + '</span>'
+    : '';
+  return '<div class="tb-cell tb-when">' +
+      '<span class="tb-end-label">' + label + '</span>' +
+      (t ? '<span class="tb-time">' + escapeHtml(t) + '</span>'
+         : '<span class="tb-missing">No time</span>') +
+      mark +
+    '</div>';
 }
 
 /* The city pair, on its own line under the leg number.
@@ -8427,6 +8478,9 @@ function tripBriefBandHTML(leg){
       // behaves any differently.
       '<button type="button" class="tb-band-n" data-tb-focus="' + escapeHtml(leg.id) + '"' +
         ' title="Show this leg in the strip above">LEG ' + escapeHtml(leg.legNumber || '?') + '</button>' +
+      // The departure date, filling what was a dead gap between the leg number
+      // and the two buttons.
+      tripBriefHeadDateHTML(leg) +
       // NO PENDING COUNT. It sat between the leg number and the two buttons and
       // pushed them off the top-right corner on a phone. The readiness detail
       // belongs on the checklist, which is one tap away; the brief carries the
@@ -8456,10 +8510,11 @@ function tripBriefBandHTML(leg){
     '<div class="tb-ends">' +
       tripBriefAptCellHTML('DEP', leg.dep) +
       tripBriefAptCellHTML('ARR', leg.arr) +
-      tripBriefWhenCellHTML(leg.date, (leg.dep || {}).etdLocal) +
-      // The ARRIVAL date is its own field, not the departure date. An
-      // overnight leg lands on the following day and the band must say so.
-      tripBriefWhenCellHTML((leg.arr || {}).date || leg.date, (leg.arr || {}).etaLocal) +
+      tripBriefWhenCellHTML('ETD', leg.date, (leg.dep || {}).etdLocal, leg.date) +
+      // The ARRIVAL date is still its own field -- it is just no longer PRINTED
+      // unless it disagrees with the departure date, in which case the cell
+      // shows +1 rather than a second full date.
+      tripBriefWhenCellHTML('ETA', (leg.arr || {}).date || leg.date, (leg.arr || {}).etaLocal, leg.date) +
     '</div>' +
     // THE FOOT, under a hairline on BOTH layouts now. Figures left, then the
     // paperclip and the status hard right. Previously the hairline existed
