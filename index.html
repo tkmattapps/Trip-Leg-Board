@@ -28,6 +28,8 @@
     --paper-050:#EFEBDF;
     --alert-600:#E2574C;
     --ok-500:#4FAE7C;
+    --ok-600:#42976A;
+    --ok-700:#3F926A;
     --hairline: rgba(184,196,217,0.16);
   }
   *{box-sizing:border-box;}
@@ -2021,10 +2023,27 @@
      That is the whole point: this is not a third sibling of "Airport brief"
      and "Add leg note", it is the way through.
 
-     AMBER OUTLINE, NOT AMBER FILL. Solid amber is already spoken for twice on
-     this page -- the tracked band's ring and the planning status dot. A filled
-     pill on all six bands would compete with the ring for exactly the
-     attention the ring exists to claim.
+     GREEN FILL, NOT AN AMBER OUTLINE. It started amber and outlined, on the
+     reasoning that solid amber was already spoken for twice on this page -- the
+     tracked band's ring and the planning status dot -- so a filled amber pill
+     on all six bands would compete with the ring for exactly the attention the
+     ring exists to claim. That avoided the FILL collision and walked straight
+     into the HUE one: an amber pill sitting inside an amber ring reads as part
+     of the ring's own decoration, so the button vanished on the one band you
+     were most likely to press it on.
+
+     --ok-500 is the only colour in the palette carrying no job on this page.
+     Amber is focus and planning, --alert-600 is alerts, the flown status is
+     blue, and the fog greys are text and hairlines. Green is free here, and it
+     reads as go, which is what the control means.
+
+     Once the hue stops colliding, the outline stops earning its keep -- it was
+     only ever a concession to amber. A solid fill makes this unmistakably the
+     loudest thing on the card, which is the whole brief: the way through to the
+     main stage, not a third sibling of the two small buttons above it.
+
+     INK TEXT, NOT WHITE. White on --ok-500 is about 2.8:1, which is thin for a
+     13px label; --ink-900 on it is about 6.3:1.
 
      A CHEVRON, NOT A CHECK MARK. A check means "verified" everywhere else in
      Beacon -- section verified, leg complete -- so a check on the ENTRY
@@ -2035,15 +2054,15 @@
     flex:0 0 auto; margin-left:auto;
     display:inline-flex; align-items:center; gap:8px;
     padding:11px 20px; border-radius:999px;
-    border:1.5px solid var(--amber-500); background:transparent;
-    color:var(--amber-500); cursor:pointer;
+    border:1.5px solid var(--ok-600); background:var(--ok-500);
+    color:var(--ink-900); cursor:pointer;
     font-family:system-ui,'Inter',sans-serif; font-size:13px; font-weight:600;
     letter-spacing:0.03em; white-space:nowrap;
     transition:background 0.15s ease;
     -webkit-tap-highlight-color:transparent;
   }
-  .tb-open-btn:hover{ background:rgba(242,169,59,0.12); }
-  .tb-open-btn:active{ background:rgba(242,169,59,0.22); }
+  .tb-open-btn:hover{ background:var(--ok-600); }
+  .tb-open-btn:active{ background:var(--ok-700); }
   .tb-open-chev{ flex:0 0 auto; display:block; }
 
   /* Horizontal, not a stack. Three stacked figures were setting the height of
@@ -3180,7 +3199,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-29T17:40:00Z';
+const BUILD_VERSION = '2026-08-29T18:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
