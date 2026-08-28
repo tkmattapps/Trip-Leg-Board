@@ -3201,7 +3201,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-29T18:35:00Z';
+const BUILD_VERSION = '2026-08-29T19:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4789,9 +4789,9 @@ const CHANGELOG_LABELS = {
   'status':'Status', 'tripNumber':'Trip number', 'legNumber':'Leg number',
   'date':'Departure date', 'arr.date':'Arrival date', 'cityPair':'City pair',
   'dep.city':'Departure city', 'arr.city':'Arrival city', 'paxCount':'Passenger count',
-  'compliance.eapisReqd':'eAPIS required', 'compliance.eapisNotes':'eAPIS notes',
+  'compliance.eapisReqd':'eAPIS required', 'compliance.eapisNotes':'eAPIS details',
   'compliance.overflightReqd':'Overflight required', 'compliance.customsReqd':'Customs required',
-  'compliance.customsNotes':'Customs notes', 'compliance.overflightPermits':'Overflight permits',
+  'compliance.customsNotes':'Customs details', 'compliance.overflightPermits':'Overflight permits',
   'dep.airportId':'Departure airport', 'dep.etdLocal':'Departure ETD (local)', 'dep.etdZ':'Departure ETD (Z)',
   'dep.hours':'Departure FBO hours', 'dep.agent':'Departure handler', 'dep.agentPhone':'Departure handler phone',
   'dep.frequency':'Departure frequency', 'dep.fuelVendor':'Departure fuel vendor',
@@ -12300,11 +12300,11 @@ function archivedLegDetailHTML(trip, leg){
 
   const permBody =
     archYN('eAPIS required', (comp.eapisReqd !== undefined ? comp.eapisReqd : leg.eapisRequired)) +
-    archField('eAPIS notes', comp.eapisNotes) +
+    archField('eAPIS details', comp.eapisNotes) +
     archYN('Customs required', comp.customsReqd) +
-    archField('Customs notes', comp.customsNotes) +
+    archField('Customs details', comp.customsNotes) +
     archYN('Landing permit required', (arr.permitReqd !== undefined ? arr.permitReqd : leg.permitReqd)) +
-    archField('Landing permit number', (arr.permitNumber || leg.permitNumber)) +
+    archField('Landing permit details', (arr.permitNumber || leg.permitNumber)) +
     archYN('Overflight permits required', comp.overflightReqd) +
     ovfBody;
 
@@ -13112,21 +13112,21 @@ function renderMain(){
           '<div class="subpanel-title">EAPIS</div>' +
           '<div class="field-row-inline">' +
             ynField('Required', 'eapisReqd', leg.compliance.eapisReqd || leg.eapisRequired || '') +
-            field('Notes', 'eapisNotes', leg.compliance.eapisNotes, {type:'textarea'}) +
+            field('Details', 'eapisNotes', leg.compliance.eapisNotes, {type:'textarea'}) +
           '</div>' +
         '</div>' +
         '<div class="subpanel">' +
           '<div class="subpanel-title">Customs landing rights</div>' +
           '<div class="field-row-inline">' +
             ynField('Required', 'customsReqd', leg.compliance.customsReqd) +
-            field('Notes', 'customsNotes', leg.compliance.customsNotes, {type:'textarea'}) +
+            field('Details', 'customsNotes', leg.compliance.customsNotes, {type:'textarea'}) +
           '</div>' +
         '</div>' +
         '<div class="subpanel">' +
           '<div class="subpanel-title">Landing permit / PPR</div>' +
           '<div class="field-row-inline">' +
             ynField('Required', 'arrPermitReqd', leg.arr.permitReqd || leg.permitReqd || '') +
-            field('Notes', 'arrPermitNumber', leg.arr.permitNumber || leg.permitNumber || '', {type:'textarea'}) +
+            field('Details', 'arrPermitNumber', leg.arr.permitNumber || leg.permitNumber || '', {type:'textarea'}) +
           '</div>' +
         '</div>' +
         '<div class="subpanel subpanel-full">' +
