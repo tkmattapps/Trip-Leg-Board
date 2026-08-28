@@ -2837,7 +2837,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T05:45:00Z';
+const BUILD_VERSION = '2026-08-28T06:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7811,10 +7811,15 @@ function tripBriefLegCardHTML(leg){
       '<span class="leg-attach-badge" data-attach-badge="' + escapeHtml(leg.id) + '">' + LEG_PAPERCLIP_BADGE_SVG + '0</span>' +
     '</div>' +
     '<div class="trip-quick-row">' +
-      '<button type="button" class="trip-quick-btn" data-leg-quick="crew" data-leg-id="' + escapeHtml(leg.id) + '">Set crew</button>' +
-      '<button type="button" class="trip-quick-btn" data-leg-quick="aircraft" data-leg-id="' + escapeHtml(leg.id) + '">Set aircraft</button>' +
-      // Status lives here rather than in the bottom-bar popover: the tile is
-      // where the other per-leg changes already happen.
+      // *** CREW AND AIRCRAFT ARE NOT SET HERE. ***
+      // Both used to open this sheet at leg scope, which meant a mid-trip crew
+      // change was one pass per leg. The trip card now lists every leg under
+      // each seat, so the whole change happens in one window and two entry
+      // points to the same edit would only disagree about where it belongs.
+      // Crew and aircraft still DISPLAY on this card; they are read-only.
+      //
+      // Status stays, and stays leg-only: setting eight legs flown in one tap
+      // is a fast way to seal a record nobody meant to seal.
       '<button type="button" class="trip-quick-btn" data-leg-quick="status" data-leg-id="' + escapeHtml(leg.id) + '">Set status</button>' +
     '</div>' +
   '</div>';
