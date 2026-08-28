@@ -1907,6 +1907,16 @@
   }
 
 
+/* Anything scrolled to with scrollIntoView({block:'start'}) aligns to the top
+   of the scrollport -- which is UNDER the fixed header and the sticky strip.
+   scroll-margin-top pushes the resting place down past both, so the section
+   title and its verify button land just below the strip rather than behind it.
+   Applies to the jump-to-documents button and the section links as well as the
+   verify flow, all of which used to sit under the header alone. */
+  .section, #tripDocSection, .tb-band{
+    scroll-margin-top: calc(var(--page-header-h, 84px) + var(--info-strip-h, 0px) + 12px);
+  }
+
 /* Carried-hours caption. Fog, not amber: amber on a field means "still empty",
    and this field is NOT empty -- it holds a value that simply needs a look. */
   .field-carried-note{
@@ -2983,7 +2993,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T14:10:00Z';
+const BUILD_VERSION = '2026-08-28T14:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12109,8 +12119,10 @@ function tuneEditorTailPadding(){
   const sections = panel.querySelectorAll('.section');
   if(!sections.length) return;
   const last = sections[sections.length - 1];
-  const nav = document.getElementById('pageHeader');
-  const navH = (nav && nav.offsetHeight) ? nav.offsetHeight : 0;
+  // Must clear the header AND the sticky strip. With the header alone the tail
+  // came up one strip-height short, so the LAST section could never scroll high
+  // enough and its verify button stayed under the strip.
+  const navH = stickyTopOffset();
   const lastTopDoc = last.getBoundingClientRect().top + window.pageYOffset;
   const panelBottomDoc = panel.getBoundingClientRect().bottom + window.pageYOffset;
   const belowTop = panelBottomDoc - lastTopDoc; // natural runway below the last section's top
@@ -12125,10 +12137,35 @@ function tuneEditorTailPadding(){
   }
 }
 
+/* Measures the two things that OVERLAY the top of the scrollport, so
+   everything that scrolls can clear both of them.
+
+   --page-header-h  the fixed page header.
+   --info-strip-h   the trip/leg/tail/crew strip, which became position:sticky
+                    and now occupies a second band directly beneath the header.
+                    Zero on pages that have no strip.
+
+   The strip is the reason this function grew a second half. Before it was
+   sticky it scrolled away and cost nothing; now it permanently covers the top
+   of the page, and anything that scrolled to `header height + a bit` started
+   landing UNDER it. */
 function syncPageHeaderHeight(){
   const h = document.getElementById('pageHeader');
   const px = (h && h.offsetHeight && getComputedStyle(h).display !== 'none') ? h.offsetHeight : 0;
   document.documentElement.style.setProperty('--page-header-h', px + 'px');
+  const strip = document.querySelector('#mainPanel .info-strip');
+  const sPx = (strip && strip.offsetHeight && getComputedStyle(strip).display !== 'none') ? strip.offsetHeight : 0;
+  document.documentElement.style.setProperty('--info-strip-h', sPx + 'px');
+}
+
+// Total height of everything pinned over the top of the page. The single
+// source of truth for "how far down does content have to start to be visible".
+function stickyTopOffset(){
+  const h = document.getElementById('pageHeader');
+  const navH = (h && h.offsetHeight && getComputedStyle(h).display !== 'none') ? h.offsetHeight : 0;
+  const strip = document.querySelector('#mainPanel .info-strip');
+  const stripH = (strip && strip.offsetHeight && getComputedStyle(strip).display !== 'none') ? strip.offsetHeight : 0;
+  return navH + stripH;
 }
 window.addEventListener('resize', syncPageHeaderHeight);
 window.addEventListener('orientationchange', syncPageHeaderHeight);
@@ -12621,8 +12658,10 @@ function renderMain(){
       return !(leg.sectionVerified && leg.sectionVerified[k]);
     });
     if(!order.length) return;
-    const nav = document.getElementById('pageHeader');
-    const navH0 = (nav && nav.offsetHeight) ? nav.offsetHeight : 0;
+    // The header AND the sticky strip both cover the top of the page. Using
+    // the header alone put the next section's verify button underneath the
+    // strip, which is what this cursor test is trying to avoid.
+    const navH0 = stickyTopOffset();
     const cands = order.map(function(k){
       const b = document.querySelector('.section-verify-btn[data-verify-key="' + k + '"]');
       const sec = b ? b.closest('.section') : null;
@@ -12637,8 +12676,10 @@ function renderMain(){
     const btn = document.querySelector('.section-verify-btn[data-verify-key="' + pick + '"]');
     const target = btn ? btn.closest('.section') : null;
     if(target){
-      const nav = document.getElementById('pageHeader');
-      const navH = (nav && nav.offsetHeight) ? nav.offsetHeight : 0;
+      // Measured again rather than reused: verifying a section repaints its
+      // ring and label, which can change the strip's height on a narrow screen
+      // where the crew cells wrap.
+      const navH = stickyTopOffset();
       // When we wrap round to the FIRST section, go to the true top of the page
       // so the leg nav strip and checklist title aren't left hidden above.
       const isFirstSection = target === document.querySelector('#mainPanel .section');
