@@ -2837,7 +2837,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T08:10:00Z';
+const BUILD_VERSION = '2026-08-28T09:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4144,8 +4144,8 @@ function normalizeLeg(leg){
   if(leg && leg._fieldValueBaseline) delete leg._fieldValueBaseline;
   leg.compliance = Object.assign({ eapisReqd:'', eapisNotes:'', overflightReqd:'', overflightPermits:[], customsReqd:'', customsNotes:'' }, leg.compliance || {});
   if(!Array.isArray(leg.compliance.overflightPermits)) leg.compliance.overflightPermits = [];
-  leg.dep = Object.assign({ fuelPricePerGallon:'', paxBaggageNotes:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', agentPhone:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'' }, leg.dep || {});
-  leg.arr = Object.assign({ date:'', fuelPricePerGallon:'', paxBaggageNotes:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', agentPhone:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'' }, leg.arr || {});
+  leg.dep = Object.assign({ city:'', fuelPricePerGallon:'', paxBaggageNotes:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', agentPhone:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'' }, leg.dep || {});
+  leg.arr = Object.assign({ city:'', date:'', fuelPricePerGallon:'', paxBaggageNotes:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', agentPhone:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'' }, leg.arr || {});
   // Crew: legs saved before crew existed have no key at all, and a corrupted
   // list slot must not throw on render. Coerce the shape, never trust it.
   leg.crew = Object.assign({ pic:'', sic:'', acm:[], fa:[] }, leg.crew || {});
@@ -4210,11 +4210,11 @@ function blankLeg(){
     crewNames: {},
     eapisRequired: '',
     compliance: { eapisReqd:'', eapisNotes:'', overflightReqd:'', overflightPermits:[], customsReqd:'', customsNotes:'' },
-    dep: { airportId:'', tz:'', etdLocal:'', etdZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', notes:'' },
-    arr: { airportId:'', tz:'', date:'', etaLocal:'', etaZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', hotelCarNotes:'', permitReqd:'', permitNumber:'', notes:'' },
+    dep: { airportId:'', city:'', tz:'', etdLocal:'', etdZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', notes:'' },
+    arr: { airportId:'', city:'', tz:'', date:'', etaLocal:'', etaZ:'', hours:'', slotReqd:'', slotTimeNumber:'', slotAllowance:'', agent:'', agentPhone:'', frequency:'', fuelVendor:'', fuelPaymentMethod:'', fuelPricePerGallon:'', rampFee:'', rampFeeWaived:'', rampFeeMinGallons:'', groundTransportReqd:'', groundTransportDetails:'', utcOffsetManual:'', hotelCarNotes:'', permitReqd:'', permitNumber:'', notes:'' },
     permitReqd: '', permitNumber: '',
     trim:'', levelOff:'', minBRF:'', fratRelease:'',
-    departureNotes:'', paxBagsTransport:'', enrouteNotes:'', maxShear:'', ete:'', windDirection:'', windComponent:'', paxTotalNotes:'', crewHotelCarNotes:'',
+    departureNotes:'', paxBagsTransport:'', enrouteNotes:'', maxShear:'', ete:'', windDirection:'', windComponent:'', paxCount:'', paxTotalNotes:'', crewHotelCarNotes:'',
     nextLegDestination:'', nextLegDate:'', nextLegDay:'', nextLegEtd:'', nextLegEta:'',
     emailETASent:false
   };
@@ -4424,6 +4424,7 @@ function changelogSkipPath(p){
 const CHANGELOG_LABELS = {
   'status':'Status', 'tripNumber':'Trip number', 'legNumber':'Leg number',
   'date':'Departure date', 'arr.date':'Arrival date', 'cityPair':'City pair',
+  'dep.city':'Departure city', 'arr.city':'Arrival city', 'paxCount':'Passenger count',
   'compliance.eapisReqd':'eAPIS required', 'compliance.eapisNotes':'eAPIS notes',
   'compliance.overflightReqd':'Overflight required', 'compliance.customsReqd':'Customs required',
   'compliance.customsNotes':'Customs notes', 'compliance.overflightPermits':'Overflight permits',
@@ -9610,14 +9611,14 @@ function mergeLegInto(dst, src){
   const mergeFlat = (dObj, sObj, keys) => {
     keys.forEach(k => { dObj[k] = better(dObj[k], sObj[k]); });
   };
-  mergeFlat(dst, src, ['tripNumber','cityPair','ete','enrouteNotes','windDirection','windComponent','departureNotes']);
+  mergeFlat(dst, src, ['tripNumber','cityPair','ete','paxCount','enrouteNotes','windDirection','windComponent','departureNotes']);
   // Leg number: keep a real number over a '?' placeholder.
   if((dst.legNumber === '?' || !dst.legNumber) && src.legNumber && src.legNumber !== '?') dst.legNumber = src.legNumber;
   dst.compliance = dst.compliance || {};
   mergeFlat(dst.compliance, src.compliance || {}, ['eapisReqd','eapisNotes','customsReqd','customsNotes','overflightReqd']);
   ['dep','arr'].forEach(end => {
     dst[end] = dst[end] || {};
-    mergeFlat(dst[end], src[end] || {}, ['airportId','date','etdLocal','etdZ','etaLocal','etaZ','agent','agentPhone','frequency','slotReqd','slotTimeNumber','slotAllowance','fuelVendor','groundTransportReqd','groundTransportDetails','permitReqd','permitNumber','notes']);
+    mergeFlat(dst[end], src[end] || {}, ['airportId','city','date','etdLocal','etdZ','etaLocal','etaZ','agent','agentPhone','frequency','slotReqd','slotTimeNumber','slotAllowance','fuelVendor','groundTransportReqd','groundTransportDetails','permitReqd','permitNumber','notes']);
   });
   return dst;
 }
@@ -9845,9 +9846,12 @@ function buildLegFromExtraction(extracted, groupId){
   leg.tripNumber = extracted.tripNumber || '';
   leg.legNumber = (extracted.legNumber || '').trim() || '?';
   leg.date = toISODate(extracted.date || '');
-  leg.cityPair = extracted.cityPair || '';
   leg.tailNumber = extracted.tailNumber || '';
   leg.ete = extracted.ete || '';
+  // Count only -- the extractor never returns who they are. Kept as text like
+  // every other extracted field; '' means the document did not establish a
+  // per-leg count, and '0' means the leg genuinely carries nobody.
+  leg.paxCount = (extracted.paxCount == null ? '' : String(extracted.paxCount)).trim();
   leg.enrouteNotes = extracted.enrouteNotes || '';
   leg.windDirection = extracted.windDirection || '';
   leg.windComponent = extracted.windComponent || '';
@@ -9867,7 +9871,7 @@ function buildLegFromExtraction(extracted, groupId){
   const ed = extracted.dep || {};
   const ea = extracted.arr || {};
   Object.assign(leg.dep, {
-    airportId: ed.airportId || '', etdLocal: ed.etdLocal || '', etdZ: ed.etdZ || '',
+    airportId: ed.airportId || '', city: ed.city || '', etdLocal: ed.etdLocal || '', etdZ: ed.etdZ || '',
     agent: ed.agent || '', agentPhone: ed.agentPhone || '', frequency: ed.frequency || '',
     slotReqd: ed.slotReqd || '', slotTimeNumber: ed.slotTimeNumber || '', slotAllowance: ed.slotAllowance || '',
     fuelVendor: ed.fuelVendor || '', fuelPricePerGallon: ed.fuelPricePerGallon || '', fuelPaymentMethod: ed.fuelPaymentMethod || '',
@@ -9876,7 +9880,7 @@ function buildLegFromExtraction(extracted, groupId){
     notes: ed.notes || ''
   });
   Object.assign(leg.arr, {
-    airportId: ea.airportId || '', date: toISODate(ea.date || ''), etaLocal: ea.etaLocal || '', etaZ: ea.etaZ || '',
+    airportId: ea.airportId || '', city: ea.city || '', date: toISODate(ea.date || ''), etaLocal: ea.etaLocal || '', etaZ: ea.etaZ || '',
     agent: ea.agent || '', agentPhone: ea.agentPhone || '', frequency: ea.frequency || '',
     slotReqd: ea.slotReqd || '', slotTimeNumber: ea.slotTimeNumber || '', slotAllowance: ea.slotAllowance || '',
     fuelVendor: ea.fuelVendor || '', fuelPricePerGallon: ea.fuelPricePerGallon || '', fuelPaymentMethod: ea.fuelPaymentMethod || '',
@@ -9885,6 +9889,18 @@ function buildLegFromExtraction(extracted, groupId){
     permitReqd: ea.permitReqd || '', permitNumber: ea.permitNumber || '',
     notes: ea.notes || ''
   });
+  // cityPair is COMPOSED, never extracted. The extractor returns dep.city and
+  // arr.city separately, because the Trip Brief needs each end on its own and
+  // splitting one 'A -> B' string is fragile when a city is 'Jijoca de
+  // Jericoacoara'. Composing here means every existing consumer of cityPair --
+  // search, import diffing, the card renderers, the editor's hidden input --
+  // keeps working unchanged, off a single source that cannot drift.
+  // Both ends or nothing: a half-built pair reading 'Windsor Locks -> ' is
+  // worse than falling back to the airport codes, which the renderers already
+  // do when cityPair is empty.
+  leg.cityPair = (leg.dep.city && leg.arr.city)
+    ? (leg.dep.city + ' \u2192 ' + leg.arr.city)
+    : '';
   return leg;
 }
 
@@ -10139,6 +10155,7 @@ const RECONCILE_FIELD_LABELS = {
   date: 'Departure date',
   'arr.date': 'Arrival date',
   cityPair: 'City pair',
+  paxCount: 'Passenger count',
   'dep.airportId': 'Departure airport',
   'dep.etdLocal': 'Departure time (local)',
   'dep.etdZ': 'Departure time (Z)',
@@ -10194,6 +10211,7 @@ function describeLegChanges(leg, built){
   }
   check('date', leg.date, built.date);
   check('cityPair', leg.cityPair, built.cityPair);
+  check('paxCount', leg.paxCount, built.paxCount);
   ['airportId', 'etdLocal', 'etdZ', 'agent', 'agentPhone', 'frequency', 'fuelVendor', 'fuelPricePerGallon', 'fuelPaymentMethod', 'rampFee', 'rampFeeWaived', 'rampFeeMinGallons'].forEach(k => check('dep.' + k, leg.dep[k], built.dep[k]));
   ['airportId', 'date', 'etaLocal', 'etaZ', 'agent', 'agentPhone', 'frequency', 'fuelVendor', 'fuelPricePerGallon', 'fuelPaymentMethod', 'rampFee', 'rampFeeWaived', 'rampFeeMinGallons'].forEach(k => check('arr.' + k, leg.arr[k], built.arr[k]));
   return changes;
@@ -10687,6 +10705,11 @@ function renderImportPreviewView(){
             if(builtNum && builtNum !== '?' && !legNumberIsHumanOverride(leg, builtNum)) leg.legNumber = builtNum;
             leg.date = built.date;
             leg.cityPair = built.cityPair;
+            // Applied because describeLegChanges REPORTS it on the preview. A
+            // change shown to the user and then not written is worse than one
+            // never shown. dep/arr carry their own city through the assigns
+            // below, and cityPair is composed from those, so both stay in step.
+            leg.paxCount = built.paxCount;
             Object.assign(leg.dep, built.dep);
             Object.assign(leg.arr, built.arr);
             leg.updatedAt = Date.now();
@@ -13750,14 +13773,14 @@ async function collectAndSave(id, opts){
     customsReqd: val('customsReqd'), customsNotes: val('customsNotes')
   };
   leg.dep = {
-    airportId: val('depAirportId'), tz: leg.dep.tz || '', etdLocal: val('depEtdLocal'), etdZ: val('depEtdZ'),
+    airportId: val('depAirportId'), city: (leg.dep.city || ''), tz: leg.dep.tz || '', etdLocal: val('depEtdLocal'), etdZ: val('depEtdZ'),
     hours: val('depHours'), slotReqd: val('depSlotReqd'), slotTimeNumber: val('depSlotTimeNumber'),
     slotAllowance: val('depSlotAllowance'), agent: val('depAgent'), agentPhone: val('depAgentPhone'), frequency: val('depFrequency'), fuelVendor: val('depFuelVendor'),
     fuelPaymentMethod: val('depFuelPaymentMethod'), fuelPricePerGallon: val('depFuelPricePerGallon'), rampFee: val('depRampFee'), rampFeeWaived: val('depRampFeeWaived'), rampFeeMinGallons: val('depRampFeeMinGallons'), groundTransportReqd: val('depGroundTransportReqd'), groundTransportDetails: val('depGroundTransportDetails'), utcOffsetManual: val('depUtcOffset'),
     notes: (leg.dep.notes || '')
   };
   leg.arr = {
-    airportId: val('arrAirportId'), tz: leg.arr.tz || '', date: confirmedDateVal('arrDate', (leg.arr && leg.arr.date)), etaLocal: val('arrEtaLocal'), etaZ: val('arrEtaZ'),
+    airportId: val('arrAirportId'), city: (leg.arr.city || ''), tz: leg.arr.tz || '', date: confirmedDateVal('arrDate', (leg.arr && leg.arr.date)), etaLocal: val('arrEtaLocal'), etaZ: val('arrEtaZ'),
     hours: val('arrHours'), slotReqd: val('arrSlotReqd'), slotTimeNumber: val('arrSlotTimeNumber'),
     slotAllowance: val('arrSlotAllowance'), agent: val('arrAgent'), agentPhone: val('arrAgentPhone'), frequency: val('arrFrequency'),
     fuelVendor: val('arrFuelVendor'), fuelPaymentMethod: val('arrFuelPaymentMethod'), fuelPricePerGallon: val('arrFuelPricePerGallon'), rampFee: val('arrRampFee'), rampFeeWaived: val('arrRampFeeWaived'), rampFeeMinGallons: val('arrRampFeeMinGallons'), groundTransportReqd: val('arrGroundTransportReqd'), groundTransportDetails: val('arrGroundTransportDetails'), utcOffsetManual: val('arrUtcOffset'), notes: (leg.arr.notes || ''),
@@ -13772,6 +13795,7 @@ async function collectAndSave(id, opts){
   leg.ete = val('ete');
   leg.windDirection = val('windDirection');
   leg.windComponent = val('windComponent');
+  leg.paxCount = (leg.paxCount || '');
   leg.paxTotalNotes = val('paxTotalNotes');
   leg.crewHotelCarNotes = val('crewHotelCarNotes');
   leg.nextLegDestination = val('nextLegDestination');
