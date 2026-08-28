@@ -873,10 +873,15 @@
   .leg-note-labelrow{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
   /* Says out loud what the name only implies. A person about to type
      something they need later should be told BEFORE they type it, not
-     discover it missing from the archive a month afterwards. */
+     discover it missing from the archive a month afterwards.
+     It sits on the label row, right-aligned -- the slot the old
+     Private/Shared toggle used to occupy. NOWRAP is load-bearing: the row
+     is space-between, so a hint allowed to wrap would push the block
+     taller on a phone. Keep the wording short enough to survive that. */
   .leg-note-hint{
+    flex:none; white-space:nowrap;
     font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.45;
-    color:var(--fog-500); margin:-4px 0 2px;
+    color:var(--fog-500);
   }
   .leg-notes[data-trip-note] .leg-note-labelrow label{
     font-family:system-ui,'Inter',sans-serif; font-size:12px; letter-spacing:1.5px; text-transform:uppercase; font-weight:600; color:var(--amber-500);
@@ -3188,7 +3193,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-29T20:05:00Z';
+const BUILD_VERSION = '2026-08-29T20:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4432,8 +4437,8 @@ function legNotesBlockHTML(field, labelHtml, labelId, placeholder){
       '<div class="field leg-note-own">' +
         '<div class="leg-note-labelrow">' +
           '<label' + labelIdAttr + '>' + labelHtml + '</label>' +
+          '<div class="leg-note-hint">Private \u00b7 not archived</div>' +
         '</div>' +
-        '<div class="leg-note-hint">Private to you. Not shared with the flight department, and not kept in the trip archive.</div>' +
         '<textarea id="' + noteTextareaId(field) + '" class="leg-note-textarea" placeholder="' + escapeHtml(placeholder || '') + '"></textarea>' +
       '</div>' +
     '</div>';
