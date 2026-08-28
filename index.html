@@ -949,7 +949,36 @@
   .trip-log-sub{ font-size:11px; color:var(--fog-500); }
   .trip-log-compose .field{ margin-bottom:0; }
   .trip-log-compose .leg-note-textarea{ min-height:60px; }
-  .trip-log-actions{ display:flex; justify-content:flex-end; margin-top:8px; }
+  /* space-between, so the visibility control sits opposite Post. Both appear
+     together when there is text: visibility is a property of the note being
+     composed, so it belongs beside the commit, not above the box. */
+  .trip-log-actions{ display:flex; justify-content:space-between; align-items:center;
+    gap:10px; margin-top:8px; }
+  /* Deliberately NOT shaped like the Post pill (trap 40 in reverse): this
+     changes a property, it does not commit anything. Text + glyph, quiet at
+     rest. State is carried by the LABEL, not by colour alone -- the word says
+     which state you are in, so it still reads for anyone who cannot separate
+     the two tints (trap 50: intent without state fails). */
+  .trip-log-vis{
+    display:inline-flex; align-items:center; gap:6px;
+    background:none; border:none; padding:4px 2px; cursor:pointer;
+    font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.2;
+    color:var(--fog-500);
+  }
+  .trip-log-vis svg{ width:13px; height:13px; flex:0 0 auto; }
+  .trip-log-vis:hover{ color:var(--fog-300); }
+  /* Private is the EXCEPTIONAL state and has to be visible at a glance before
+     you press Post. Brightened rather than recoloured -- a new hue here would
+     collide with the status vocabulary (trap 18/89). */
+  .trip-log-vis[data-public="0"]{ color:var(--paper-050); }
+  /* Marks a private entry in the list. Without it a private note is
+     indistinguishable from a shared one in your own view, which is the one
+     view where the difference matters. */
+  .trip-log-private-tag{
+    font-size:10px; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--fog-500); border:1px solid var(--hairline);
+    border-radius:3px; padding:1px 5px; flex:0 0 auto;
+  }
   /* Back to the established amber pill (.doc-add-btn). The outline version was
      tried and rejected: it read as a second field rather than a commit. The
      pill is only loud when it is present, and it is only present once there is
@@ -3193,7 +3222,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-29T20:20:00Z';
+const BUILD_VERSION = '2026-08-29T21:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4177,6 +4206,51 @@ async function saveTripNote(tripId, content, isPublic){
   if(error) throw error;
 }
 
+// ---- Compose-time visibility --------------------------------------------
+// Visibility is decided ONCE, while writing, and is committed on save. There
+// is deliberately no toggle on a saved note: other people have already read
+// it, and a shared record that can silently change shape is a record nobody
+// trusts. Pulling a note back after the fact is RETRACTION, which is a
+// different act and leaves a tombstone (migration 33).
+//
+// Default is shared. Private is the exception, so it is the state that has to
+// announce itself -- see .trip-log-vis[data-public="0"].
+const NOTE_VIS_ICON_SHARED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+const NOTE_VIS_ICON_PRIVATE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+function noteVisButtonHTML(id){
+  // Starts shared. data-public is the single source of truth for this control
+  // -- syncNoteVisButton reads it and rewrites label and glyph from it, so the
+  // three never drift apart.
+  return '<button type="button" class="trip-log-vis" id="' + id + '" data-public="1" ' +
+    'title="Who can read this note" aria-label="Who can read this note">' +
+    NOTE_VIS_ICON_SHARED + '<span class="trip-log-vis-lbl">Shared</span></button>';
+}
+
+function noteVisIsPublic(btn){ return !btn || btn.getAttribute('data-public') !== '0'; }
+
+function syncNoteVisButton(btn){
+  if(!btn) return;
+  const pub = noteVisIsPublic(btn);
+  const lbl = btn.querySelector('.trip-log-vis-lbl');
+  if(lbl) lbl.textContent = pub ? 'Shared' : 'Private';
+  const svg = btn.querySelector('svg');
+  if(svg) svg.outerHTML = pub ? NOTE_VIS_ICON_SHARED : NOTE_VIS_ICON_PRIVATE;
+  btn.title = pub
+    ? 'Shared with the flight department \u2014 tap to keep it private'
+    : 'Private to you \u2014 tap to share with the flight department';
+  btn.setAttribute('aria-label', btn.title);
+}
+
+function wireNoteVisButton(btn){
+  if(!btn || btn.dataset.wired === '1') return;
+  btn.dataset.wired = '1';
+  btn.addEventListener('click', function(){
+    btn.setAttribute('data-public', noteVisIsPublic(btn) ? '0' : '1');
+    syncNoteVisButton(btn);
+  });
+}
+
 function tripNotesBlockHTML(trip){
   // A FEED, not a field. One composer at the top, entries below it newest
   // first. No visibility toggle: every entry is shared with the department.
@@ -4184,7 +4258,7 @@ function tripNotesBlockHTML(trip){
       '<div class="trip-log">' +
         '<div class="trip-log-head">' +
           '<label>Trip notes</label>' +
-          '<span class="trip-log-sub">Everyone on this trip can read these.</span>' +
+          '<span class="trip-log-sub">Shared with the flight department unless you say otherwise.</span>' +
         '</div>' +
         '<div class="trip-log-compose">' +
           // The .field wrapper is LOAD-BEARING, not decoration. There is no
@@ -4197,6 +4271,7 @@ function tripNotesBlockHTML(trip){
             '<textarea id="tripNoteTextarea" class="leg-note-textarea" placeholder="Add a note for this trip\u2026"></textarea>' +
           '</div>' +
           '<div class="trip-log-actions" id="tripNoteActions" hidden>' +
+            noteVisButtonHTML('tripNoteVisBtn') +
             '<button type="button" class="doc-add-btn trip-log-post" id="tripNotePostBtn" disabled>Post</button>' +
           '</div>' +
         '</div>' +
@@ -4224,11 +4299,16 @@ async function postTripNoteFromDOM(tripId){
   const btn = document.getElementById('tripNotePostBtn');
   if(!ta || !ta.value.trim()) return;
   if(btn) btn.disabled = true;
+  const visBtn = document.getElementById('tripNoteVisBtn');
   try{
-    await appendTripNote(tripId, ta.value);
+    await appendTripNote(tripId, ta.value, noteVisIsPublic(visBtn));
     // Cleared ONLY after the write succeeds. Clearing first would lose the
     // text on a failed save, which is the one outcome the person cannot undo.
     ta.value = '';
+    // Back to shared for the next note. Visibility is a decision about ONE
+    // note; carrying it forward would silently make the next one private
+    // because of a choice made about the last one.
+    if(visBtn){ visBtn.setAttribute('data-public','1'); syncNoteVisButton(visBtn); }
     ta.dataset.userEdited = '';
     // The draft existed only to protect unposted text. It is now in the log.
     clearTripNoteDraft(tripId);
@@ -4271,6 +4351,7 @@ function wireTripNotes(trip){
   if(btn){
     btn.addEventListener('click', function(){ postTripNoteFromDOM(tripId); });
   }
+  wireNoteVisButton(document.getElementById('tripNoteVisBtn'));
   const list = document.getElementById('tripNotesList');
   if(list){
     list.addEventListener('click', async function(e){
@@ -4317,9 +4398,13 @@ async function hydrateTripNotes(trip){
     const del = (myId && r.user_id === myId)
       ? '<button type="button" class="trip-log-del" data-note-del="' + escapeHtml(r.id) + '" title="Delete this note" aria-label="Delete this note">&times;</button>'
       : '';
+    // Only ever seen by the author -- RLS hides private rows from everyone
+    // else -- but that is exactly who needs to know which of their own notes
+    // the department cannot read.
+    const priv = r.is_public ? '' : '<span class="trip-log-private-tag">Private</span>';
     return '<div class="trip-log-entry">' +
       '<div class="trip-log-entry-head">' +
-        '<span class="note-other-author">' + who + '</span>' + role +
+        '<span class="note-other-author">' + who + '</span>' + role + priv +
         '<span class="trip-log-when">' + when + '</span>' + del +
       '</div>' +
       '<div class="note-other-body">' + escapeHtml(r.content || '') + '</div>' +
