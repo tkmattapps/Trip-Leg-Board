@@ -2808,7 +2808,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T02:05:00Z';
+const BUILD_VERSION = '2026-08-28T03:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4468,9 +4468,39 @@ function snapshotAllLegs(){
   (state.legs || []).forEach(snapshotLeg);
 }
 
+// *** ONE HUMAN ACTION, ONE ID. ***
+// A trip-wide apply saves each leg in turn, so one decision lands as six rows
+// with six slightly different created_at values. Grouping a history view on
+// time would split that action back into six, which is the thing the view
+// exists to prevent. So the action stamps an id once and every row it produces
+// carries it.
+//
+// Ambient rather than threaded through saveLeg: saveLeg is called from a dozen
+// places that have no batch and never will, and giving them all an argument to
+// ignore is worse than a variable they never touch. Null is the normal state
+// and means "this row is its own group of one".
+let _legChangeBatchId = null;
+function newLegChangeBatchId(){
+  try {
+    if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  } catch(e){}
+  // Fallback shapes a v4 by hand. Only reached on a browser without
+  // randomUUID; the column is a uuid, so the shape is not optional.
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : ((r & 0x3) | 0x8)).toString(16);
+  });
+}
+
 // Append change rows for one leg. Never throws (best-effort logging).
 async function logLegChanges(leg, changes){
   if(!changes || !changes.length) return;
+  // *** CAPTURED BEFORE THE FIRST await, DELIBERATELY. ***
+  // saveLeg calls this WITHOUT awaiting it. Read _legChangeBatchId after the
+  // await below and the apply loop may already have finished and cleared it,
+  // so the last legs of a batch would log null and fall out of their own group.
+  // Reading it here binds the id while the caller is still inside the loop.
+  const batchId = _legChangeBatchId;
   try {
     const deptId = await getFlightDepartmentId();
     const prof = currentUserProfile;
@@ -4486,7 +4516,8 @@ async function logLegChanges(leg, changes){
         changed_by: prof ? prof.id : null,
         changed_by_name: prof ? (prof.displayName || '') : '',
         changed_by_role: prof ? (prof.role || '') : '',
-        created_at: now
+        created_at: now,
+        batch_id: batchId
       };
     });
     const { error } = await sb.from('leg_changes').insert(rows);
@@ -7414,8 +7445,17 @@ async function applyTripQuick(){
     if(changed) touched.push(leg);
   });
   closeTripQuickSheet();
-  for(const leg of touched){
-    await saveLeg(leg);
+  // One id for the whole apply, cleared in `finally` so a thrown save cannot
+  // leak it onto the next unrelated edit. Stamped even for a single leg: a
+  // batch of one is still a distinct act, and it separates a change made here
+  // from the same field edited by hand in the leg editor.
+  _legChangeBatchId = newLegChangeBatchId();
+  try {
+    for(const leg of touched){
+      await saveLeg(leg);
+    }
+  } finally {
+    _legChangeBatchId = null;
   }
   renderMain();
   showToast(touched.length
