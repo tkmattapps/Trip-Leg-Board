@@ -3241,7 +3241,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-29T22:50:00Z';
+const BUILD_VERSION = '2026-08-29T23:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13050,19 +13050,17 @@ function notesBackLabel(){
   return 'Active Trips';
 }
 
-// A trip number alone is not enough to tell two trips apart in a list -- it is
-// an opaque six digits. Route and date are what a person actually recognises.
-// Endpoints only, never the full chain: a ten-leg trip would run off the
-// control on a phone.
+// A trip number alone is opaque -- six digits that look like every other six
+// digits. The DEPARTURE DATE is what tells them apart.
+//
+// NO ROUTE. It was built with endpoints and removed: this department's trips
+// all originate and terminate at the same airport, so the route rendered as an
+// identical string on every row -- a column of text carrying no information
+// and costing width on a phone.
 function notesTripOptionLabel(trip){
-  const legs = trip.legs || [];
-  const first = legs[0] || {};
-  const last  = legs[legs.length - 1] || {};
-  const dep = ((first.dep || {}).airportId || '').trim().toUpperCase();
-  const arr = ((last.arr || {}).airportId || '').trim().toUpperCase();
-  const route = (dep && arr) ? (dep + ' \u2192 ' + arr) : (dep || arr || '');
+  const first = (trip.legs || [])[0] || {};
   const d1 = formatISODateDisplay(first.date) || '';
-  return [ trip.tripNumber, d1, route ].filter(Boolean).join('  \u00b7  ');
+  return [ trip.tripNumber, d1 ].filter(Boolean).join('  \u00b7  ');
 }
 
 function notesPinControlsHTML(){
