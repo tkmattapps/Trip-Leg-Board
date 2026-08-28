@@ -871,29 +871,16 @@
   /* --- Per-user leg notes (dep / arr / enroute) --- */
   .leg-notes{ display:flex; flex-direction:column; gap:10px; }
   .leg-note-labelrow{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
-  .note-vis-toggle{
-    display:inline-flex; align-items:center; gap:6px; cursor:pointer; flex:none;
-    background:var(--panel-800); border:1px solid var(--hairline); color:var(--fog-300);
-    font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:0.4px; text-transform:uppercase;
-    padding:5px 10px; border-radius:999px; line-height:1; transition:color .15s, border-color .15s;
-  }
-  .note-vis-toggle .note-vis-dot{ width:7px; height:7px; border-radius:50%; background:var(--fog-500); transition:background .15s; }
-  .note-vis-toggle:hover{ border-color:var(--amber-700); }
-  .note-vis-toggle.is-public{ color:var(--amber-500); border-color:var(--amber-700); }
-  .note-vis-toggle.is-public .note-vis-dot{ background:var(--amber-500); }
-  .leg-note-others{ display:flex; flex-direction:column; gap:8px; }
-  .leg-note-others[hidden]{ display:none; }
-  .leg-note-others-head{
-    font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:0.4px; text-transform:uppercase; color:var(--fog-500);
+  /* Says out loud what the name only implies. A person about to type
+     something they need later should be told BEFORE they type it, not
+     discover it missing from the archive a month afterwards. */
+  .leg-note-hint{
+    font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.45;
+    color:var(--fog-500); margin:-4px 0 2px;
   }
   .leg-notes[data-trip-note] .leg-note-labelrow label{
     font-family:system-ui,'Inter',sans-serif; font-size:12px; letter-spacing:1.5px; text-transform:uppercase; font-weight:600; color:var(--amber-500);
   }
-  .note-other{
-    background:var(--panel-800); border:1px solid var(--hairline); border-left:2px solid var(--amber-700);
-    border-radius:3px; padding:8px 10px;
-  }
-  .note-other-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:3px; }
   .note-other-author{ font-family:system-ui,'Inter',sans-serif; font-size:11px; color:var(--paper-050); font-weight:600; }
   .note-other-role{ font-family:system-ui,'Inter',sans-serif; font-size:10px; color:var(--fog-500); }
   .note-other-body{ font-family:system-ui,'Inter',sans-serif; font-size:13px; color:var(--fog-300); white-space:pre-wrap; overflow-wrap:anywhere; }
@@ -3201,7 +3188,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-29T19:10:00Z';
+const BUILD_VERSION = '2026-08-29T20:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3451,9 +3438,21 @@ function legToRow(leg, flightDepartmentId, userId){
    Per-user leg notes  (dep / arr / enroute)
    These three fields live in their own table (leg_notes), one row
    per user + leg + field, so a pilot's notes and a dispatcher's
-   notes don't clobber each other. Each is private by default with
-   a per-field share toggle; shared notes from others stack read-only
-   with author attribution. paxTotalNotes stays on the shared blob.
+   notes don't clobber each other.
+
+   THESE ARE SCRATCH PADS, AND SCRATCH IS PRIVATE BY DEFINITION. They
+   used to carry a per-field Private/Shared toggle, and other people's
+   shared notes stacked read-only underneath. Both are gone. The name
+   is the whole point: a scratch pad is somewhere to put a reminder to
+   yourself, and calling it that sets the expectation that nothing
+   load-bearing belongs here. Anything the department needs to keep
+   goes in the shared notes buckets, not in scratch.
+
+   is_public is therefore always written false. The column stays
+   because the trip archive still filters leg notes on it -- which now
+   matches nothing, so the archive's leg-note section is empty until
+   the real shared leg-notes bucket exists. Deliberate, not a bug.
+   paxTotalNotes stays on the shared blob.
    ============================================================ */
 const NOTE_FIELDS = ['dep', 'arr', 'enroute'];
 let currentUserProfile = null;
@@ -4353,7 +4352,7 @@ async function fetchLegNotes(legId){
 
 // Persist one field's note for the current user. Empty content deletes the row
 // so the table doesn't accumulate blanks. Attribution is stamped on the row.
-async function saveLegNote(legId, field, content, isPublic){
+async function saveLegNote(legId, field, content){
   const prof = currentUserProfile || await loadCurrentUserProfile();
   if(!prof) return;
   const text = content == null ? '' : content;
@@ -4369,7 +4368,7 @@ async function saveLegNote(legId, field, content, isPublic){
     user_id: prof.id,
     field: field,
     content: text,
-    is_public: !!isPublic,
+    is_public: false,   // scratch is private by definition -- see the block comment above
     author_name: prof.displayName || '',
     author_role: prof.role || '',
     updated_at: new Date().toISOString()
@@ -4378,23 +4377,11 @@ async function saveLegNote(legId, field, content, isPublic){
   if(error) throw error;
 }
 
-function setNoteToggleState(toggle, isPublic){
-  if(!toggle) return;
-  toggle.dataset.public = isPublic ? 'true' : 'false';
-  toggle.setAttribute('aria-pressed', isPublic ? 'true' : 'false');
-  toggle.classList.toggle('is-public', !!isPublic);
-  const txt = toggle.querySelector('.note-vis-text');
-  if(txt) txt.textContent = isPublic ? 'Shared' : 'Private';
-}
-
 // Read one field's textarea + toggle out of the DOM and persist it.
 async function saveOneLegNote(legId, field){
   const ta = document.getElementById(noteTextareaId(field));
   if(!ta) return;
-  const block = ta.closest('.leg-notes');
-  const toggle = block ? block.querySelector('.note-vis-toggle') : null;
-  const isPublic = toggle ? toggle.dataset.public === 'true' : false;
-  await saveLegNote(legId, field, ta.value, isPublic);
+  await saveLegNote(legId, field, ta.value);
 }
 
 // Flush all three note fields for the active leg. Called from collectAndSave so
@@ -4412,25 +4399,16 @@ async function flushLegNotes(legId){
 function wireLegNotes(legId){
   NOTE_FIELDS.forEach(function(field){
     const ta = document.getElementById(noteTextareaId(field));
-    const block = ta ? ta.closest('.leg-notes') : null;
-    if(!ta || !block) return;
-    const toggle = block.querySelector('.note-vis-toggle');
+    if(!ta) return;
     ta.addEventListener('input', function(){ ta.dataset.userEdited = '1'; });
     ta.addEventListener('blur', function(){
       saveOneLegNote(legId, field).catch(function(e){ console.error('note save ' + field, e); });
     });
-    if(toggle){
-      toggle.addEventListener('click', function(){
-        const nowPublic = toggle.dataset.public !== 'true';
-        setNoteToggleState(toggle, nowPublic);
-        saveOneLegNote(legId, field).catch(function(e){ console.error('note toggle ' + field, e); });
-      });
-    }
   });
 }
 
-// Load the leg's notes and populate the DOM: own note into the textarea, own
-// visibility into the toggle, others' public notes stacked read-only below.
+// Load the leg's scratch pads and populate the DOM. Own row only -- scratch is
+// private, so there is never anything of anyone else's to show.
 // Guards against overwriting in-progress typing and against stale navigation.
 async function hydrateLegNotes(legId){
   let rows;
@@ -4441,33 +4419,9 @@ async function hydrateLegNotes(legId){
   NOTE_FIELDS.forEach(function(field){
     const fieldRows = rows.filter(function(r){ return r.field === field; });
     const mine = myId ? fieldRows.find(function(r){ return r.user_id === myId; }) : null;
-    const others = fieldRows.filter(function(r){ return r.is_public && (!myId || r.user_id !== myId); });
     const ta = document.getElementById(noteTextareaId(field));
-    if(ta){
-      const block = ta.closest('.leg-notes');
-      const toggle = block ? block.querySelector('.note-vis-toggle') : null;
-      if(ta.dataset.userEdited !== '1' && document.activeElement !== ta){
-        ta.value = mine ? (mine.content || '') : '';
-      }
-      setNoteToggleState(toggle, mine ? !!mine.is_public : false);
-    }
-    const cont = document.getElementById(field + 'NotesOthers');
-    if(cont){
-      if(others.length === 0){
-        cont.innerHTML = '';
-        cont.hidden = true;
-      } else {
-        cont.hidden = false;
-        cont.innerHTML = '<div class="leg-note-others-head">Shared by others</div>' +
-          others.map(function(r){
-            const who = escapeHtml(r.author_name || 'Crew');
-            const role = r.author_role ? '<span class="note-other-role">' + escapeHtml(r.author_role) + '</span>' : '';
-            return '<div class="note-other">' +
-              '<div class="note-other-head"><span class="note-other-author">' + who + '</span>' + role + '</div>' +
-              '<div class="note-other-body">' + escapeHtml(r.content || '') + '</div>' +
-            '</div>';
-          }).join('');
-      }
+    if(ta && ta.dataset.userEdited !== '1' && document.activeElement !== ta){
+      ta.value = mine ? (mine.content || '') : '';
     }
   });
 }
@@ -4478,14 +4432,10 @@ function legNotesBlockHTML(field, labelHtml, labelId, placeholder){
       '<div class="field leg-note-own">' +
         '<div class="leg-note-labelrow">' +
           '<label' + labelIdAttr + '>' + labelHtml + '</label>' +
-          '<button type="button" class="note-vis-toggle" data-note-field="' + field + '" data-public="false" aria-pressed="false" title="Private to you. Tap to share with your flight department.">' +
-            '<span class="note-vis-dot" aria-hidden="true"></span>' +
-            '<span class="note-vis-text">Private</span>' +
-          '</button>' +
         '</div>' +
+        '<div class="leg-note-hint">Private to you. Not shared with the flight department, and not kept in the trip archive.</div>' +
         '<textarea id="' + noteTextareaId(field) + '" class="leg-note-textarea" placeholder="' + escapeHtml(placeholder || '') + '"></textarea>' +
       '</div>' +
-      '<div class="leg-note-others" id="' + field + 'NotesOthers" hidden></div>' +
     '</div>';
 }
 
@@ -8042,10 +7992,16 @@ function paxTransportTitle(direction, code){
   return trimmed ? (label + ' ' + trimmed.toUpperCase()) : (label + '\u2026');
 }
 
+// THE IDENTIFIER LEADS. "KBDL Scratchpad", not "Departure scratchpad KBDL" --
+// the airport is what you are actually scribbling about, so it goes first and
+// the label reads as a heading for that stop rather than a form field name.
+// Until a code is entered there is no identifier to lead with, so the end of
+// the leg stands in for it; that fallback is the only place dep/arr is spelled
+// out, and it disappears the moment an airport is typed.
 function airfieldNotesLabel(direction, code){
-  const label = direction === 'dep' ? 'Departure notes' : 'Arrival notes';
   const trimmed = (code || '').trim();
-  return trimmed ? (label + ' ' + trimmed.toUpperCase()) : (label + '\u2026');
+  if(trimmed) return trimmed.toUpperCase() + ' Scratchpad';
+  return (direction === 'dep' ? 'Departure' : 'Arrival') + ' Scratchpad\u2026';
 }
 
 function parseETEToMinutes(str){
@@ -13049,7 +13005,7 @@ function renderMain(){
           '</div>' +
           // Outside the grid: the hint is a full-width note, and inside a fixed
           // six-column grid it would eat a cell and shunt the row order.
-                    '<div style="margin-top:14px">' + legNotesBlockHTML('dep', airfieldNotesLabel('dep', leg.dep.airportId), 'depNotesLabel', 'Add a note for this stop\u2026') + '</div>' +
+                    '<div style="margin-top:14px">' + legNotesBlockHTML('dep', airfieldNotesLabel('dep', leg.dep.airportId), 'depNotesLabel', 'Jot something down for yourself\u2026') + '</div>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -13080,7 +13036,7 @@ function renderMain(){
             ynField('Waived w/ fuel', 'arrRampFeeWaived', leg.arr.rampFeeWaived) +
             field('Min GAL to waive', 'arrRampFeeMinGallons', leg.arr.rampFeeMinGallons) +
           '</div>' +
-                    '<div style="margin-top:14px">' + legNotesBlockHTML('arr', airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotesLabel', 'Add a note for this stop\u2026') + '</div>' +
+                    '<div style="margin-top:14px">' + legNotesBlockHTML('arr', airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotesLabel', 'Jot something down for yourself\u2026') + '</div>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -13102,7 +13058,7 @@ function renderMain(){
         windToggleField(leg) +
         field('Relative time to destination', 'relativeTimeToDestination', '', {readonly:true, placeholder:'auto'}) +
       '</div>' +
-      '<div style="margin-top:14px">' + legNotesBlockHTML('enroute', 'Enroute notes', 'enrouteNotesLabel', 'Add an enroute note\u2026') + '</div>' +
+      '<div style="margin-top:14px">' + legNotesBlockHTML('enroute', 'Enroute Scratchpad', 'enrouteNotesLabel', 'Jot something down for yourself\u2026') + '</div>' +
     '</div>' +
 
     '<div class="section">' +
