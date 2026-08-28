@@ -1860,10 +1860,23 @@
      and the controls. The old layout gave these their own zone under a divider,
      which cost a row, a border and its padding on every single leg. */
   .tb-band-head{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  /* A BUTTON, not a label -- tapping it points the sticky strip at this leg.
+     Styled to look like the heading it replaced so the band reads the same;
+     the affordance is the tap target and the pressed state, not decoration.
+     Padded out to a real target without moving the text: the negative left
+     margin cancels the padding so LEG 1 still starts on the band's edge. */
   .tb-band-n{
+    background:none; border:0; cursor:pointer;
+    padding:4px 8px; margin-left:-8px; border-radius:5px;
     font-family:system-ui,'Inter',sans-serif; font-size:15px; font-weight:700;
     letter-spacing:0.04em; color:var(--amber-500);
+    transition:background 0.15s ease;
   }
+  .tb-band-n:hover{ background:rgba(242,169,59,0.12); }
+  .tb-band-n:active{ background:rgba(242,169,59,0.22); }
+  /* On the tracked band the control is already "on", so it does not invite a
+     second press. */
+  .tb-band-active .tb-band-n{ background:rgba(242,169,59,0.16); }
   .tb-head-spacer{ flex:1 1 auto; }
   /* The two controls travel together as one block in the top-right corner.
      Side by side while there is room; STACKED below 620px, where they were
@@ -3082,7 +3095,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T19:00:00Z';
+const BUILD_VERSION = '2026-08-28T20:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8097,12 +8110,19 @@ function tripBriefStripHTML(trip, leg){
    state change, so without removing the previous one they would stack up, each
    holding a stale leg array. The hover listeners need no such care: they are
    bound to #tbBands, which is destroyed and rebuilt with the view. */
-let _tbSpyEl = null, _tbSpyHandler = null, _tbSpyActiveId = '', _tbHoverId = null;
+let _tbSpyEl = null, _tbSpyHandler = null, _tbSpyActiveId = '';
+// THREE SOURCES CAN CHOOSE THE DESCRIBED LEG, in descending priority:
+//   _tbHoverId   a pointer is over a band          (Mac; cleared on mouseleave)
+//   _tbPinnedId  a leg number was tapped           (touch; cleared by scrolling
+//                                                   out of the row it was in)
+//   otherwise    the scroll position
+let _tbHoverId = null, _tbPinnedId = null, _tbPinRow = null;
 
 function wireTripBriefScrollSpy(trip, legs){
   if(_tbSpyEl && _tbSpyHandler) _tbSpyEl.removeEventListener('scroll', _tbSpyHandler);
   _tbSpyEl = null; _tbSpyHandler = null;
-  _tbHoverId = null;                      // a stale hover must not outlive a render
+  // Stale selections must not outlive a render.
+  _tbHoverId = null; _tbPinnedId = null; _tbPinRow = null;
 
   const strip = document.getElementById('tbStrip');
   if(!strip || !legs.length) return;
@@ -8123,21 +8143,23 @@ function wireTripBriefScrollSpy(trip, legs){
     });
   }
 
-  let queued = false;
-  function update(){
-    queued = false;
-    if(_tbHoverId){ apply(_tbHoverId); return; }   // the pointer wins
+  /* Which leg the SCROLL POSITION alone would choose.
+
+     ROW-AWARE. Two bands in the same row share a top, so "the last band that
+     has passed the line" would always resolve to the RIGHT-hand one and the
+     left band would never be described. Instead: walk in flight order and only
+     move the answer on when a band starts a genuinely LOWER row, which leaves
+     the first band of the topmost qualifying row.
+
+     Doubles as the ROW IDENTITY for a pin: two taps in the same row return the
+     same value here, and it changes the moment you scroll to the next row. */
+  function scrollPick(){
     const stripEl = document.getElementById('tbStrip');
-    if(!stripEl) return;
+    if(!stripEl) return legs[0].id;
     // The line just below the strip. A band counts as "in view" once its top
     // has passed it, so the strip describes the leg you are actually reading
     // rather than the one about to arrive.
     const line = stripEl.getBoundingClientRect().bottom + 8;
-    // ROW-AWARE. Two bands in the same row share a top, so "the last band that
-    // has passed the line" would always resolve to the RIGHT-hand one and the
-    // left band would never be described. Instead: walk in flight order and
-    // only move the answer on when a band starts a genuinely LOWER row, which
-    // leaves the first band of the topmost qualifying row.
     let active = legs[0], activeTop = null;
     for(let i = 0; i < legs.length; i++){
       const el = document.querySelector('[data-tb-leg="' + legs[i].id + '"]');
@@ -8148,7 +8170,22 @@ function wireTripBriefScrollSpy(trip, legs){
       // already have, which is the earlier leg.
       if(activeTop === null || top > activeTop + 1){ active = legs[i]; activeTop = top; }
     }
-    apply(active.id);
+    return active.id;
+  }
+
+  let queued = false;
+  function update(){
+    queued = false;
+    if(_tbHoverId){ apply(_tbHoverId); return; }   // the pointer wins outright
+    const row = scrollPick();
+    if(_tbPinnedId){
+      // A pin survives only while you are still in the row you pinned from.
+      // Without this the pin would never clear on a touch device -- there is no
+      // mouseleave -- and one tap would freeze the strip for the whole trip.
+      if(row === _tbPinRow){ apply(_tbPinnedId); return; }
+      _tbPinnedId = null; _tbPinRow = null;
+    }
+    apply(row);
   }
 
   _tbSpyHandler = function(){
@@ -8186,6 +8223,27 @@ function wireTripBriefScrollSpy(trip, legs){
       if(_tbHoverId === null) return;
       _tbHoverId = null;
       update();
+    });
+  }
+
+  /* The leg-number buttons. Bound on the container, like hover, so they are
+     replaced with the view and need no teardown -- but bound on EVERY device,
+     because this is the touch route to the same thing hover does.
+
+     A tap here PINS the strip to that leg, exactly as hover does on a Mac, so
+     _tbHoverId is the right piece of state to set: it already means "something
+     more deliberate than the scroll position is choosing". Scrolling on to
+     another row clears it, so the pin cannot strand the strip on a leg that
+     has left the screen. */
+  if(bands){
+    bands.addEventListener('click', function(e){
+      const btn = e.target.closest ? e.target.closest('[data-tb-focus]') : null;
+      if(!btn) return;
+      e.stopPropagation();                 // must not fall through and open the leg
+      const id = btn.getAttribute('data-tb-focus');
+      _tbPinnedId = id;
+      _tbPinRow = scrollPick();            // the row this pin belongs to
+      apply(id);
     });
   }
 
@@ -8282,7 +8340,16 @@ function tripBriefBandHTML(leg){
   return '<div class="dash-card tb-band" data-id="' + escapeHtml(leg.id) + '" data-tb-leg="' + escapeHtml(leg.id) + '">' +
     (isUnassigned ? '<div class="dash-card-orphan-banner">No trip number on the paperwork.</div>' : '') +
     '<div class="tb-band-head">' +
-      '<span class="tb-band-n">LEG ' + escapeHtml(leg.legNumber || '?') + '</span>' +
+      // THE LEG NUMBER IS THE FOCUS CONTROL. On an iPad the bands sit two to a
+      // row but there is no pointer, so hover cannot retarget the strip and the
+      // scroll rule always lands on the LEFT band -- which left every
+      // right-hand leg's crew unreachable. Tapping the label points the strip
+      // and the ring at that leg. It stops propagation, so it does NOT open the
+      // checklist; tapping anywhere else on the band still does.
+      // Additive by design: nothing that already worked on a Mac or an iPhone
+      // behaves any differently.
+      '<button type="button" class="tb-band-n" data-tb-focus="' + escapeHtml(leg.id) + '"' +
+        ' title="Show this leg in the strip above">LEG ' + escapeHtml(leg.legNumber || '?') + '</button>' +
       // NO PENDING COUNT. It sat between the leg number and the two buttons and
       // pushed them off the top-right corner on a phone. The readiness detail
       // belongs on the checklist, which is one tap away; the brief carries the
