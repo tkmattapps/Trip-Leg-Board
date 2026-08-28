@@ -2956,7 +2956,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T11:05:00Z';
+const BUILD_VERSION = '2026-08-28T11:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3674,7 +3674,7 @@ async function refreshLegAttachBadge(legId){
 
 const LEG_PAPERCLIP_BADGE_SVG = '<svg class="doc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
 
-// Batch-fill paperclip badges for all leg tiles on the Trip Legs page.
+// Batch-fill paperclip badges for all leg bands on the Trip Brief page.
 async function hydrateTripLegAttachBadges(trip){
   if(!trip || !trip.legs || !trip.legs.length) return;
   let counts = {};
@@ -3691,7 +3691,7 @@ async function hydrateTripLegAttachBadges(trip){
   });
 }
 
-/* ---- Trip-level Documents (Trip Legs page) ---- */
+/* ---- Trip-level Documents (Trip Brief page) ---- */
 function tripDocsBlockHTML(trip){
   return '' +
     '<div class="section" id="tripDocSection">' +
@@ -3817,7 +3817,7 @@ function wireTripDocs(trip){
   });
 }
 
-/* ---- Trip-level catch-all Notes (Trip Legs page) ---- */
+/* ---- Trip-level catch-all Notes (Trip Brief page) ---- */
 async function fetchTripNotes(tripId){
   const { data, error } = await sb.from('trip_notes').select('*').eq('trip_id', tripId);
   if(error) throw error;
@@ -11690,7 +11690,7 @@ function renderTripDetailView(){
     const maxLegNum = Math.max(0, ...trip.legs.map(l => parseInt(l.legNumber, 10) || 0));
     newLeg.legNumber = String(maxLegNum + 1);
     state.legs.unshift(newLeg);
-    // Stay on the Trip Legs page: keep the view + trip key pinned, persist the
+    // Stay on the Trip Brief page: keep the view + trip key pinned, persist the
     // new leg so it survives refresh / reaches other devices, then re-render in place.
     state.view = 'tripDetail';
     state.activeTripKey = trip.isOrphan ? ('__grp_' + newLeg.groupId) : (trip.tripNumber || '').trim();
@@ -12125,7 +12125,7 @@ function renderMain(){
   let backLabel = 'Active Trips';
   if(state.previousView === 'tripDetail' && state.previousTripKey){
     const prevTrip = groupIntoTrips(state.legs).find(t => t.key === state.previousTripKey);
-    backLabel = prevTrip ? 'Trip Legs' : 'Active Trips';
+    backLabel = prevTrip ? 'Trip Brief' : 'Active Trips';
   } else if(state.previousView === 'history'){
     backLabel = 'Archived Trips';
   }
