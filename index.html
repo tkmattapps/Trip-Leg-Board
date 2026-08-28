@@ -2808,7 +2808,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T01:10:00Z';
+const BUILD_VERSION = '2026-08-28T02:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -6619,6 +6619,9 @@ function tripQuickBodyHTML(){
     // Same rule as crew: Remove is offered only when a live leg in scope
     // actually carries a tail.
     const tailOccupied = live.some(l => tripQuickCurrentValue(l, '__tail__'));
+    // See the crew branch below: clearing retracts a staged pick and writes
+    // nothing. Remove empties a slot the legs actually carry. Different acts.
+    const tailCanClear = !!cur && !tailIsRemove && !tailOccupied;
     const tailShowBlank = !cur || tailIsRemove;
     rows.push(
       '<div class="sheet-slot">' +
@@ -6636,6 +6639,9 @@ function tripQuickBodyHTML(){
           choices.map(c => '<option value="' + escapeHtml(c.value) + '"' + (c.value === cur ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>').join('') +
           (tailOccupied && !tailIsRemove
             ? '<option value="' + TRIP_QUICK_REMOVE + '">Remove aircraft</option>'
+            : '') +
+          (tailCanClear
+            ? '<option value="">Clear aircraft</option>'
             : '') +
         '</select>' +
         (tailIsRemove
@@ -6712,6 +6718,20 @@ function tripQuickBodyHTML(){
       // Does any live leg in scope actually hold someone here? That, not the
       // picker's own value, is what makes "Remove" meaningful.
       const occupied = live.some(l => tripQuickCurrentValue(l, s.slot));
+      // *** AN EMPTY SEAT STILL NEEDS AN EXIT. ***
+      // `occupied` reads the LEGS, not the picker, which is correct for Remove:
+      // emptying a seat nobody sits in is meaningless. But it left a staged
+      // pick on an empty seat with no way back. ACM and FA start empty on
+      // almost every import, so choosing someone there was a ONE-WAY DOOR --
+      // the only escape was cancelling the sheet, discarding every other slot
+      // the user had already set.
+      //
+      // Clearing is NOT removing. Remove empties a seat the legs carry and
+      // writes to them; Clear retracts a pending choice and writes nothing.
+      // It is offered only once something is staged, so it can never be
+      // reached by leaving a control alone -- which is precisely what made the
+      // old blank "no change" option ambiguous and got it taken out.
+      const canClear = !!cur && !isRemove && !occupied;
       const showBlank = !cur || isRemove;
       rows.push(
         '<div class="sheet-slot">' +
@@ -6732,6 +6752,9 @@ function tripQuickBodyHTML(){
             choices.map(c => '<option value="' + escapeHtml(c.value) + '"' + (c.value === cur ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>').join('') +
             (occupied && !isRemove
               ? '<option value="' + TRIP_QUICK_REMOVE + '">Remove ' + escapeHtml(s.label) + '</option>'
+              : '') +
+            (canClear
+              ? '<option value="">Clear ' + escapeHtml(s.label) + '</option>'
               : '') +
           '</select>' +
           (isRemove
@@ -6832,8 +6855,12 @@ function renderTripQuickBody(){
       const slot = sel.dataset.tqSlot;
       // A staged Remove renders as a selected blank option, so the select's own
       // value is '' while the intent is '__remove__'. Picking anything else
-      // therefore overwrites the intent normally; there is no way to land back
-      // on blank without cancelling, which is what we want.
+      // therefore overwrites the intent normally.
+      //
+      // Blank IS reachable again, but only by picking "Clear" on a seat the
+      // legs leave empty -- never by inaction. That option carries value '',
+      // which tripQuickWouldChange treats as no write at all, so clearing
+      // stages nothing and leaves the legs untouched.
       tripQuickState.sel[slot] = sel.value;
       // Clearing or removing the first seat retracts the append picker with it:
       // an additional ACM is meaningless once there is no ACM.
