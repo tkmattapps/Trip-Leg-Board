@@ -1874,9 +1874,16 @@
   }
   .tb-band-n:hover{ background:rgba(242,169,59,0.12); }
   .tb-band-n:active{ background:rgba(242,169,59,0.22); }
-  /* On the tracked band the control is already "on", so it does not invite a
-     second press. */
-  .tb-band-active .tb-band-n{ background:rgba(242,169,59,0.16); }
+  /* NO FILL ON THE TRACKED BAND'S LEG NUMBER. The ring already says which band
+     the strip is describing; a second amber marker inside it just competes with
+     the ring for the same job, and at a glance the band looks doubly flagged.
+     The press state below is enough of an affordance.
+     The hover fill is cancelled on touch for the same reason the band border
+     is: :hover latches after a tap and never clears, so the last band touched
+     would keep a lit leg number while the ring sat somewhere else. */
+  @media (hover: none){
+    .tb-band-n:hover{ background:none; }
+  }
   .tb-head-spacer{ flex:1 1 auto; }
   /* The two controls travel together as one block in the top-right corner.
      Side by side while there is room; STACKED below 620px, where they were
@@ -3095,7 +3102,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T21:15:00Z';
+const BUILD_VERSION = '2026-08-28T21:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8156,10 +8163,26 @@ function wireTripBriefScrollSpy(trip, legs){
   function scrollPick(){
     const stripEl = document.getElementById('tbStrip');
     if(!stripEl) return legs[0].id;
-    // The line just below the strip. A band counts as "in view" once its top
-    // has passed it, so the strip describes the leg you are actually reading
-    // rather than the one about to arrive.
-    const line = stripEl.getBoundingClientRect().bottom + 8;
+    /* The line a band's top must pass to count as "in view".
+
+       ANTICIPATORY. Sitting it right under the strip meant a band did not light
+       up until its top edge collided with the strip -- by which point it had
+       already been the leg filling the screen for most of a scroll, and the
+       strip was still describing the one above. Dropping the line further down
+       the page lights the band while you are reading it.
+
+       *** THE CAP IS LOAD-BEARING. *** A row is one band tall plus the grid
+       gap, so holding the lookahead to half a band height keeps it strictly
+       below the row pitch. That is what guarantees it can never reach into the
+       row below -- which would skip a row on a fast scroll, and would light row
+       two while the page sits unscrolled. The second term keeps it sane on a
+       short viewport, where half a band can be most of the visible page. */
+    const stripBottom = stripEl.getBoundingClientRect().bottom;
+    const firstBand = document.querySelector('#tbBands .tb-band');
+    const bandH = firstBand ? firstBand.getBoundingClientRect().height : 96;
+    const room = Math.max(0, window.innerHeight - stripBottom);
+    const lookahead = Math.min(bandH * 0.5, room * 0.3);
+    const line = stripBottom + 8 + lookahead;
     let active = legs[0], activeTop = null;
     for(let i = 0; i < legs.length; i++){
       const el = document.querySelector('[data-tb-leg="' + legs[i].id + '"]');
