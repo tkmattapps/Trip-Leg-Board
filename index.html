@@ -2975,7 +2975,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T12:20:00Z';
+const BUILD_VERSION = '2026-08-28T13:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -10540,8 +10540,14 @@ function describeLegChanges(leg, built){
   const check = (path, oldVal, newVal) => {
     oldVal = oldVal || '';
     newVal = newVal || '';
+    // AN IMPORT CANNOT EMPTY A FIELD, so a blank incoming value is not a
+    // change and must not be reported as one. The apply path guards every
+    // write with the same test (see assignNonBlank); if this reported
+    // "$250 -> (blank)" the user would approve a change that never happened.
+    // These two rules are a PAIR -- loosen one and the preview starts lying.
+    if(newVal === '') return;
     if(oldVal !== newVal){
-      changes.push({ label: RECONCILE_FIELD_LABELS[path] || path, oldVal: oldVal || '(blank)', newVal: newVal || '(blank)' });
+      changes.push({ label: RECONCILE_FIELD_LABELS[path] || path, oldVal: oldVal || '(blank)', newVal: newVal });
     }
   };
   const dlcBuiltNum = String(built.legNumber || '').trim();
@@ -10607,6 +10613,38 @@ function importUnmatchedCardHTML(item, index){
 // INCOMING ORDER, not sorted. Where a document numbers legs with its own record
 // IDs those are sequential anyway, so document order and numeric order agree.
 // Sorting here would be inventing an ordering rule nobody stated.
+/* AN IMPORT MAY FILL OR CORRECT A FIELD. IT MAY NOT EMPTY ONE.
+
+   `built` starts as blankLeg(), so built.dep and built.arr carry EVERY key
+   with '' in it, and the extraction only fills the ones it looks for. A plain
+   Object.assign therefore wrote those blanks straight over the existing leg.
+
+   That silently destroyed hand-typed work on every re-import. FBO hours are
+   the clearest case -- the extractor has never looked for them, so they were
+   '' every time and were wiped every time -- but tz, utcOffsetManual,
+   hotelCarNotes and paxBaggageNotes went the same way, and so did any field
+   the extractor DOES target but did not find in that particular document
+   (slots, ground transport, notes). None of them appeared on the preview,
+   because describeLegChanges does not check them either.
+
+   "The document did not mention it" is not "it is now empty."
+
+   This is the same rule mergeLegInto states in its own comment, and the same
+   rule the two patch-based apply sites already follow with `if(ed[k])`. This
+   site was the one that did not. A human can still clear any field in the
+   editor -- that is a deliberate act, which an import is not. */
+function assignNonBlank(dst, src){
+  if(!src) return;
+  Object.keys(src).forEach(function(k){
+    const v = src[k];
+    // A value of '0' must survive: paxCount and the fee fields are numeric
+    // text where zero is a real answer, so this tests for BLANK, not falsy.
+    if(v == null) return;
+    if(typeof v === 'string' && v.trim() === '') return;
+    dst[k] = v;
+  });
+}
+
 function applyImportRenumber(legs){
   legs.forEach((l, i) => {
     if(!String(l.sourceLegNumber || '').trim()){
@@ -11044,15 +11082,18 @@ function renderImportPreviewView(){
             const built = item.built;
             const builtNum = String(built.legNumber || '').trim();
             if(builtNum && builtNum !== '?' && !legNumberIsHumanOverride(leg, builtNum)) leg.legNumber = builtNum;
-            leg.date = built.date;
-            leg.cityPair = built.cityPair;
+            if(built.date) leg.date = built.date;
+            if(built.cityPair) leg.cityPair = built.cityPair;
             // Applied because describeLegChanges REPORTS it on the preview. A
             // change shown to the user and then not written is worse than one
             // never shown. dep/arr carry their own city through the assigns
             // below, and cityPair is composed from those, so both stay in step.
-            leg.paxCount = built.paxCount;
-            Object.assign(leg.dep, built.dep);
-            Object.assign(leg.arr, built.arr);
+            // Guarded like everything else here: an extraction that found no
+            // count must not erase one already recorded. '0' is a real count
+            // and survives -- the test is for blank, not for falsy.
+            if(String(built.paxCount || '').trim() !== '') leg.paxCount = built.paxCount;
+            assignNonBlank(leg.dep, built.dep);
+            assignNonBlank(leg.arr, built.arr);
             leg.updatedAt = Date.now();
             await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
           }
