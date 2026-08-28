@@ -1769,6 +1769,94 @@
     font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:1.1px;
     text-transform:uppercase; color:var(--fog-500); margin-bottom:8px;
   }
+/* The strip sticks INSIDE .main, which is the scroll container (it carries
+   overflow-y:auto). top is the FIXED PAGE HEADER's height, not 0: the header
+   overlays the scrollport, so a sticky top:0 would slide underneath it.
+   --page-header-h is the same variable .main uses for its own padding-top, so
+   the two cannot drift apart.
+   No opacity and no background shorthand here -- both break a sticky element's
+   compositing in ways that show up only on a real device. */
+  .tb-strip{
+    position:sticky; top:var(--page-header-h, 84px); z-index:5;
+    margin-bottom:16px;
+  }
+
+/* ---- TRIP BRIEF: one full-width band per leg -------------------------------
+   NOT a card grid. The dashboard uses .dash-grid, which puts two cards side by
+   side on an iPad -- that is exactly what stops a leg reading as one unit. A
+   brief is read by scrolling, one leg at a time, so each leg gets the full
+   width and as much vertical room as it needs.
+   Modelled on Jet Aviation's Form 909: departure and arrival in parallel
+   columns, with the leg's own figures in a narrow block to their right. */
+  .tb-band{
+    background:var(--panel-800); border:1px solid var(--hairline);
+    border-radius:8px; padding:14px 16px; margin-bottom:12px;
+  }
+  .tb-band-head{ display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  .tb-band-n{
+    font-family:system-ui,'Inter',sans-serif; font-size:15px; font-weight:700;
+    letter-spacing:0.04em; color:var(--amber-500);
+  }
+  .tb-band-route{ font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--fog-500); }
+
+  /* Two ends plus the figures block. The ends share the slack; the figures
+     block is fixed, so the numbers line up down the page across every leg. */
+  .tb-main{ display:flex; gap:16px; align-items:stretch; }
+  .tb-ends{ display:flex; gap:16px; flex:1 1 auto; min-width:0; }
+  .tb-end{ flex:1 1 0; min-width:0; }
+  .tb-end-label{
+    font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:0.08em;
+    color:var(--fog-500); margin-bottom:5px;
+  }
+  .tb-city{
+    font-family:system-ui,'Inter',sans-serif; font-size:15px; font-weight:600;
+    color:var(--paper-050); line-height:1.25; overflow-wrap:anywhere;
+  }
+  .tb-code{ color:var(--fog-300); font-weight:500; }
+  .tb-when{
+    font-family:system-ui,'Inter',sans-serif; font-size:13px; color:var(--fog-300);
+    margin-top:5px; line-height:1.35;
+  }
+  /* LOCAL ONLY, deliberately. Zulu is on the leg checklist. On a brief the
+     departure and arrival local times are what gets read out. */
+  .tb-time{ color:var(--paper-050); font-weight:600; }
+  .tb-missing{ color:var(--fog-500); font-style:italic; }
+
+  .tb-figs{
+    flex:0 0 auto; width:92px; display:flex; flex-direction:column; gap:8px;
+    border-left:1px solid var(--hairline); padding-left:14px;
+  }
+  .tb-fig-label{
+    font-family:system-ui,'Inter',sans-serif; font-size:9px; letter-spacing:0.08em;
+    color:var(--fog-500);
+  }
+  .tb-fig-val{
+    font-family:system-ui,'Inter',sans-serif; font-size:15px; font-weight:600;
+    color:var(--paper-050); line-height:1.15;
+  }
+  /* An absent figure is a THIN DASH in fog, never a zero. A passenger count of
+     0 is a real answer -- an empty repositioning leg -- and must not look the
+     same as one we could not establish. */
+  .tb-fig-none{ color:var(--fog-500); font-weight:400; }
+
+  .tb-foot{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    margin-top:12px; padding-top:10px; border-top:1px solid var(--hairline);
+  }
+  .tb-foot-spacer{ flex:1 1 auto; }
+  .tb-pending{ font-family:system-ui,'Inter',sans-serif; font-size:11px; color:var(--amber-500); }
+
+  /* Phone: the two ends stack, and the figures go under them as a row so they
+     do not squeeze the cities into two characters a line. */
+  @media (max-width: 620px){
+    .tb-main{ flex-direction:column; gap:12px; }
+    .tb-ends{ flex-direction:column; gap:12px; }
+    .tb-figs{
+      width:auto; flex-direction:row; gap:22px; border-left:0; padding-left:0;
+      border-top:1px solid var(--hairline); padding-top:10px;
+    }
+  }
+
   .tq-legrow{ display:flex; align-items:center; gap:10px; margin-bottom:8px; }
   .tq-legrow-id{
     font-family:system-ui,'Inter',sans-serif; font-size:11px; color:var(--fog-500);
@@ -2837,7 +2925,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T09:00:00Z';
+const BUILD_VERSION = '2026-08-28T10:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7776,6 +7864,199 @@ function lastEditedCompact(leg){
   return 'Edited by ' + leg.lastEditedByName;
 }
 
+/* THE TRIP BRIEF STRIP -- the same .info-strip the leg checklist uses.
+
+   Reused rather than reinvented: it is already Trip / Leg / Tail / crew, laid
+   out full-bleed and sized for four-character crew abbreviations.
+
+   It DESCRIBES THE LEG CURRENTLY IN VIEW and changes as you scroll. That is
+   what removes the need for an expandable crew header: most trips fly one crew
+   throughout, and a mid-trip change simply happens as that leg comes into
+   view. A printed 909 needs a crew matrix because paper cannot do this.
+
+   Trip number stays here because the page title is now "Trip Brief" -- the
+   number would otherwise have nowhere to live.
+
+   NO CHEVRONS YET. The checklist's leg-nav cell navigates between editors;
+   here it would have to soft-scroll, and smooth scroll fires `scroll` every
+   frame with no scrollend on iOS Safari, so the spy below would relabel the
+   strip through every leg on the way past. That needs a suppression flag,
+   which is deliberately not in this pass. */
+// The ROW only. Split out from its wrapper so the scroll spy can replace the
+// contents without touching the sticky element itself -- re-creating a sticky
+// node mid-scroll makes it jump.
+function tripBriefStripRowHTML(trip, leg){
+  return '<div class="info-strip-row">' +
+      infoStripReadonly('Trip', trip.tripNumber || '\u2014', 'trip') +
+      infoStripReadonly('Leg', (leg && leg.legNumber) || '?', 'leg-nav') +
+      infoStripReadonly('Tail', (leg && leg.tailNumber) || '', 'tail') +
+      (leg ? crewStripCells(leg) : '') +
+    '</div>';
+}
+
+function tripBriefStripHTML(trip, leg){
+  return '<div class="info-strip tb-strip" id="tbStrip">' +
+      tripBriefStripRowHTML(trip, leg) +
+    '</div>';
+}
+
+/* SCROLL SPY -- repoints the strip at whichever leg is currently under it.
+
+   The listener goes on #mainPanel, NOT window: .main carries overflow-y:auto
+   and is therefore the scroll container, so window never fires.
+
+   Only ONE listener may exist. renderMain() rebuilds this view on every state
+   change, so without removing the previous one they would stack up, each
+   holding a stale leg array. */
+let _tbSpyEl = null, _tbSpyHandler = null, _tbSpyActiveId = '';
+
+function wireTripBriefScrollSpy(trip, legs){
+  if(_tbSpyEl && _tbSpyHandler) _tbSpyEl.removeEventListener('scroll', _tbSpyHandler);
+  _tbSpyEl = null; _tbSpyHandler = null;
+
+  const scroller = document.getElementById('mainPanel');
+  const strip = document.getElementById('tbStrip');
+  if(!scroller || !strip || !legs.length) return;
+  _tbSpyActiveId = legs[0].id;
+
+  let queued = false;
+  function update(){
+    queued = false;
+    const stripEl = document.getElementById('tbStrip');
+    if(!stripEl) return;
+    // The line just below the strip. A band counts as "in view" once its top
+    // has passed it, so the strip describes the leg you are actually reading
+    // rather than the one about to arrive.
+    const line = stripEl.getBoundingClientRect().bottom + 8;
+    let active = legs[0];
+    for(let i = 0; i < legs.length; i++){
+      const el = document.querySelector('[data-tb-leg="' + legs[i].id + '"]');
+      if(!el) continue;
+      // Bands are in flight order down the page, so the first one still below
+      // the line ends it -- no need to measure the rest.
+      if(el.getBoundingClientRect().top <= line) active = legs[i];
+      else break;
+    }
+    if(active.id === _tbSpyActiveId) return;   // nothing to repaint
+    _tbSpyActiveId = active.id;
+    stripEl.innerHTML = tripBriefStripRowHTML(trip, active);
+  }
+
+  _tbSpyHandler = function(){
+    // Coalesce to one update per frame. A scroll event can fire many times a
+    // frame, and each update measures every band.
+    if(queued) return;
+    queued = true;
+    requestAnimationFrame(update);
+  };
+  _tbSpyEl = scroller;
+  scroller.addEventListener('scroll', _tbSpyHandler, { passive:true });
+  // Run once: the view may open already scrolled, e.g. returning from a leg.
+  requestAnimationFrame(update);
+}
+
+// One end of a band: city, code, day/date, local time.
+// The city can be empty -- a document that named no city, or a leg typed by
+// hand -- so the code carries the identification and the city is additive.
+// Never invent a city from the code: the bundled airport database calls KBDL
+// "Hartford" while the paperwork says "Windsor Locks", and the paperwork is
+// what the crew is briefing from.
+function tripBriefEndHTML(label, end, isoDate, timeVal){
+  const code = ((end && end.airportId) || '').trim().toUpperCase();
+  const city = ((end && end.city) || '').trim();
+  let ident;
+  if(city && code)      ident = escapeHtml(city) + ' <span class="tb-code">(' + escapeHtml(code) + ')</span>';
+  else if(code)         ident = '<span class="tb-code">' + escapeHtml(code) + '</span>';
+  else if(city)         ident = escapeHtml(city);
+  else                  ident = '<span class="tb-missing">No airport</span>';
+
+  const day = dayNameFromISO(isoDate);
+  const dateTxt = formatISODateDisplay(isoDate);
+  const t = (timeVal || '').trim();
+  const whenParts = [];
+  if(day) whenParts.push(escapeHtml(day.slice(0,3)));
+  if(dateTxt) whenParts.push(escapeHtml(dateTxt));
+  let when = whenParts.join(' ');
+  if(t) when += (when ? ' \u00b7 ' : '') + '<span class="tb-time">' + escapeHtml(t) + '</span>';
+  if(!when) when = '<span class="tb-missing">No date or time</span>';
+
+  return '<div class="tb-end">' +
+      '<div class="tb-end-label">' + label + '</div>' +
+      '<div class="tb-city">' + ident + '</div>' +
+      '<div class="tb-when">' + when + '</div>' +
+    '</div>';
+}
+
+// A figure cell. An absent value renders as a dash, NOT as zero -- see the
+// .tb-fig-none note in the stylesheet.
+function tripBriefFigHTML(label, value){
+  const v = (value == null ? '' : String(value)).trim();
+  return '<div>' +
+      '<div class="tb-fig-label">' + label + '</div>' +
+      '<div class="tb-fig-val' + (v ? '' : ' tb-fig-none') + '">' + (v ? escapeHtml(v) : '\u2013') + '</div>' +
+    '</div>';
+}
+
+/* A TRIP BRIEF BAND -- one leg, full width, read by scrolling.
+
+   Replaces the card grid on the trip page. Carries what a crew briefs from:
+   leg number, both ends with city and code, local day/date/time at each end,
+   ETE, distance and passenger count. FBO, frequencies and zulu times are
+   deliberately absent -- all of it is one tap away on the leg checklist, and
+   sixty lines of handling detail is what stopped this page reading as a brief.
+
+   Crew is NOT here. It goes in the header strip, because most trips fly the
+   same crew throughout and repeating it on every band is noise.
+
+   Readiness IS here -- status dot, status word, pending count, attachment
+   badge, Set status. None of that is a 909 concept, but this page is still
+   where a dispatcher works. */
+function tripBriefBandHTML(leg){
+  const completeness = computeLegCompleteness(leg);
+  // DERIVED, never extracted. Blank until the airport database has loaded, and
+  // blank for an airport it does not know -- greatCircleNM returns null rather
+  // than a wrong number.
+  const nm = greatCircleNM((leg.dep && leg.dep.airportId) || '', (leg.arr && leg.arr.airportId) || '');
+  const isUnassigned = !(leg.tripNumber || '').trim();
+  const routeCodes = [ (leg.dep||{}).airportId, (leg.arr||{}).airportId ].filter(Boolean).join(' \u2192 ');
+
+  return '<div class="dash-card tb-band" data-id="' + escapeHtml(leg.id) + '" data-tb-leg="' + escapeHtml(leg.id) + '">' +
+    (isUnassigned ? '<div class="dash-card-orphan-banner">No trip number on the paperwork.</div>' : '') +
+    '<div class="tb-band-head">' +
+      '<span class="tb-band-n">LEG ' + escapeHtml(leg.legNumber || '?') + '</span>' +
+      (routeCodes ? '<span class="tb-band-route">' + escapeHtml(routeCodes) + '</span>' : '') +
+    '</div>' +
+    '<div class="tb-main">' +
+      '<div class="tb-ends">' +
+        tripBriefEndHTML('DEPARTURE', leg.dep, leg.date, (leg.dep || {}).etdLocal) +
+        // The ARRIVAL date is its own field, not the departure date. An
+        // overnight leg lands on the following day and the band must say so.
+        tripBriefEndHTML('ARRIVAL', leg.arr, (leg.arr || {}).date || leg.date, (leg.arr || {}).etaLocal) +
+      '</div>' +
+      '<div class="tb-figs">' +
+        tripBriefFigHTML('ETE', leg.ete) +
+        tripBriefFigHTML('DIST', nm == null ? '' : (nm + ' NM')) +
+        tripBriefFigHTML('PAX', leg.paxCount) +
+      '</div>' +
+    '</div>' +
+    '<div class="tb-foot">' +
+      '<span class="leg-status-dot leg-status-dot-plain leg-status-' + escapeHtml(leg.status) + '"></span>' +
+      '<span class="ready-room-leg-status-word status-word-' + escapeHtml(leg.status) + '">' + statusLabel(leg.status) + '</span>' +
+      (completeness.complete ? '' : '<span class="tb-pending">' + completeness.pending.length + ' pending</span>') +
+      '<span class="tb-foot-spacer"></span>' +
+      '<span class="leg-attach-badge" data-attach-badge="' + escapeHtml(leg.id) + '">' + LEG_PAPERCLIP_BADGE_SVG + '0</span>' +
+      '<button type="button" class="trip-quick-btn" data-airport-notes="' + escapeHtml(leg.id) + '">Airport notes</button>' +
+      // Wired to nothing yet, deliberately. Beacon already has three per-leg
+      // note fields (dep/arr/enroute) in leg_notes, per-user and private by
+      // default; where a note written from the brief should land is its own
+      // conversation, so the control exists and the destination does not.
+      '<button type="button" class="trip-quick-btn" data-tb-note="' + escapeHtml(leg.id) + '">Add note</button>' +
+      '<button type="button" class="trip-quick-btn" data-leg-quick="status" data-leg-id="' + escapeHtml(leg.id) + '">Set status</button>' +
+      '<button type="button" class="trip-quick-btn" data-tb-open="' + escapeHtml(leg.id) + '">View checklist</button>' +
+    '</div>' +
+  '</div>';
+}
+
 function tripBriefLegCardHTML(leg){
   const completeness = computeLegCompleteness(leg);
   const route = leg.cityPair || [leg.dep.airportId, leg.arr.airportId].filter(Boolean).join(' \u2192 ') || 'No city pair defined';
@@ -11312,7 +11593,9 @@ function renderTripDetailView(){
   }
   const backLabel = state.tripDetailOrigin === 'history' ? 'Archived Trips' : 'Active Trips';
   setPageHeader({
-    title: trip.tripNumber ? ('Trip ' + trip.tripNumber) : unnumberedTripLabel(trip.legs),
+    // The trip NUMBER moved into the strip below, so the title is free to name
+    // the document. This page is what a crew reads on the way out the door.
+    title: 'Trip Brief',
     sub: (duplicateLegNumbers(trip).length
             ? 'CHECK LEG NUMBERS: ' + duplicateLegNumbers(trip).join(', ') + ' DUPLICATED'
             : trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's')),
@@ -11323,15 +11606,21 @@ function renderTripDetailView(){
       '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(trip.key) +
       '" style="visibility:hidden;"></span></button>'
   });
+  // Legs in FLIGHT ORDER. The dashboard's grid did not care, but a brief is
+  // read top to bottom and a leg out of sequence would misread as the routing.
+  const briefLegs = trip.legs.slice().sort(function(a, b){
+    return (parseInt(a.legNumber, 10) || 0) - (parseInt(b.legNumber, 10) || 0);
+  });
   main.innerHTML =
-    '<div class="trip-subhead">' + (trip.tripNumber
-        ? 'Tap a leg to open its checklist'
-        // Say what happened and why, so nobody reads the missing number as a
-        // Beacon failure -- or as something they are expected to go and fix.
-        : 'No trip number on the paperwork. Beacon grouped these legs by route and date.') + '</div>' +
-    '<div class="dash-grid">' + trip.legs.map(tripBriefLegCardHTML).join('') +
-      '<button type="button" class="dash-card dash-card-add" id="addLegTile"><span class="dash-card-add-plus">+</span><span class="dash-card-add-label">Add leg</span></button>' +
-    '</div>' +
+    tripBriefStripHTML(trip, briefLegs[0] || null) +
+    (trip.tripNumber ? '' :
+      // Say what happened and why, so nobody reads the missing number as a
+      // Beacon failure -- or as something they are expected to go and fix.
+      '<div class="trip-subhead">No trip number on the paperwork. Beacon grouped these legs by route and date.</div>') +
+    // NO .dash-grid. That grid puts two cards side by side on an iPad, which is
+    // exactly what stopped a leg reading as a single unit.
+    '<div id="tbBands">' + briefLegs.map(tripBriefBandHTML).join('') + '</div>' +
+    '<button type="button" class="dash-card dash-card-add" id="addLegTile"><span class="dash-card-add-plus">+</span><span class="dash-card-add-label">Add leg</span></button>' +
     tripNotesBlockHTML(trip) +
     tripDocsBlockHTML(trip) +
     (tripLastEditedText(trip) ? ('<div class="save-bar trip-edited-bar"><span class="save-hint">' + escapeHtml(tripLastEditedText(trip)) +
@@ -11393,10 +11682,30 @@ function renderTripDetailView(){
       showToast('Airport notes coming soon');
     });
   });
+  // Both bound BEFORE the card handler and both stop propagation, or the tap
+  // would also fall through to the band and open the checklist underneath.
+  document.querySelectorAll('[data-tb-note]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // DELIBERATELY NOT WIRED. Beacon already has three per-leg note fields
+      // (dep / arr / enroute) in leg_notes, per-user and private by default.
+      // Which of those a note written from the brief should land in -- or
+      // whether it needs a fourth, trip-brief-level note, and whether it
+      // should default to shared with the crew -- is a separate decision.
+      showToast('Leg notes coming soon');
+    });
+  });
+  document.querySelectorAll('[data-tb-open]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openLegEditor(btn.dataset.tbOpen);
+    });
+  });
   document.querySelectorAll('.dash-card[data-id]').forEach(card => {
     card.addEventListener('click', () => openLegEditor(card.dataset.id));
   });
-  
+
+  wireTripBriefScrollSpy(trip, briefLegs);
   hydrateTripLegAttachBadges(trip);
   wireTripDocs(trip);
   hydrateTripDocs(trip);
