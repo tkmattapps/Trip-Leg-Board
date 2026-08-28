@@ -3095,7 +3095,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T20:35:00Z';
+const BUILD_VERSION = '2026-08-28T21:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8256,6 +8256,51 @@ function wireTripBriefScrollSpy(trip, legs){
     });
   });
 
+  /* THE CARD ITSELF AS A FOCUS TARGET -- two-up on a touch device only.
+
+     The leg-number button works, but it is a small target and it is not what a
+     thumb reaches for. On an iPad in landscape the ring could not be moved to
+     the other band in a row at all: every tap opened the checklist instead.
+
+     *** BOUND IN THE CAPTURE PHASE, ON THE CONTAINER. ***
+     The card's own click listener is bound on the card, and it is bound BEFORE
+     this function runs, so a bubble-phase listener here -- or even one on the
+     card itself -- would run second and the checklist would already be opening.
+     Capture descends from the container to the target before any bubbling, so
+     it is the only ordering that reliably wins. (This is the same lesson as the
+     leg-number button, one phase further out.)
+
+     The media query is evaluated PER CLICK, not once at wire time, so rotating
+     an iPad between portrait and landscape changes the behaviour immediately
+     without a re-render.
+
+     Three things must all hold before a tap is taken:
+       - two-up AND no pointer. On a phone there is one band per row and the
+         scroll already picks it, so consuming the tap would be pure loss. On a
+         Mac hover already does this, and stealing the click would be worse.
+       - the tap did not land on a control. Status, leg number, airport brief
+         and add-leg-note all live inside the card and must keep working.
+       - the band is not ALREADY the described one. That is what makes the
+         checklist still reachable: tap once to ring a band, tap the ringed
+         band to open it. */
+  if(bands){
+    bands.addEventListener('click', function(e){
+      const twoUpNoPointer = !!(window.matchMedia &&
+        window.matchMedia('(min-width: 1100px) and (hover: none)').matches);
+      if(!twoUpNoPointer) return;
+      if(!e.target.closest) return;
+      if(e.target.closest('button, a, input, select, textarea, label')) return;
+      const el = e.target.closest('[data-tb-leg]');
+      if(!el) return;
+      if(el.classList.contains('tb-band-active')) return;   // already ringed: let it open
+      e.stopPropagation();                                  // beat the card's own handler
+      const id = el.getAttribute('data-tb-leg');
+      _tbPinnedId = id;
+      _tbPinRow = scrollPick();
+      apply(id);
+    }, true);
+  }
+
   // Run once: the view may open already scrolled, e.g. returning from a leg.
   requestAnimationFrame(update);
 }
@@ -12106,19 +12151,13 @@ function renderTripDetailView(){
     // The trip NUMBER moved into the strip below, so the title is free to name
     // the document. This page is what a crew reads on the way out the door.
     title: 'Trip Brief',
-    // BOTH GESTURES ARE STATED, because neither is self-advertising: the
-    // "View checklist" button came off the bands, and tapping a leg NUMBER to
-    // repoint the strip is not something anyone would guess. This goes in the
-    // header rather than a line above the legs, which would cost the vertical
-    // space the tightening recovered. The header wraps freely and its height is
-    // measured at runtime, so a second line costs nothing but its own height.
-    // The duplicate-number warning still displaces it entirely -- a data
-    // problem outranks a usage hint.
+    // The "View checklist" button came off the bands, so the affordance has to
+    // be stated somewhere. It goes here rather than back into a line above the
+    // legs, which would cost the vertical space the tightening just recovered.
     sub: (duplicateLegNumbers(trip).length
             ? 'CHECK LEG NUMBERS: ' + duplicateLegNumbers(trip).join(', ') + ' DUPLICATED'
             : trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') +
-              '  \u00b7  tap a leg number for its crew' +
-              '  \u00b7  tap a card for its checklist'),
+              '  \u00b7  tap a leg for its checklist'),
     backLabel: backLabel,
     backTo: state.tripDetailOrigin === 'history' ? 'history' : 'dashboard',
     barDocHTML: '<button type="button" class="doc-jump-btn" id="tripDocJumpBtn" title="Jump to documents" aria-label="Jump to documents">' +
