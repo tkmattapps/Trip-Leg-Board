@@ -3095,7 +3095,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T20:00:00Z';
+const BUILD_VERSION = '2026-08-28T20:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8235,17 +8235,26 @@ function wireTripBriefScrollSpy(trip, legs){
      more deliberate than the scroll position is choosing". Scrolling on to
      another row clears it, so the pin cannot strand the strip on a leg that
      has left the screen. */
-  if(bands){
-    bands.addEventListener('click', function(e){
-      const btn = e.target.closest ? e.target.closest('[data-tb-focus]') : null;
-      if(!btn) return;
+  /* *** BOUND ON EACH BUTTON, NOT DELEGATED ON THE CONTAINER. ***
+     This is the one handler on the band that must BEAT another handler rather
+     than merely coexist with it. The card's own click listener sits on the card
+     and opens the leg checklist. #tbBands is an ANCESTOR of the card, so a
+     delegated listener there runs AFTER the card's -- the checklist was already
+     opening by the time stopPropagation was reached, and the leg number did
+     nothing but navigate away.
+     Binding on the button puts this handler first in the bubble path, which is
+     the same reason every other control on the band (status, airport brief,
+     add leg note) is bound per element. Delegation is fine for hover, which
+     competes with nothing. */
+  document.querySelectorAll('#tbBands [data-tb-focus]').forEach(function(btn){
+    btn.addEventListener('click', function(e){
       e.stopPropagation();                 // must not fall through and open the leg
       const id = btn.getAttribute('data-tb-focus');
       _tbPinnedId = id;
       _tbPinRow = scrollPick();            // the row this pin belongs to
       apply(id);
     });
-  }
+  });
 
   // Run once: the view may open already scrolled, e.g. returning from a leg.
   requestAnimationFrame(update);
@@ -12097,13 +12106,19 @@ function renderTripDetailView(){
     // The trip NUMBER moved into the strip below, so the title is free to name
     // the document. This page is what a crew reads on the way out the door.
     title: 'Trip Brief',
-    // The "View checklist" button came off the bands, so the affordance has to
-    // be stated somewhere. It goes here rather than back into a line above the
-    // legs, which would cost the vertical space the tightening just recovered.
+    // BOTH GESTURES ARE STATED, because neither is self-advertising: the
+    // "View checklist" button came off the bands, and tapping a leg NUMBER to
+    // repoint the strip is not something anyone would guess. This goes in the
+    // header rather than a line above the legs, which would cost the vertical
+    // space the tightening recovered. The header wraps freely and its height is
+    // measured at runtime, so a second line costs nothing but its own height.
+    // The duplicate-number warning still displaces it entirely -- a data
+    // problem outranks a usage hint.
     sub: (duplicateLegNumbers(trip).length
             ? 'CHECK LEG NUMBERS: ' + duplicateLegNumbers(trip).join(', ') + ' DUPLICATED'
             : trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's') +
-              '  \u00b7  tap a leg for its checklist'),
+              '  \u00b7  tap a leg number for its crew' +
+              '  \u00b7  tap a card for its checklist'),
     backLabel: backLabel,
     backTo: state.tripDetailOrigin === 'history' ? 'history' : 'dashboard',
     barDocHTML: '<button type="button" class="doc-jump-btn" id="tripDocJumpBtn" title="Jump to documents" aria-label="Jump to documents">' +
