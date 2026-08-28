@@ -1823,9 +1823,30 @@
    roughly 2,460px against 1,100px of visible page -- you could see two and a
    half legs of a six-leg trip. A brief you have to scroll to read is a list.
    The whole point is to get the trip on one screen. */
+  /* TWO BANDS PER ROW on a wide screen. One per row wasted most of the width:
+     .tb-ends splits into two equal columns, so on a 1900px page DEP and ARR
+     each got a ~900px column to hold a four-character code. Halving the band
+     squeezes that slack out and puts a six-leg trip on one screen.
+     The floor is 1100px, NOT the 620px phone breakpoint. Those measure the
+     VIEWPORT, and at 1000px two-up bands would be ~480px each -- narrower than
+     a phone -- while still running the desktop rules. */
+  #tbBands{ display:grid; grid-template-columns:1fr; gap:10px; align-items:start; }
+  @media (min-width: 1100px){
+    #tbBands{ grid-template-columns:1fr 1fr; gap:12px; }
+  }
   .tb-band{
     background:var(--panel-800); border:1px solid var(--hairline);
-    border-radius:8px; padding:12px 16px; margin-bottom:10px;
+    border-radius:8px; padding:12px 16px;
+  }
+  /* THE BAND THE STICKY STRIP IS DESCRIBING. Deliberately STRONGER than
+     .dash-card:hover, which is a plain amber border and is shared with the
+     dashboard: if the tracked band and a hovered band looked alike, two amber
+     cards would be on screen with no way to tell which one the strip means --
+     the exact ambiguity the ring exists to remove. Hover gets the border, the
+     tracked band gets the border AND a glow. */
+  .tb-band-active{
+    border-color:var(--amber-500);
+    box-shadow:0 0 0 2px rgba(242,169,59,0.30);
   }
   /* Line one carries EVERYTHING that is not the route: leg number, readiness,
      and the controls. The old layout gave these their own zone under a divider,
@@ -3053,7 +3074,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T18:00:00Z';
+const BUILD_VERSION = '2026-08-28T18:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8046,7 +8067,17 @@ function tripBriefStripHTML(trip, leg){
     '</div>';
 }
 
-/* SCROLL SPY -- repoints the strip at whichever leg is currently under it.
+/* SCROLL SPY -- decides which leg the sticky strip is describing, and rings
+   that leg's band so the reference is visible rather than guessed at.
+
+   THE RING IS WHY TWO-UP WORKS. With one band per row the strip's referent was
+   obvious. Side by side it is not -- the strip would name a crew while a leg
+   with a different crew sat next to it, which is exactly the mid-trip change
+   the strip exists to show. The amber ring says WHICH band the strip means.
+
+   HOVER RETARGETS. Pointing at a band makes it the described one. Without it
+   the right-hand leg's crew would be unreachable without scrolling, since the
+   scroll rule below always lands on the first band of a row.
 
    The listener goes on the WINDOW. An earlier cut put it on #mainPanel because
    that element carries overflow-y:auto and therefore looked like the scroller;
@@ -8054,40 +8085,62 @@ function tripBriefStripHTML(trip, leg){
    every viewport width. If that ever changes, this and .info-strip's sticky
    positioning both have to change with it.
 
-   Only ONE listener may exist. renderMain() rebuilds this view on every state
-   change, so without removing the previous one they would stack up, each
-   holding a stale leg array. */
-let _tbSpyEl = null, _tbSpyHandler = null, _tbSpyActiveId = '';
+   Only ONE window listener may exist. renderMain() rebuilds this view on every
+   state change, so without removing the previous one they would stack up, each
+   holding a stale leg array. The hover listeners need no such care: they are
+   bound to #tbBands, which is destroyed and rebuilt with the view. */
+let _tbSpyEl = null, _tbSpyHandler = null, _tbSpyActiveId = '', _tbHoverId = null;
 
 function wireTripBriefScrollSpy(trip, legs){
   if(_tbSpyEl && _tbSpyHandler) _tbSpyEl.removeEventListener('scroll', _tbSpyHandler);
   _tbSpyEl = null; _tbSpyHandler = null;
+  _tbHoverId = null;                      // a stale hover must not outlive a render
 
   const strip = document.getElementById('tbStrip');
   if(!strip || !legs.length) return;
-  _tbSpyActiveId = legs[0].id;
+  _tbSpyActiveId = '';
+
+  // Paint: strip contents and the ring, always together. These two must never
+  // disagree -- a ring on one band while the strip describes another is worse
+  // than no ring at all.
+  function apply(id){
+    if(id === _tbSpyActiveId) return;
+    const leg = legs.find(function(l){ return l.id === id; });
+    if(!leg) return;
+    _tbSpyActiveId = id;
+    const stripEl = document.getElementById('tbStrip');
+    if(stripEl) stripEl.innerHTML = tripBriefStripRowHTML(trip, leg);
+    document.querySelectorAll('#tbBands .tb-band').forEach(function(el){
+      el.classList.toggle('tb-band-active', el.getAttribute('data-tb-leg') === id);
+    });
+  }
 
   let queued = false;
   function update(){
     queued = false;
+    if(_tbHoverId){ apply(_tbHoverId); return; }   // the pointer wins
     const stripEl = document.getElementById('tbStrip');
     if(!stripEl) return;
     // The line just below the strip. A band counts as "in view" once its top
     // has passed it, so the strip describes the leg you are actually reading
     // rather than the one about to arrive.
     const line = stripEl.getBoundingClientRect().bottom + 8;
-    let active = legs[0];
+    // ROW-AWARE. Two bands in the same row share a top, so "the last band that
+    // has passed the line" would always resolve to the RIGHT-hand one and the
+    // left band would never be described. Instead: walk in flight order and
+    // only move the answer on when a band starts a genuinely LOWER row, which
+    // leaves the first band of the topmost qualifying row.
+    let active = legs[0], activeTop = null;
     for(let i = 0; i < legs.length; i++){
       const el = document.querySelector('[data-tb-leg="' + legs[i].id + '"]');
       if(!el) continue;
-      // Bands are in flight order down the page, so the first one still below
-      // the line ends it -- no need to measure the rest.
-      if(el.getBoundingClientRect().top <= line) active = legs[i];
-      else break;
+      const top = el.getBoundingClientRect().top;
+      if(top > line + 1) break;           // this row and everything after is below
+      // Within a pixel of the current answer means SAME ROW: keep the one we
+      // already have, which is the earlier leg.
+      if(activeTop === null || top > activeTop + 1){ active = legs[i]; activeTop = top; }
     }
-    if(active.id === _tbSpyActiveId) return;   // nothing to repaint
-    _tbSpyActiveId = active.id;
-    stripEl.innerHTML = tripBriefStripRowHTML(trip, active);
+    apply(active.id);
   }
 
   _tbSpyHandler = function(){
@@ -8099,6 +8152,27 @@ function wireTripBriefScrollSpy(trip, legs){
   };
   _tbSpyEl = window;
   window.addEventListener('scroll', _tbSpyHandler, { passive:true });
+
+  // Hover, delegated on the container so it survives nothing and needs no
+  // teardown -- #tbBands is replaced wholesale on the next render.
+  const bands = document.getElementById('tbBands');
+  if(bands){
+    bands.addEventListener('mouseover', function(e){
+      const el = e.target.closest ? e.target.closest('[data-tb-leg]') : null;
+      if(!el) return;
+      const id = el.getAttribute('data-tb-leg');
+      if(id === _tbHoverId) return;
+      _tbHoverId = id;
+      apply(id);
+    });
+    // Leaving the bands entirely hands control back to the scroll position.
+    bands.addEventListener('mouseleave', function(){
+      if(_tbHoverId === null) return;
+      _tbHoverId = null;
+      update();
+    });
+  }
+
   // Run once: the view may open already scrolled, e.g. returning from a leg.
   requestAnimationFrame(update);
 }
