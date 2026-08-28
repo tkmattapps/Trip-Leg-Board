@@ -943,6 +943,25 @@
   .import-reconcile-summary{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; margin-bottom:20px; font-size:14px; color:var(--paper-050); }
   .import-leg-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; }
   .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
+  /* NOTES PAGE. One surface, three doorways (bottom bar / Trip Brief / leg
+     checklist). A PAGE rather than a sheet because notes have to be
+     RETRIEVABLE -- a sheet is fine for writing four lines and poor for reading
+     twenty, and it has nowhere to put search later. */
+  .notes-pins{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+  .notes-pin{ display:flex; flex-direction:column; gap:4px; min-width:0; flex:1 1 160px; }
+  .notes-pin label{ font-size:11px; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--fog-500); }
+  .notes-pin select{
+    font-family:system-ui,'Inter',sans-serif; font-size:13px;
+    background:var(--panel-700); color:var(--paper-050);
+    border:1px solid var(--hairline); border-radius:6px; padding:8px 10px;
+    width:100%; min-width:0;
+  }
+  .notes-pin select:disabled{ opacity:0.45; }
+  /* Announces an auto-set pin instead of applying it silently. A default you
+     cannot see is a default you cannot correct. */
+  .notes-pin-auto{ font-size:11px; color:var(--amber-500); }
+  .notes-empty-hint{ font-size:12px; color:var(--fog-500); line-height:1.5; }
   /* TRIP NOTES AS A LOG. Composer on top, entries below, newest first. */
   .trip-log-head{ display:flex; flex-direction:column; gap:2px; margin-bottom:8px; }
   .trip-log-head label{ font-size:12px; color:var(--fog-500); }
@@ -3222,7 +3241,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-29T21:30:00Z';
+const BUILD_VERSION = '2026-08-29T22:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4110,7 +4129,7 @@ async function fetchTripNotes(tripId){
 // a catch-all log for everyone on the trip, so private-by-default produced
 // knowledge nobody else could reach, and the archive only ever captured shared
 // notes. Defaults to true, matching the column default.
-async function appendTripNote(tripId, content, isPublic){
+async function appendTripNote(tripId, content, isPublic, legId){
   const prof = currentUserProfile || await loadCurrentUserProfile();
   if(!prof) return null;
   const text = content == null ? '' : String(content);
@@ -4124,6 +4143,9 @@ async function appendTripNote(tripId, content, isPublic){
     user_id: prof.id,
     content: text,
     is_public: isPublic === undefined ? true : !!isPublic,
+    // Optional. Null rather than '' so "no pin" is one value in the column,
+    // not two that every reader has to test for separately.
+    leg_id: legId || null,
     // SNAPSHOTS, not lookups. Each entry records who wrote it AT THE TIME, and
     // keeps reading correctly after a rename or after the account is gone.
     author_name: prof.displayName || '',
@@ -4301,7 +4323,8 @@ async function postTripNoteFromDOM(tripId){
   if(btn) btn.disabled = true;
   const visBtn = document.getElementById('tripNoteVisBtn');
   try{
-    await appendTripNote(tripId, ta.value, noteVisIsPublic(visBtn));
+    await appendTripNote(tripId, ta.value, noteVisIsPublic(visBtn),
+                         (state.notes || {}).legId || null);
     // Cleared ONLY after the write succeeds. Clearing first would lose the
     // text on a failed save, which is the one outcome the person cannot undo.
     ta.value = '';
@@ -4402,9 +4425,18 @@ async function hydrateTripNotes(trip){
     // else -- but that is exactly who needs to know which of their own notes
     // the department cannot read.
     const priv = r.is_public ? '' : '<span class="trip-log-private-tag">Private</span>';
+    // Resolved against the CURRENT legs, so a renumbered leg reads correctly.
+    // Falls back to nothing rather than showing a raw id -- an internal
+    // identifier on screen is worse than no chip at all.
+    let legTag = '';
+    if(r.leg_id){
+      const pl = state.legs.find(function(x){ return x.id === r.leg_id; });
+      if(pl) legTag = '<span class="trip-log-private-tag">Leg ' +
+        escapeHtml(String(pl.legNumber || '?')) + '</span>';
+    }
     return '<div class="trip-log-entry">' +
       '<div class="trip-log-entry-head">' +
-        '<span class="note-other-author">' + who + '</span>' + role + priv +
+        '<span class="note-other-author">' + who + '</span>' + role + legTag + priv +
         '<span class="trip-log-when">' + when + '</span>' + del +
       '</div>' +
       '<div class="note-other-body">' + escapeHtml(r.content || '') + '</div>' +
@@ -12932,6 +12964,9 @@ document.addEventListener('click', function(e){
   // Parity with the old in-content back buttons: flush any editor edits BEFORE we
   // change view, then clear the active leg on the way out.
   if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
+  // The notes page rebuilds its origin rather than naming a fixed destination,
+  // so it returns you to the exact leg or trip you left.
+  if(dest === 'notesReturn'){ closeNotesPage(); return; }
   if(dest === 'home'){ state.view = 'home'; }
   else if(dest === 'dashboard'){ state.view = 'dashboard'; }
   else if(dest === 'history'){ state.view = 'history'; }
@@ -12945,6 +12980,160 @@ document.addEventListener('click', function(e){
   if(typeof updateNavTabs === 'function') updateNavTabs();
   renderMain();
 });
+
+// ================= NOTES PAGE =================
+// One surface reached from three doorways. Nothing about a note depends on
+// which door it came through -- what differs is only how much of the pin is
+// pre-filled on arrival.
+//
+// CLOSE RETURNS YOU WHERE YOU CAME FROM. This is the rule that lets one page
+// serve all three. It matters most at the leg checklist, where you are mid-task
+// with the leg open; navigating away and landing somewhere fixed would cost
+// your place every time. With return-to-origin the page behaves like a sheet
+// that happens to be full width.
+//
+// SAFE TO SHARE IDS with the Trip Brief's inline feed: they are different
+// views, renderMain() replaces #mainPanel wholesale, and the two can never be
+// in the document at the same time. That reuse is deliberate -- two composers
+// would drift (trap 30).
+
+function openNotesPage(opts){
+  const o = opts || {};
+  // Captured BEFORE anything is mutated. Everything needed to rebuild the
+  // origin exactly, not just its name.
+  state.notesOrigin = {
+    view: state.view,
+    activeId: state.activeId,
+    activeTripKey: state.activeTripKey,
+    tripDetailOrigin: state.tripDetailOrigin
+  };
+  let tripId = (o.tripId || '').trim();
+  let legId  = o.legId || '';
+  // A leg pin implies its trip. Deriving it here means no caller has to pass
+  // both and get them consistent.
+  if(legId && !tripId){
+    const l = state.legs.find(x => x.id === legId);
+    if(l) tripId = (l.tripNumber || '').trim();
+  }
+  state.notes = { tripId: tripId, legId: legId, autoPinned: !!o.legId };
+  state.view = 'notes';
+  if(typeof updateNavTabs === 'function') updateNavTabs();
+  renderMain();
+}
+
+function closeNotesPage(){
+  const o = state.notesOrigin || {};
+  // Whatever is in the composer is kept as a draft, exactly as leaving the
+  // trip page does. Closing is not a decision to discard.
+  if(typeof stashTripNoteDraft === 'function') stashTripNoteDraft();
+  state.notes = null;
+  state.notesOrigin = null;
+  // Falls back to the dashboard rather than guessing: an origin we cannot
+  // rebuild is better replaced by a known-good screen than by a broken one.
+  state.view = o.view || 'dashboard';
+  state.activeId = o.activeId || null;
+  if(o.activeTripKey) state.activeTripKey = o.activeTripKey;
+  if(o.tripDetailOrigin) state.tripDetailOrigin = o.tripDetailOrigin;
+  if(typeof updateNavTabs === 'function') updateNavTabs();
+  renderMain();
+}
+
+// What the back button says. Named after the place, not the action, matching
+// every other page in the app.
+function notesBackLabel(){
+  const v = (state.notesOrigin || {}).view || '';
+  if(v === 'editor') return 'Leg Checklist';
+  if(v === 'tripDetail') return 'Trip Brief';
+  if(v === 'history') return 'Archived Trips';
+  if(v === 'schedule') return 'Schedule';
+  if(v === 'home') return 'Home';
+  return 'Active Trips';
+}
+
+function notesPinControlsHTML(){
+  const n = state.notes || {};
+  const trips = groupIntoTrips(state.legs).filter(t => (t.tripNumber || '').trim());
+  const tripOpts = ['<option value="">Choose a trip\u2026</option>'].concat(
+    trips.map(function(t){
+      const sel = t.tripNumber === n.tripId ? ' selected' : '';
+      return '<option value="' + escapeHtml(t.tripNumber) + '"' + sel + '>Trip ' +
+             escapeHtml(t.tripNumber) + '</option>';
+    })
+  ).join('');
+
+  // The leg pin cannot be set before the trip pin is -- a leg is meaningless
+  // without the trip that owns it.
+  const trip = trips.find(t => t.tripNumber === n.tripId);
+  const legs = trip ? trip.legs : [];
+  const legOpts = ['<option value="">Whole trip</option>'].concat(
+    legs.map(function(l){
+      const route = [ (l.dep||{}).airportId, (l.arr||{}).airportId ].filter(Boolean).join(' \u2192 ');
+      const sel = l.id === n.legId ? ' selected' : '';
+      return '<option value="' + escapeHtml(l.id) + '"' + sel + '>Leg ' +
+             escapeHtml(String(l.legNumber || '?')) + (route ? '  \u00b7  ' + escapeHtml(route) : '') +
+             '</option>';
+    })
+  ).join('');
+
+  const auto = n.autoPinned && n.legId
+    ? '<div class="notes-pin-auto">Pinned to the leg you came from</div>' : '';
+
+  return '<div class="notes-pins">' +
+      '<div class="notes-pin">' +
+        '<label for="notesTripPin">Trip</label>' +
+        '<select id="notesTripPin">' + tripOpts + '</select>' +
+      '</div>' +
+      '<div class="notes-pin">' +
+        '<label for="notesLegPin">Pin to</label>' +
+        '<select id="notesLegPin"' + (n.tripId ? '' : ' disabled') + '>' + legOpts + '</select>' +
+        auto +
+      '</div>' +
+    '</div>';
+}
+
+function renderNotesView(){
+  const main = document.getElementById('mainPanel');
+  if(!main) return;
+  const n = state.notes || {};
+  setPageHeader({
+    title: 'Notes',
+    sub: n.tripId ? 'Trip ' + n.tripId : 'No trip selected',
+    backLabel: notesBackLabel(),
+    backTo: 'notesReturn'
+  });
+
+  main.innerHTML =
+    '<div class="section">' + notesPinControlsHTML() + '</div>' +
+    (n.tripId
+      ? tripNotesBlockHTML({ tripNumber: n.tripId })
+      : '<div class="section"><div class="notes-empty-hint">' +
+        'Choose a trip above to read its notes or add one.' +
+        '</div></div>');
+
+  const tripSel = document.getElementById('notesTripPin');
+  if(tripSel){
+    tripSel.addEventListener('change', function(){
+      // Changing the trip invalidates the leg: a leg id from the old trip
+      // would silently pin a note to a leg on a different trip.
+      state.notes = { tripId: tripSel.value, legId: '', autoPinned: false };
+      renderNotesView();
+    });
+  }
+  const legSel = document.getElementById('notesLegPin');
+  if(legSel){
+    legSel.addEventListener('change', function(){
+      state.notes.legId = legSel.value;
+      // Once you have touched it, it is your pin, not an announced default.
+      state.notes.autoPinned = false;
+      renderNotesView();
+    });
+  }
+
+  if(n.tripId){
+    wireTripNotes({ tripNumber: n.tripId });
+    hydrateTripNotes({ tripNumber: n.tripId });
+  }
+}
 
 function renderMain(){
   stopImportLoadingMessages();
@@ -12968,6 +13157,7 @@ function renderMain(){
   if(state.view === 'importPreview'){ renderImportPreviewView(); return; }
   if(state.view === 'settings'){ renderSettingsView(); return; }
   if(state.view === 'schedule'){ renderScheduleView(); return; }
+  if(state.view === 'notes'){ renderNotesView(); return; }
 
   const main = document.getElementById('mainPanel');
   const leg = state.legs.find(l => l.id === state.activeId);
@@ -19004,7 +19194,12 @@ document.addEventListener('click', async function(e){
     return;
   }
   if(t.closest('#quickNotePostBtn')){ postQuickNote(); return; }
-  if(t.closest('#barNoteBtn')){ openQuickNoteSheet(); return; }
+  if(t.closest('#barNoteBtn')){
+    // Doorway 1 of 3. Neither pin is set: the bottom bar carries no trip
+    // context, so the trip is chosen on the page.
+    openNotesPage({});
+    return;
+  }
 
   const add = t.closest('[data-chat-add]');
   if(add){ chatRowToInput(add.getAttribute('data-chat-add')); return; }
