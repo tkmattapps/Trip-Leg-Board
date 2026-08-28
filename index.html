@@ -1852,21 +1852,23 @@
      you press. Sized for a finger, not for the 12px dot that used to carry the
      click on its own. The dot and the word keep their existing status colours,
      so the pill reads at a glance and is actionable on purpose. */
-  /* A SOLID BLOCK OF STATUS COLOUR. No dot, no caret: at this size and weight
-     the colour alone reads as a control, and the word is its own label.
-     Dark ink on the fill rather than coloured text on a dark fill, so it reads
-     as pressable rather than as a label that happens to be tinted.
-     Still the only place in Beacon a leg's status can be changed. */
+  /* A COLOURED CIRCLE. The MARK is 14px; the BUTTON is 32px and transparent,
+     so the tap target is thumb-sized without the dot looking heavy. This is
+     the distinction that matters: an earlier cut used a bare 12px dot where
+     the dot itself was the entire hit area, which is what made the status
+     effectively unreachable. Small mark, large target.
+     The dot lives in a child span rather than being the button's own
+     background, so the hit area and the mark can be sized independently. */
   .tb-status-btn{
     flex:0 0 auto;
-    border:0; border-radius:6px; padding:7px 14px; min-height:32px;
-    cursor:pointer;
-    font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:700;
-    letter-spacing:0.5px; text-transform:uppercase; color:var(--ink-900);
-    transition:filter 0.15s ease;
+    width:32px; height:32px; padding:0; border:0; border-radius:50%;
+    display:inline-flex; align-items:center; justify-content:center;
+    background:none; cursor:pointer;
+    transition:background 0.15s ease;
   }
-  .tb-status-btn:hover{ filter:brightness(1.12); }
-  /* Same three colours the status word and dot have always used. */
+  .tb-status-btn:hover{ background:rgba(255,255,255,0.08); }
+  .tb-status-dot{ display:block; width:14px; height:14px; border-radius:50%; }
+  /* Same three colours the app defines in its own STATUSES list. */
   .tb-status-planning{ background:#F2A93B; }
   .tb-status-ready{ background:#3DBE6B; }
   .tb-status-flown{ background:#4A9DE0; }
@@ -3051,7 +3053,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T17:20:00Z';
+const BUILD_VERSION = '2026-08-28T17:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8238,12 +8240,17 @@ function tripBriefBandHTML(leg){
       // Ships with the zero class already on, so no "0" flashes before
       // hydrateTripLegAttachBadges reports the real count.
       '<span class="leg-attach-badge leg-attach-badge-zero" data-attach-badge="' + escapeHtml(leg.id) + '">' + LEG_PAPERCLIP_BADGE_SVG + '0</span>' +
-      // A PLAIN COLOURED BUTTON. The dot and the caret are gone: a solid block
-      // of status colour is already unmistakably a control, and the word is
-      // its own label. Still the only place a leg's status can be changed.
-      '<button type="button" class="tb-status-btn tb-status-' + escapeHtml(leg.status) + '"' +
-        ' data-leg-quick="status" data-leg-id="' + escapeHtml(leg.id) + '" title="Change status">' +
-        statusLabel(leg.status) +
+      // A COLOURED CIRCLE, no text. Amber planning, green ready, blue flown.
+      // The dot is 14px but the BUTTON around it is 32px, so the target stays
+      // thumb-sized while the mark stays small -- the reason the old bare dot
+      // failed was that the 12px circle WAS the hit area, not that a dot is
+      // the wrong mark.
+      // With no label, the status has to reach a screen reader some other way,
+      // hence aria-label naming the current value.
+      '<button type="button" class="tb-status-btn"' +
+        ' data-leg-quick="status" data-leg-id="' + escapeHtml(leg.id) + '"' +
+        ' title="Change status" aria-label="Change status \u2014 currently ' + statusLabel(leg.status) + '">' +
+        '<span class="tb-status-dot tb-status-' + escapeHtml(leg.status) + '"></span>' +
       '</button>' +
     '</div>' +
   '</div>';
