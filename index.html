@@ -480,7 +480,21 @@
   .leg-meta{ font-size:11px; color:var(--fog-500); margin-top:3px; }
   .empty-list{ color:var(--fog-500); font-size:13px; padding:20px 4px; line-height:1.6; }
 
-  .main{ flex:1; padding:28px 36px; overflow-y:auto; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(52px + max(28px, env(safe-area-inset-bottom))); }
+  /* *** NO overflow PROPERTY HERE. ***
+     .main used to carry overflow-y:auto, which read as "this is the scroller".
+     It never was. .app is min-height:100vh, not height, so .main grows with its
+     content and its scrollHeight always equals its clientHeight -- measured at
+     592px wide: scrollTop 0, 4185 = 4185, while the document scrolled 190.
+     Every scroll reset in the app calls window.scrollTo, and nothing ever read
+     or set mainPanel.scrollTop.
+     The one thing that property DID do was make .main a scroll container for
+     position:sticky, so any sticky descendant pinned itself to a scrollport
+     that never moves and scrolled away with the page. That is why .info-strip
+     could not be made sticky on either the leg checklist or the Trip Brief.
+     It also made overflow-x compute to auto: over-wide content used to scroll
+     sideways inside .main and will now push the page instead. Anything that
+     needs it owns its own scroller (see .sched-scroll). */
+  .main{ flex:1; padding:28px 36px; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(52px + max(28px, env(safe-area-inset-bottom))); }
   .main-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:16px; flex-wrap:wrap; }
   .main-title-group{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
   .main-title{
@@ -537,6 +551,24 @@
     padding:28px 36px 14px;
     background:var(--panel-800);
     border-bottom:1px solid var(--hairline);
+    /* STICKS UNDER THE FIXED HEADER, on the leg checklist and the Trip Brief
+       alike -- one rule, because both pages use this strip and both want the
+       same behaviour: the trip, leg, tail and crew stay legible while the page
+       scrolls behind them.
+       top is the header's MEASURED height (syncPageHeaderHeight sets it), not
+       0: the header is position:fixed and overlays the scrollport, so top:0
+       would park the strip underneath it.
+       NO JUMP ON FIRST SCROLL. .main's top padding is header + 16 and the strip
+       pulls itself up by exactly that 16, so its margin box already sits on the
+       header's lower edge at rest -- which is precisely where sticky pins it.
+       The two numbers were already a pair (see the note above); this relies on
+       that, so if one moves the other must follow or the strip will jump.
+       Requires that NO ancestor establishes a scroll container. .main used to,
+       via a vestigial overflow-y:auto, and that is what kept this from working.
+       z-index keeps page content passing behind rather than over it. */
+    position:sticky;
+    top:var(--page-header-h, 84px);
+    z-index:5;
   }
   /* ONE ROW, CENTERED on the page. Cells are sized to the content they actually
      hold rather than a generic minimum: trip numbers ~6 digits, tails ~6
@@ -753,14 +785,20 @@
     }
     .app.sidebar-open .sidebar-backdrop{ opacity:1; pointer-events:auto; }
 
-    /* overscroll-behavior-y:contain stops an iOS rubber-band at the end of .main
-       from chaining out to the page, which shifts the visual viewport and drags
-       the position:fixed bottom bar up with it.
-       SCOPED TO <=820px ON PURPOSE. On desktop .main is NOT the scroller - the
-       document is - and `contain` on a non-scrolling element still blocks scroll
-       chaining, which kills trackpad scroll over the page content while the
-       fixed header/footer keep working. Confirmed in Chrome on macOS. */
-    .main{ padding:20px 16px; overscroll-behavior-y:contain; padding-top:calc(var(--page-header-h, 84px) + 12px); padding-bottom:calc(52px + max(20px, env(safe-area-inset-bottom))); }
+    /* overscroll-behavior-y:contain WAS here, to stop an iOS rubber-band at the
+       end of .main from chaining out to the page and dragging the fixed bottom
+       bar up with it. REMOVED, and it has to be.
+       The note that used to sit here said `contain` on a non-scrolling element
+       still blocks scroll chaining and kills scroll over the page content
+       (confirmed in Chrome on macOS), and scoped this rule to <=820px on the
+       grounds that .main IS the scroller below that width. It is not, and never
+       was: measured at 592px, .main's scrollHeight equalled its clientHeight
+       and its scrollTop stayed 0 while the document scrolled. .main no longer
+       carries overflow at all, so leaving `contain` here would be precisely the
+       configuration that comment warned about, on phones instead of desktops.
+       If the rubber-band problem ever reappears, it belongs on the element that
+       actually scrolls -- the document -- not on this one. */
+    .main{ padding:20px 16px; padding-top:calc(var(--page-header-h, 84px) + 12px); padding-bottom:calc(52px + max(20px, env(safe-area-inset-bottom))); }
     .page-header-inner{ padding-left:16px; padding-right:16px; }
     .page-header-subrow{ padding-left:16px; padding-right:16px; }
     .bottom-bar-inner{ padding-left:16px; padding-right:16px; }
@@ -1769,17 +1807,10 @@
     font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:1.1px;
     text-transform:uppercase; color:var(--fog-500); margin-bottom:8px;
   }
-/* The strip sticks INSIDE .main, which is the scroll container (it carries
-   overflow-y:auto). top is the FIXED PAGE HEADER's height, not 0: the header
-   overlays the scrollport, so a sticky top:0 would slide underneath it.
-   --page-header-h is the same variable .main uses for its own padding-top, so
-   the two cannot drift apart.
-   No opacity and no background shorthand here -- both break a sticky element's
-   compositing in ways that show up only on a real device. */
-  .tb-strip{
-    position:sticky; top:var(--page-header-h, 84px); z-index:5;
-    margin-bottom:16px;
-  }
+/* Stickiness now lives on .info-strip, which both pages share. This class
+   carries only what the Trip Brief needs on top of it: the bands sit closer
+   under the strip than the checklist's first section does. */
+  .tb-strip{ margin-bottom:16px; }
 
 /* ---- TRIP BRIEF: one full-width band per leg -------------------------------
    NOT a card grid. The dashboard uses .dash-grid, which puts two cards side by
@@ -2925,7 +2956,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T10:15:00Z';
+const BUILD_VERSION = '2026-08-28T11:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7902,8 +7933,11 @@ function tripBriefStripHTML(trip, leg){
 
 /* SCROLL SPY -- repoints the strip at whichever leg is currently under it.
 
-   The listener goes on #mainPanel, NOT window: .main carries overflow-y:auto
-   and is therefore the scroll container, so window never fires.
+   The listener goes on the WINDOW. An earlier cut put it on #mainPanel because
+   that element carries overflow-y:auto and therefore looked like the scroller;
+   it never was, and this handler never fired once. The document scrolls, at
+   every viewport width. If that ever changes, this and .info-strip's sticky
+   positioning both have to change with it.
 
    Only ONE listener may exist. renderMain() rebuilds this view on every state
    change, so without removing the previous one they would stack up, each
@@ -7914,9 +7948,8 @@ function wireTripBriefScrollSpy(trip, legs){
   if(_tbSpyEl && _tbSpyHandler) _tbSpyEl.removeEventListener('scroll', _tbSpyHandler);
   _tbSpyEl = null; _tbSpyHandler = null;
 
-  const scroller = document.getElementById('mainPanel');
   const strip = document.getElementById('tbStrip');
-  if(!scroller || !strip || !legs.length) return;
+  if(!strip || !legs.length) return;
   _tbSpyActiveId = legs[0].id;
 
   let queued = false;
@@ -7949,8 +7982,8 @@ function wireTripBriefScrollSpy(trip, legs){
     queued = true;
     requestAnimationFrame(update);
   };
-  _tbSpyEl = scroller;
-  scroller.addEventListener('scroll', _tbSpyHandler, { passive:true });
+  _tbSpyEl = window;
+  window.addEventListener('scroll', _tbSpyHandler, { passive:true });
   // Run once: the view may open already scrolled, e.g. returning from a leg.
   requestAnimationFrame(update);
 }
