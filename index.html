@@ -1848,6 +1848,14 @@
     border-color:var(--amber-500);
     box-shadow:0 0 0 2px rgba(242,169,59,0.30);
   }
+  /* On a touch screen :hover LATCHES after a tap and never clears, so the band
+     you last touched keeps .dash-card:hover's amber border while the ring sits
+     on whichever band the scroll position tracks -- two amber bands at once,
+     which is precisely the ambiguity the ring is meant to settle.
+     The tracked band is excluded so this cannot cancel the ring itself. */
+  @media (hover: none){
+    .tb-band:hover:not(.tb-band-active){ border-color:var(--hairline); }
+  }
   /* Line one carries EVERYTHING that is not the route: leg number, readiness,
      and the controls. The old layout gave these their own zone under a divider,
      which cost a row, a border and its padding on every single leg. */
@@ -3074,7 +3082,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T18:40:00Z';
+const BUILD_VERSION = '2026-08-28T19:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8153,10 +8161,18 @@ function wireTripBriefScrollSpy(trip, legs){
   _tbSpyEl = window;
   window.addEventListener('scroll', _tbSpyHandler, { passive:true });
 
-  // Hover, delegated on the container so it survives nothing and needs no
-  // teardown -- #tbBands is replaced wholesale on the next render.
+  /* Hover, delegated on the container so it needs no teardown -- #tbBands is
+     replaced wholesale on the next render.
+
+     *** ONLY ON A DEVICE WITH A REAL POINTER. ***
+     iOS synthesises mouseover on a tap and then never fires mouseleave, so on
+     a phone a single tap would latch _tbHoverId and freeze the strip on that
+     leg for good -- scrolling would stop moving it. There is nothing to lose:
+     hover retargeting exists so the RIGHT-hand band of a two-up row can be
+     reached, and two-up only applies from 1100px, which is not a phone. */
+  const canHover = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
   const bands = document.getElementById('tbBands');
-  if(bands){
+  if(bands && canHover){
     bands.addEventListener('mouseover', function(e){
       const el = e.target.closest ? e.target.closest('[data-tb-leg]') : null;
       if(!el) return;
