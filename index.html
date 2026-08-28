@@ -2837,7 +2837,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-28T06:15:00Z';
+const BUILD_VERSION = '2026-08-28T07:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12984,15 +12984,163 @@ function refreshOpenTZFields(){
   if(typeof renderMain === 'function') renderMain();
 }
 
+/* ============================================================
+   BUNDLED AIRPORT DATABASE  (beacon-airports.txt)
+
+   One static file served from Beacon's OWN origin, alongside index.html.
+   Carries coordinates and an IANA timezone for 27,748 airports.
+
+   WHY IT EXISTS
+   Two features need it: great circle distance on the Trip Brief, and the
+   UTC offset derived on a leg. Before this, the timezone half was answered
+   by fetching mwgg/Airports from raw.githubusercontent.com AT RUNTIME --
+   a 9MB / 1.28MB-gzipped download, larger than the whole app, from a
+   third-party repo on an unversioned master branch. That fetch fired for
+   any airport outside the small curated list, on whatever connection the
+   crew happened to have.
+
+   Both source datasets now resolve at BUILD time. See
+   build-beacon-airports.py, which also asserts that no airport loses a
+   timezone it resolved before.
+
+   NOT INLINED, DELIBERATELY. Kept as a separate file so the browser's HTTP
+   cache keeps it across deploys -- airport coordinates never change, and
+   inlining would re-download 231KB on every push. Same origin as the app,
+   so it is not a third-party dependency: if it is unreachable, the app is
+   unreachable too.
+
+   FILE FORMAT -- see build-beacon-airports.py for the authoritative spec.
+   Header lines, then '---', then IANA zone names one per line, then '---',
+   then a body of FIXED 14-CHARACTER records with no separators:
+     [0:4]   4-char identifier      [4:8]   lat: base36(round(lat*1000)+90000)
+     [8:12]  lon: base36(...+180000) [12:14] 1-based zone index, '00' = unknown
+
+   Fixed width means we slice by offset -- no split, no delimiter that could
+   ever appear inside the data.
+   ============================================================ */
+const AIRPORT_DB_URL = 'beacon-airports.txt';
+const AIRPORT_DB_REC = 14;           // characters per record, fixed
+let AIRPORT_DB_BODY = null;          // the packed record block
+let AIRPORT_DB_ZONES = null;         // index -> IANA name
+let AIRPORT_DB_STATE = 'idle';       // idle | loading | ready | failed
+
+function loadAirportDB(){
+  if(AIRPORT_DB_STATE === 'loading' || AIRPORT_DB_STATE === 'ready') return;
+  AIRPORT_DB_STATE = 'loading';
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  fetch(AIRPORT_DB_URL, { signal: controller.signal })
+    .then(r => { clearTimeout(timeoutId); return r.ok ? r.text() : Promise.reject(new Error('bad response')); })
+    .then(text => {
+      // Split on the two '---' fences. Header block is metadata only.
+      const parts = text.split('---\n');
+      if(parts.length < 3) throw new Error('unrecognised airport db format');
+      const zones = parts[1].replace(/\n$/, '').split('\n');
+      const body = parts.slice(2).join('---\n');
+      if(body.length % AIRPORT_DB_REC !== 0) throw new Error('airport db body is not whole records');
+      AIRPORT_DB_ZONES = zones;
+      AIRPORT_DB_BODY = body;
+      AIRPORT_DB_STATE = 'ready';
+      // Anything already on screen was rendered without distances or a
+      // derived offset, so re-render to pick them up. GUARDED: this loader
+      // starts at boot and can win the race against the first render, and
+      // renderMain() before the app has painted once would run against
+      // half-initialised state. If nothing has rendered yet there is also
+      // nothing to refresh -- the first render will read the data anyway.
+      if(typeof renderMain === 'function' && document.getElementById('mainPanel')){
+        renderMain();
+      }
+    })
+    .catch(() => {
+      clearTimeout(timeoutId);
+      AIRPORT_DB_STATE = 'failed';
+    });
+}
+
+// Base36 with no sign handling -- every stored value is pre-offset positive.
+function airportB36(s){
+  let n = 0;
+  for(let i = 0; i < s.length; i++){
+    const c = s.charCodeAt(i);
+    n = n * 36 + (c <= 57 ? c - 48 : c - 87);   // '0'-'9' then 'a'-'z'
+  }
+  return n;
+}
+
+// Binary search the packed body. Records are sorted by identifier, and every
+// record is the same width, so the midpoint is arithmetic.
+function airportRecord(code){
+  if(AIRPORT_DB_STATE !== 'ready'){ loadAirportDB(); return null; }
+  const want = String(code || '').trim().toUpperCase();
+  if(want.length !== 4) return null;
+  let lo = 0, hi = (AIRPORT_DB_BODY.length / AIRPORT_DB_REC) - 1;
+  while(lo <= hi){
+    const mid = (lo + hi) >> 1;
+    const at = mid * AIRPORT_DB_REC;
+    const ident = AIRPORT_DB_BODY.substr(at, 4);
+    if(ident === want){
+      const zi = airportB36(AIRPORT_DB_BODY.substr(at + 12, 2));
+      return {
+        lat: (airportB36(AIRPORT_DB_BODY.substr(at + 4, 4)) - 90000) / 1000,
+        lon: (airportB36(AIRPORT_DB_BODY.substr(at + 8, 4)) - 180000) / 1000,
+        // '00' means the source data had no timezone for this airport. NOT
+        // guessed -- a nearest-neighbour zone is wrong near boundaries, and a
+        // silently wrong UTC offset is worse than an empty field the user
+        // fills in by hand.
+        tz: zi ? (AIRPORT_DB_ZONES[zi - 1] || '') : ''
+      };
+    }
+    if(ident < want) lo = mid + 1; else hi = mid - 1;
+  }
+  return null;
+}
+
+/* GREAT CIRCLE DISTANCE, in nautical miles.
+
+   Derived, never extracted. The extractor's exclusion list rules out routed
+   distance because routing changes and a stale copy is worse than none --
+   that reasoning holds. Great circle distance between two fixed points is a
+   different animal: it cannot go stale, it is identical whatever a given
+   department's paperwork happens to print, and it can never arrive as
+   statute miles in a field labelled NM.
+
+   Checked against Jet Aviation's own figures for trip 415129: KBDL-KFOK,
+   SBFZ-SBJE and SBJE-SBSL match exactly; the two transatlantic legs came out
+   3 NM long on ~3,250, about a tenth of one percent. */
+function greatCircleNM(depCode, arrCode){
+  const a = airportRecord(depCode), b = airportRecord(arrCode);
+  if(!a || !b) return null;
+  const R = 3440.065;                       // Earth radius in NM
+  const rad = Math.PI / 180;
+  const p1 = a.lat * rad, p2 = b.lat * rad;
+  const dp = p2 - p1, dl = (b.lon - a.lon) * rad;
+  // Haversine rather than the spherical law of cosines: the latter loses
+  // precision badly on short legs, and KBDL-KFOK is 66 NM.
+  const h = Math.sin(dp/2) * Math.sin(dp/2) +
+            Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
+  return Math.round(2 * R * Math.asin(Math.min(1, Math.sqrt(h))));
+}
+
 function lookupAirportTZ(code){
   if(!code) return null;
+  // Curated list first: hand-checked, and answers instantly with no fetch.
   const hit = AIRPORT_TZ[code];
   if(hit) return hit;
-  if(AIRPORT_TZ_REMOTE){
-    const remoteHit = AIRPORT_TZ_REMOTE[code];
-    if(remoteHit) return remoteHit;
-  } else {
-    loadRemoteAirportTZ();
+  // Then the bundled database, which covers everything the old remote fetch
+  // did (build-beacon-airports.py asserts zero regressions).
+  const rec = airportRecord(code);
+  if(rec && rec.tz) return rec.tz;
+  // Last resort ONLY. In normal operation this never fires -- it exists for
+  // the case where beacon-airports.txt itself failed to load, e.g. the file
+  // was not deployed alongside index.html. Kept deliberately so a missing
+  // file degrades instead of breaking every leg's UTC offset.
+  if(AIRPORT_DB_STATE === 'failed'){
+    if(AIRPORT_TZ_REMOTE){
+      const remoteHit = AIRPORT_TZ_REMOTE[code];
+      if(remoteHit) return remoteHit;
+    } else {
+      loadRemoteAirportTZ();
+    }
   }
   return null;
 }
@@ -17982,6 +18130,12 @@ function showTermsGate(){
 
 async function bootApp(){
   installRefreshHandler();
+  // Kicked off first and deliberately NOT awaited. Nothing on the first
+  // screen needs it, so blocking boot on a 231KB fetch would be a straight
+  // loss; the loader re-renders when it lands. After the first visit it is
+  // served from the browser's HTTP cache and survives every deploy, since
+  // the file itself never changes.
+  loadAirportDB();
   await loadCurrentUserProfile();
 
   // THE GATE SITS HERE DELIBERATELY: after the profile is known, so the
