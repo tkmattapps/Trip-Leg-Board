@@ -3286,7 +3286,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T07:50:00Z';
+const BUILD_VERSION = '2026-08-30T08:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4065,6 +4065,17 @@ function legNotesDoorHTML(leg){
 // Placeholder rows at the count we last saw for this leg. Deliberately blank
 // rather than a shimmer: this is here to hold space, and anything visible in it
 // would read as content that then gets replaced.
+// BOTH halves or neither. Painting the leg's documents from cache while the
+// trip documents below them still had to arrive would just move the height
+// change down a section rather than remove it.
+function docsCachedFor(leg){
+  if(!leg || !leg.id) return false;
+  if(!Object.prototype.hasOwnProperty.call(_legDocsCache, leg.id)) return false;
+  const tid = legTripId(leg);
+  if(!tid) return true;
+  return Object.prototype.hasOwnProperty.call(_tripDocsCache, tid);
+}
+
 function docLoadingSkeletonHTML(leg){
   const n = (leg && leg.id && Object.prototype.hasOwnProperty.call(_legDocCountCache, leg.id))
     ? _legDocCountCache[leg.id] : null;
@@ -4094,8 +4105,12 @@ function legAttachmentsBlockHTML(leg){
       // the same cache the bottom-bar badge reads), so on every visit after
       // the first the section is the right height before the query returns.
       // First visit still has nothing to go on and falls back to one line.
-      '<div class="doc-list" id="docLegList">' + docLoadingSkeletonHTML(leg) + '</div>' +
-      '<div id="docTripWrap"></div>' +
+      '<div class="doc-list" id="docLegList">' +
+        (docsCachedFor(leg) ? docLegListHTML(_legDocsCache[leg.id]) : docLoadingSkeletonHTML(leg)) +
+      '</div>' +
+      '<div id="docTripWrap">' +
+        (docsCachedFor(leg) ? docTripWrapHTML(_tripDocsCache[legTripId(leg)] || []) : '') +
+      '</div>' +
     '</div>';
 }
 
@@ -4150,44 +4165,92 @@ async function hydrateTripDocJumpCount(trip){
   } catch(e){ /* non-fatal - leave the badge hidden */ }
 }
 
+// Documents cached the same way the trip notes are, and for the same reason:
+// switching legs re-fetched identical rows and repainted the section twice --
+// once for the leg's own documents, once for the trip-wide ones underneath --
+// so the height changed twice under whatever you were reading.
+var _legDocsCache = {};    // legId  -> rows
+var _tripDocsCache = {};   // tripId -> rows
+// Only the newest request may write. The list ids are the same on every leg, so
+// a fetch begun for one leg would otherwise resolve after you had moved to the
+// next and paint the wrong leg's documents.
+var _docsToken = 0;
+
+function invalidateDocCaches(){ _legDocsCache = {}; _tripDocsCache = {}; }
+
+// Shared by the initial paint and the post-fetch update so the two are
+// byte-identical -- if they differed, painting from cache would introduce the
+// flicker it exists to remove.
+function docLegListHTML(rows){
+  return rows.length
+    ? rows.map(function(r){ return docRowHTML(r); }).join('')
+    : '<div class="doc-empty">No documents on this leg yet.</div>';
+}
+function docTripWrapHTML(rows){
+  return rows.length
+    ? '<div class="doc-subhead">Trip documents</div><div class="doc-list">' +
+        rows.map(function(r){ return docRowHTML(r, {canDelete:false, homeTag:'Trip'}); }).join('') + '</div>'
+    : '';
+}
+// The action buttons look up storage_path by row id, so every row on screen has
+// to be in here whichever path painted it.
+function indexDocRows(rows){
+  rows.forEach(function(r){ _docRowCache[r.id] = r; });
+}
+
 async function hydrateLegAttachments(leg){
   const legList = document.getElementById('docLegList');
-  const tripWrap = document.getElementById('docTripWrap');
   if(!legList) return;
-  _docRowCache = {};
-  // leg's own attachments
-  const legRows = await fetchAttachments('leg', { legId: leg.id });
-  if(!document.getElementById('docLegList')) return; // navigated away
-  legRows.forEach(function(r){ _docRowCache[r.id] = r; });
-  legList.innerHTML = legRows.length
-    ? legRows.map(function(r){ return docRowHTML(r); }).join('')
-    : '<div class="doc-empty">No documents on this leg yet.</div>';
-  // The badge counts everything visible in this section: the leg's own
-  // documents PLUS the trip-wide ones shown beneath them. Paint it ONCE, after
-  // both counts are known - painting the leg-only figure first made the number
-  // visibly flash to a different value a moment later.
-  // trip-level documents surfaced below (view/download only here; managed at trip level)
-  if(tripWrap){
-    const tripId = legTripId(leg);
-    if(tripId){
-      const tripRows = await fetchAttachments('trip', { tripId: tripId });
-      if(!document.getElementById('docTripWrap')) return;
-      _legDocCountCache[leg.id] = legRows.length + tripRows.length;
-      setDocJumpCount(leg.id, legRows.length + tripRows.length);
-      tripRows.forEach(function(r){ _docRowCache[r.id] = r; });
-      tripWrap.innerHTML = tripRows.length
-        ? '<div class="doc-subhead">Trip documents</div><div class="doc-list">' +
-            tripRows.map(function(r){ return docRowHTML(r, {canDelete:false, homeTag:'Trip'}); }).join('') + '</div>'
-        : '';
-    } else {
-      tripWrap.innerHTML = '';
-      _legDocCountCache[leg.id] = legRows.length;
-      setDocJumpCount(leg.id, legRows.length);
-    }
-  } else {
-    _legDocCountCache[leg.id] = legRows.length;
-    setDocJumpCount(leg.id, legRows.length);
+  const tripId = legTripId(leg);
+
+  // Already in hand from a previous visit: the section was painted from these
+  // exact rows in the initial HTML, so there is nothing to do.
+  const cachedLeg = Object.prototype.hasOwnProperty.call(_legDocsCache, leg.id) ? _legDocsCache[leg.id] : null;
+  const cachedTrip = (tripId && Object.prototype.hasOwnProperty.call(_tripDocsCache, tripId)) ? _tripDocsCache[tripId] : null;
+  if(cachedLeg && (!tripId || cachedTrip)){
+    _docRowCache = {};
+    indexDocRows(cachedLeg);
+    if(cachedTrip) indexDocRows(cachedTrip);
+    return;
   }
+
+  const myToken = ++_docsToken;
+  let legRows, tripRows;
+  try{
+    // BOTH AT ONCE, then ONE write. Fetching them in series and painting after
+    // each meant the section grew twice -- the leg's documents first, the trip
+    // documents a moment later -- which is two separate shifts of everything
+    // below.
+    const results = await Promise.all([
+      fetchAttachments('leg', { legId: leg.id }),
+      tripId ? fetchAttachments('trip', { tripId: tripId }) : Promise.resolve([])
+    ]);
+    legRows = results[0]; tripRows = results[1];
+  }catch(e){ return; }              // leave the reserved skeleton in place
+  if(myToken !== _docsToken) return;         // superseded -- another leg is on screen
+  const listNow = document.getElementById('docLegList');
+  if(!listNow) return;                       // navigated away
+
+  _legDocsCache[leg.id] = legRows;
+  if(tripId) _tripDocsCache[tripId] = tripRows;
+  _docRowCache = {};
+  indexDocRows(legRows);
+  indexDocRows(tripRows);
+
+  const nextList = docLegListHTML(legRows);
+  if(listNow.innerHTML !== nextList) listNow.innerHTML = nextList;
+  const tripWrap = document.getElementById('docTripWrap');
+  if(tripWrap){
+    const nextWrap = docTripWrapHTML(tripRows);
+    if(tripWrap.innerHTML !== nextWrap) tripWrap.innerHTML = nextWrap;
+  }
+  // The badge counts everything visible in this section: the leg's own
+  // documents PLUS the trip-wide ones shown beneath them. Painted ONCE, after
+  // both counts are known -- painting the leg-only figure first made the number
+  // visibly flash to a different value a moment later.
+  const total = legRows.length + tripRows.length;
+  _legDocCountCache[leg.id] = total;
+  setDocJumpCount(leg.id, total);
 }
 
 function wireLegAttachments(leg){
@@ -4213,6 +4276,7 @@ function wireLegAttachments(leg){
     addBtn.textContent = 'Uploading\u2026';
     try {
       await uploadAttachment(file, 'leg', { legId: leg.id, tripId: legTripId(leg) });
+      invalidateDocCaches();
       await hydrateLegAttachments(leg);
       refreshLegAttachBadge(leg.id); // update the tile badge count
       if(typeof showToast === 'function') showToast('Document added');
@@ -4257,6 +4321,7 @@ function wireLegAttachments(leg){
       const doDelete = async function(){
         try {
           await deleteAttachment(row);
+          invalidateDocCaches();
           await hydrateLegAttachments(leg);
           refreshLegAttachBadge(leg.id);
         } catch(e){ console.error('delete failed', e); }
