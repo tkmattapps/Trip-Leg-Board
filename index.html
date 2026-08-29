@@ -2331,6 +2331,11 @@
   .doc-subhead{ font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--fog-500); margin:16px 0 8px; }
   .doc-list{ display:flex; flex-direction:column; gap:8px; }
   .doc-empty{ color:var(--fog-500); font-size:13px; padding:6px 0; }
+  /* Holds the space a real .doc-row will occupy, so the page does not grow
+     under you when the list lands. Same box model as .doc-row -- if that
+     changes, this must change with it. */
+  .doc-skel{ border:1px solid transparent; border-radius:8px; padding:10px 12px;
+    height:42px; box-sizing:border-box; }
   .doc-row{ display:flex; align-items:center; gap:10px; background:var(--panel-700, #1D3350); border:1px solid var(--hairline, rgba(184,196,217,0.16)); border-radius:8px; padding:10px 12px; }
   .doc-icon{ flex:0 0 auto; width:22px; height:22px; color:var(--amber-500); }
   .doc-meta{ flex:1 1 auto; min-width:0; }
@@ -3281,7 +3286,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T07:20:00Z';
+const BUILD_VERSION = '2026-08-30T07:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3824,37 +3829,24 @@ function notesDoorHTML(opts){
     '</button>';
 }
 
-// Fills in the note count AFTER render. A count needs a round trip and the
-// checklist must not wait on it.
-//
-// The three outcomes are deliberately DISTINCT (trap 59): the door ships with
-// the generic wording, which is also what stays on screen if the query fails
-// -- always true, never wrong. A successful zero says "No notes yet", which is
-// a fact and must not be confused with "we could not ask".
 // One trip's notes, cached by TRIP NUMBER. Every leg of a trip reads the same
-// rows, so switching between six legs was firing six identical queries and
-// repainting the door twice each time -- once when the subtext was rewritten,
-// once when the pinned list dropped in and pushed the page down. From the
-// bottom of the checklist, where the door lives, that reads as the layout
-// settling under you.
-//
-// With the cache the first leg pays for the fetch and every leg after it paints
-// in the initial HTML, synchronously, with no reflow at all.
+// rows, so switching between six legs fired six identical queries and repainted
+// the door twice each time -- once when the subtext was rewritten, once when the
+// pinned list dropped in and pushed the page down. From the bottom of the
+// checklist, where the door lives, that reads as the layout settling under you.
 var _tripNotesCache = {};
 
 function cachedTripNotes(tn){
   return Object.prototype.hasOwnProperty.call(_tripNotesCache, tn) ? _tripNotesCache[tn] : null;
 }
-// Called wherever a note is written or removed. Cheap to be liberal about:
-// a miss costs one query, a stale hit shows a wrong count.
 function invalidateTripNotesCache(tn){
   if(tn) delete _tripNotesCache[String(tn).trim()];
 }
 
 // The two pieces of the door that depend on the notes. Shared by the initial
-// render and the post-fetch update so the cached paint and the fetched paint
-// are byte-identical -- if they differed, using the cache would introduce the
-// very flicker it is meant to remove.
+// render and the post-fetch update so the cached paint and the fetched paint are
+// byte-identical -- if they differed, the cache would introduce the very flicker
+// it exists to remove.
 function notesDoorSubText(rows, legId){
   const legPart = legId ? ' pinned to this leg' : '';
   if(rows.length === 0) return 'No notes yet \u2014 add one' + legPart;
@@ -3880,79 +3872,17 @@ function notesDoorListHTML(rows, legId){
     }).join('');
 }
 
+// Monotonic token. Every call claims the next number; only the newest may write.
+//
+// THE RACE THIS FIXES. The section id is the same on every leg, so a fetch
+// started for leg 3 would resolve after you had switched to leg 4, find
+// #legNotesDoorSection still on screen, and write LEG 3's pinned list over the
+// correct paint -- which the next response then corrected. That is the flashing
+// on and off: not one slow update, but two updates fighting.
+var _notesDoorToken = 0;
+
 // Fills in the count and the read-only list AFTER render, for whichever door is
-// on screen. Returns immediately when the cache already served the paint.
-//
-// The three outcomes are deliberately DISTINCT (trap 59): the door ships with
-// generic wording, which is also what stays on screen if the query fails --
-// always true, never wrong. A successful zero says "No notes yet", which is a
-// fact and must not be confused with "we could not ask".
-async function hydrateNotesDoor(tripNo, opts){
-  const o = opts || {};
-  const sectionId = o.sectionId || 'legNotesDoorSection';
-  if(!tripNo || !document.getElementById(sectionId)) return;
-  let rows;
-  // ONE fetch feeding both the count and the list. A separate count query would
-  // be a second round trip that could disagree with the list below it.
-  try { rows = await fetchTripNotes(tripNo); }
-  catch(e){ return; }               // generic wording stands; list stays empty
-  const section = document.getElementById(sectionId);
-  if(!section) return;              // navigated away
-  if(!Array.isArray(rows)) return;
-  _tripNotesCache[String(tripNo).trim()] = rows;
-
-  const sub  = section.querySelector('.notes-door-lbl span');
-  const list = section.querySelector('.notes-door-list');
-  // RLS already limits this to what you are allowed to see, so the number on
-  // the door is the number you will find behind it.
-  if(sub && o.legId){
-    // Only the LEG door gets a count. There the list below shows just this
-    // leg's notes, so "6 notes on this trip" tells you about the ones you
-    // cannot see. On the Trip Brief the list is complete and a count would
-    // restate it.
-    const next = notesDoorSubText(rows, o.legId);
-    if(sub.textContent !== next) sub.textContent = next;
-  }
-  if(list){
-    const next = notesDoorListHTML(rows, o.legId);
-    // Only touch the DOM when it would actually change. Rewriting identical
-    // markup still costs a reflow, which is the thing being fixed here.
-    if(list.innerHTML !== next) list.innerHTML = next;
-  }
-}
-
-// THE DOORWAY, shared by every entry point. One builder so the leg checklist
-// and the Trip Brief cannot drift apart (trap 30).
-//
-// The subtext has to say that this is the way IN to notes, not merely a way to
-// add one. The glyph alone reads as "compose" -- a pencil always does -- so
-// without the words a person would never learn that the whole trip's notes
-// live behind it. Reading is the more common act; it goes first.
-function notesDoorHTML(opts){
-  const o = opts || {};
-  const dis = o.disabled ? ' disabled' : '';
-  const attr = (!o.disabled && o.legId)
-    ? ' data-leg-notes="' + escapeHtml(o.legId) + '"'
-    : (!o.disabled && o.tripId ? ' data-trip-notes="' + escapeHtml(o.tripId) + '"' : '');
-  return '' +
-    '<button type="button" class="notes-door"' + attr + dis + '>' +
-      NOTES_DOOR_ICON +
-      '<span class="notes-door-lbl">' +
-        '<b>Notes</b>' +
-        '<span>' + escapeHtml(o.sub || '') + '</span>' +
-      '</span>' +
-    '</button>';
-}
-
-// Fills in the note count AFTER render. A count needs a round trip and the
-// checklist must not wait on it.
-//
-// The three outcomes are deliberately DISTINCT (trap 59): the door ships with
-// the generic wording, which is also what stays on screen if the query fails
-// -- always true, never wrong. A successful zero says "No notes yet", which is
-// a fact and must not be confused with "we could not ask".
-// Fills in the count and the read-only list AFTER render, for whichever door
-// is on screen. Both doors share this: the only difference is whether a legId
+// on screen. Both doors share this; the only difference is whether a legId
 // narrows the list.
 //
 // The three outcomes are deliberately DISTINCT (trap 59): the door ships with
@@ -3962,54 +3892,44 @@ function notesDoorHTML(opts){
 async function hydrateNotesDoor(tripNo, opts){
   const o = opts || {};
   const sectionId = o.sectionId || 'legNotesDoorSection';
-  const section = document.getElementById(sectionId);
-  if(!tripNo || !section) return;
-  const sub  = section.querySelector('.notes-door-lbl span');
-  const list = section.querySelector('.notes-door-list');
+  if(!tripNo || !document.getElementById(sectionId)) return;
+
+  // CACHE HIT: the door was already painted from these exact rows in the initial
+  // HTML, so there is nothing to do. Returning rather than re-fetching is what
+  // removes the second paint entirely -- a fetch that changes nothing still
+  // costs a round trip and still gives a late response a chance to land on the
+  // wrong leg.
+  if(cachedTripNotes(tripNo)) return;
+
+  const myToken = ++_notesDoorToken;
   let rows;
-  // ONE fetch feeding both the count and the list. A separate count query
-  // would be a second round trip that could disagree with the list below it.
+  // ONE fetch feeding both the count and the list. A separate count query would
+  // be a second round trip that could disagree with the list below it.
   try { rows = await fetchTripNotes(tripNo); }
   catch(e){ return; }               // generic wording stands; list stays empty
-  if(!document.getElementById(sectionId)) return;   // navigated away
+  if(myToken !== _notesDoorToken) return;   // superseded -- a newer leg is on screen
+  const section = document.getElementById(sectionId);
+  if(!section) return;                      // navigated away
   if(!Array.isArray(rows)) return;
+  _tripNotesCache[String(tripNo).trim()] = rows;
 
-  // RLS already limits this to what you are allowed to see, so the number on
-  // the door is the number you will find behind it.
-  // Only the LEG door gets a count. There the list below shows just this
-  // leg's notes, so "6 notes on this trip" tells you about the ones you
-  // cannot see. On the Trip Brief the list is complete and a count would
-  // restate it.
+  const sub  = section.querySelector('.notes-door-lbl span');
+  const list = section.querySelector('.notes-door-list');
+  // RLS already limits this to what you are allowed to see, so the number on the
+  // door is the number you will find behind it.
+  //
+  // Only the LEG door gets a count. There the list below shows just this leg's
+  // notes, so "6 notes on this trip" tells you about the ones you cannot see. On
+  // the Trip Brief the list is complete and a count would restate it.
   if(sub && o.legId){
-    const legPart = ' pinned to this leg';
-    // Zero drops the "or" and leads with the add: "View no notes, or add one"
-    // is not English, and the only useful act on an empty trip is writing.
-    // "all" is doing real work here: the list below shows only THIS leg's
-    // notes, so the door has to say it reaches the whole trip. "View all 1
-    // note" is not English, so the singular drops the count entirely.
-    sub.textContent = rows.length === 0
-      ? 'No notes yet \u2014 add one' + legPart
-      : (rows.length === 1
-          ? 'View the note on this trip, or add one'
-          : 'View all ' + rows.length + ' notes on this trip, or add one') + legPart;
+    const next = notesDoorSubText(rows, o.legId);
+    if(sub.textContent !== next) sub.textContent = next;
   }
-
   if(list){
-    const shown = (o.legId
-        ? rows.filter(function(r){ return r.leg_id && r.leg_id === o.legId; })
-        : rows.slice())
-      .sort(function(a,b){ return String(b.created_at||'').localeCompare(String(a.created_at||'')); });
-    if(shown.length === 0){ list.innerHTML = ''; return; }
-    const myId = currentUserProfile ? currentUserProfile.id : null;
-    // hideLegTag only where every entry is pinned to the SAME leg -- on the
-    // Trip Brief the legs differ, so the chip is the useful part.
-    list.innerHTML =
-      '<div class="notes-door-list-head">' +
-        (o.legId ? 'Pinned to this leg' : 'On this trip') +
-      '</div>' +
-      shown.map(function(r){
-        return tripNoteEntryHTML(r, { myId: myId, canDelete: false, hideLegTag: !!o.legId });
-      }).join('');
+    const next = notesDoorListHTML(rows, o.legId);
+    // Only touch the DOM when it would actually change. Rewriting identical
+    // markup still costs a reflow, which is the thing being fixed here.
+    if(list.innerHTML !== next) list.innerHTML = next;
   }
 }
 
@@ -4022,7 +3942,6 @@ async function hydrateNotesDoor(tripNo, opts){
 // stays, so nothing that was readable here became unreadable.
 function tripNotesDoorHTML(trip){
   const tripNo = ((trip && trip.tripNumber) || '').trim();
-  const cached = tripNo ? cachedTripNotes(tripNo) : null;
   return '<div class="section" id="tripNotesDoorSection">' +
     notesDoorHTML({
       tripId: tripNo,
@@ -4035,7 +3954,7 @@ function tripNotesDoorHTML(trip){
         : 'This trip has no trip number yet, so it cannot carry notes'
     }) +
     '<div class="notes-door-list">' +
-      (cached ? notesDoorListHTML(cached, null) : '') +
+      (cachedTripNotes(tripNo) ? notesDoorListHTML(cachedTripNotes(tripNo), null) : '') +
     '</div>' +
   '</div>';
 }
@@ -4123,7 +4042,7 @@ function legNotesDoorHTML(leg){
   // put the note, so the door is shown but shut, with the reason on it.
   // Painted from the cache when this trip's notes are already in hand -- which
   // they are for every leg after the first. That makes switching legs a plain
-  // re-render with no async second pass and no layout settling underneath you.
+  // re-render with no async second pass and nothing settling underneath you.
   const cached = tripNo ? cachedTripNotes(tripNo) : null;
   return '<div class="section" id="legNotesDoorSection">' +
     notesDoorHTML({
@@ -4135,10 +4054,25 @@ function legNotesDoorHTML(leg){
             ? notesDoorSubText(cached, leg.id)
             : 'Read every note on this trip, or add one pinned to this leg')
     }) +
+    // An empty container is invisible, so a leg with no pinned notes reads
+    // exactly as it did before.
     '<div class="notes-door-list">' +
       (cached ? notesDoorListHTML(cached, leg.id) : '') +
     '</div>' +
   '</div>';
+}
+
+// Placeholder rows at the count we last saw for this leg. Deliberately blank
+// rather than a shimmer: this is here to hold space, and anything visible in it
+// would read as content that then gets replaced.
+function docLoadingSkeletonHTML(leg){
+  const n = (leg && leg.id && Object.prototype.hasOwnProperty.call(_legDocCountCache, leg.id))
+    ? _legDocCountCache[leg.id] : null;
+  if(n === null || n === undefined) return '<div class="doc-empty">Loading\u2026</div>';
+  if(n === 0) return '<div class="doc-empty">Loading\u2026</div>';
+  let out = '';
+  for(let i = 0; i < n; i++) out += '<div class="doc-skel"></div>';
+  return out;
 }
 
 function legAttachmentsBlockHTML(leg){
@@ -4150,7 +4084,17 @@ function legAttachmentsBlockHTML(leg){
         '<input type="file" id="docFileInput" accept="application/pdf,image/*" style="display:none" />' +
       '</div>' +
       uploadCautionHTML('attach') +
-      '<div class="doc-list" id="docLegList"><div class="doc-empty">Loading\u2026</div></div>' +
+      // RESERVES THE HEIGHT THE LIST IS ABOUT TO TAKE. A single "Loading..."
+      // line renders the section one row tall, so the page is short on first
+      // paint; when the documents land the page grows and everything below --
+      // and the scroll position with it -- shifts. Scrolled near the bottom,
+      // that reads as the view sliding down and then back up.
+      //
+      // The count is already known from the previous visit (_legDocCountCache,
+      // the same cache the bottom-bar badge reads), so on every visit after
+      // the first the section is the right height before the query returns.
+      // First visit still has nothing to go on and falls back to one line.
+      '<div class="doc-list" id="docLegList">' + docLoadingSkeletonHTML(leg) + '</div>' +
       '<div id="docTripWrap"></div>' +
     '</div>';
 }
