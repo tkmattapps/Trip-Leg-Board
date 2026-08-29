@@ -3259,7 +3259,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T00:25:00Z';
+const BUILD_VERSION = '2026-08-30T00:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4252,9 +4252,19 @@ function stashTripNoteDraft(){
 }
 
 async function deleteTripNoteEntry(noteId){
-  // RLS restricts this to the author's own rows; no client-side check needed.
-  const { error } = await sb.from('trip_notes').delete().eq('id', noteId);
+  // RLS restricts this to the author's own rows AND, since migration 33, to
+  // rows that are NOT shared.
+  //
+  // .select() is load-bearing. A delete refused by RLS is not an error -- it
+  // matches zero rows and returns success, so checking `error` alone reports a
+  // deletion that never happened and the note reappears on the next refresh.
+  // Ask for the deleted rows back and treat an empty result as the refusal it
+  // is (same shape as the PostgREST row cap: silence is not consent).
+  const { data, error } = await sb.from('trip_notes').delete().eq('id', noteId).select('id');
   if(error) throw error;
+  if(!data || data.length === 0){
+    throw new Error('That note is shared with the flight department, so it cannot be deleted. Retract it first.');
+  }
 }
 
 // Retained for the old single-field call path until it is gone.
@@ -4470,9 +4480,15 @@ async function hydrateTripNotes(trip){
     const who = escapeHtml(r.author_name || 'Crew');
     const role = r.author_role ? '<span class="note-other-role">' + escapeHtml(r.author_role) + '</span>' : '';
     const when = escapeHtml(formatNoteStamp(r.created_at));
-    // Delete is offered only on your own entries. RLS enforces the same rule,
-    // so a hidden button is a convenience, not the control.
-    const del = (myId && r.user_id === myId)
+    // Delete is offered only on your own entries AND only while the note is
+    // not shared -- migration 33 gates the policy the same way, so offering it
+    // on a shared note is offering a button that cannot work.
+    //
+    // To remove a shared note: retract it, then delete. Retraction is not
+    // built yet, so for now a shared note has no removal control at all. That
+    // is honest about the current state; a button that silently does nothing
+    // is not.
+    const del = (myId && r.user_id === myId && !r.is_public)
       ? '<button type="button" class="trip-log-del" data-note-del="' + escapeHtml(r.id) + '" title="Delete this note" aria-label="Delete this note">&times;</button>'
       : '';
     // Only ever seen by the author -- RLS hides private rows from everyone
