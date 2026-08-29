@@ -980,6 +980,13 @@
   .notes-door:hover .notes-door-lbl b{ color:var(--amber-500); }
   .notes-door:disabled{ cursor:default; opacity:0.5; }
   .notes-door:disabled:hover .notes-door-lbl b{ color:var(--paper-050); }
+  /* Read-only echo of the notes pinned to this leg. Sits under the door so the
+     glyph still reads as the way in -- the list is what is behind the door,
+     shown in place, not a second composer. */
+  .notes-door-list{ margin-top:12px; }
+  .notes-door-list:empty{ display:none; }
+  .notes-door-list-head{ font-size:11px; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--fog-500); margin-bottom:8px; }
   /* TRIP NOTES AS A LOG. Composer on top, entries below, newest first. */
   .trip-log-head{ display:flex; flex-direction:column; gap:2px; margin-bottom:8px; }
   .trip-log-head label{ font-size:12px; color:var(--fog-500); }
@@ -3259,7 +3266,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T01:30:00Z';
+const BUILD_VERSION = '2026-08-30T02:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3810,25 +3817,44 @@ function notesDoorHTML(opts){
 // -- always true, never wrong. A successful zero says "No notes yet", which is
 // a fact and must not be confused with "we could not ask".
 async function hydrateNotesDoorCount(tripNo, legId){
-  const sub = document.querySelector('#legNotesDoorSection .notes-door-lbl span');
-  if(!sub || !tripNo) return;
-  try{
-    const { count, error } = await sb
-      .from('trip_notes')
-      .select('id', { count: 'exact', head: true })
-      .eq('trip_id', tripNo);
-    // RLS already limits this to what you are allowed to see, so the number on
-    // the door is the number you will find behind it.
-    if(error) return;                 // leave the generic wording in place
-    if(count === null || count === undefined) return;
+  const sub  = document.querySelector('#legNotesDoorSection .notes-door-lbl span');
+  const list = document.getElementById('legPinnedNotes');
+  if(!tripNo || (!sub && !list)) return;
+  let rows;
+  // ONE fetch feeding both the count and the pinned list. A separate count
+  // query would be a second round trip that could disagree with the list it
+  // sits above.
+  try { rows = await fetchTripNotes(tripNo); }
+  catch(e){ return; }               // generic wording stands; list stays empty
+  if(!document.getElementById('legNotesDoorSection')) return;  // navigated away
+  if(!Array.isArray(rows)) return;
+
+  // RLS already limits this to what you are allowed to see, so the number on
+  // the door is the number you will find behind it.
+  if(sub){
     const legPart = legId ? ' pinned to this leg' : '';
     // Zero drops the "or" and leads with the add: "View no notes, or add one"
     // is not English, and the only useful act on an empty trip is writing.
-    sub.textContent = count === 0
+    sub.textContent = rows.length === 0
       ? 'No notes yet \u2014 add one' + legPart
-      : 'View ' + (count === 1 ? '1 note' : count + ' notes') +
+      : 'View ' + (rows.length === 1 ? '1 note' : rows.length + ' notes') +
         ' on this trip, or add one' + legPart;
-  }catch(e){ /* generic wording stands */ }
+  }
+
+  if(list){
+    const mine = rows
+      .filter(function(r){ return r.leg_id && r.leg_id === legId; })
+      .sort(function(a,b){ return String(b.created_at||'').localeCompare(String(a.created_at||'')); });
+    if(mine.length === 0){ list.innerHTML = ''; return; }
+    const myId = currentUserProfile ? currentUserProfile.id : null;
+    // hideLegTag: every entry here is pinned to THIS leg, so a leg chip on
+    // each one would be the same word repeated down the column.
+    list.innerHTML =
+      '<div class="notes-door-list-head">Pinned to this leg</div>' +
+      mine.map(function(r){
+        return tripNoteEntryHTML(r, { myId: myId, canDelete: false, hideLegTag: true });
+      }).join('');
+  }
 }
 
 // DOORWAY 3 of 3, above Documents. Placed at the bottom of the checklist on
@@ -3850,6 +3876,10 @@ function legNotesDoorHTML(leg){
         ? 'Read every note on this trip, or add one pinned to this leg'
         : 'This trip has no trip number yet, so it cannot carry notes'
     }) +
+    // Filled after render. Empty until then, and stays empty if nothing is
+    // pinned here -- an empty container is invisible, so the door reads the
+    // same as it did before on a leg with no notes.
+    '<div class="notes-door-list" id="legPinnedNotes"></div>' +
   '</div>';
 }
 
@@ -4505,6 +4535,54 @@ function wireTripNotes(trip){
   }
 }
 
+// ONE renderer for a note entry, wherever it appears -- the notes page list
+// and the leg checklist's pinned list. Two copies of this would drift the
+// moment either surface gained a field (trap 30).
+//
+// canDelete is FALSE on the leg checklist. The leg SHOWS notes; managing them
+// belongs to the notes page. Keeping removal in one place means there is one
+// answer to "where did my note go", not two.
+function tripNoteEntryHTML(r, opts){
+  const o = opts || {};
+  const who  = escapeHtml(r.author_name || 'Crew');
+  const role = r.author_role ? '<span class="note-other-role">' + escapeHtml(r.author_role) + '</span>' : '';
+  const when = escapeHtml(formatNoteStamp(r.created_at));
+  // Delete is offered only on your own entries AND only while the note is not
+  // shared -- migration 33 gates the policy the same way, so offering it on a
+  // shared note is offering a button that cannot work.
+  //
+  // To remove a shared note: retract it, then delete. Retraction is not built
+  // yet, so for now a shared note has no removal control at all. That is
+  // honest about the current state; a button that silently does nothing is not.
+  const del = (o.canDelete && o.myId && r.user_id === o.myId && !r.is_public)
+    ? '<button type="button" class="trip-log-del" data-note-del="' + escapeHtml(r.id) + '" title="Delete this note" aria-label="Delete this note">&times;</button>'
+    : '';
+  // Only ever seen by the author -- RLS hides private rows from everyone else
+  // -- but that is exactly who needs to know which of their own notes the
+  // department cannot read.
+  const priv = r.is_public ? '' : '<span class="trip-log-private-tag">Private</span>';
+  // Resolved against the CURRENT legs, so a renumbered leg reads correctly.
+  // Falls back to nothing rather than showing a raw id -- an internal
+  // identifier on screen is worse than no chip at all.
+  //
+  // Suppressed where every entry shown is pinned to the SAME leg: a column of
+  // identical chips carries no information (same reasoning that took the route
+  // out of the trip picker).
+  let legTag = '';
+  if(r.leg_id && !o.hideLegTag){
+    const pl = state.legs.find(function(x){ return x.id === r.leg_id; });
+    if(pl) legTag = '<span class="trip-log-private-tag">Leg ' +
+      escapeHtml(String(pl.legNumber || '?')) + '</span>';
+  }
+  return '<div class="trip-log-entry">' +
+    '<div class="trip-log-entry-head">' +
+      '<span class="note-other-author">' + who + '</span>' + role + legTag + priv +
+      '<span class="trip-log-when">' + when + '</span>' + del +
+    '</div>' +
+    '<div class="note-other-body">' + escapeHtml(r.content || '') + '</div>' +
+  '</div>';
+}
+
 async function hydrateTripNotes(trip){
   const tripId = (trip.tripNumber || '').trim();
   const list = document.getElementById('tripNotesList');
@@ -4522,40 +4600,7 @@ async function hydrateTripNotes(trip){
     return;
   }
   list.innerHTML = rows.map(function(r){
-    const who = escapeHtml(r.author_name || 'Crew');
-    const role = r.author_role ? '<span class="note-other-role">' + escapeHtml(r.author_role) + '</span>' : '';
-    const when = escapeHtml(formatNoteStamp(r.created_at));
-    // Delete is offered only on your own entries AND only while the note is
-    // not shared -- migration 33 gates the policy the same way, so offering it
-    // on a shared note is offering a button that cannot work.
-    //
-    // To remove a shared note: retract it, then delete. Retraction is not
-    // built yet, so for now a shared note has no removal control at all. That
-    // is honest about the current state; a button that silently does nothing
-    // is not.
-    const del = (myId && r.user_id === myId && !r.is_public)
-      ? '<button type="button" class="trip-log-del" data-note-del="' + escapeHtml(r.id) + '" title="Delete this note" aria-label="Delete this note">&times;</button>'
-      : '';
-    // Only ever seen by the author -- RLS hides private rows from everyone
-    // else -- but that is exactly who needs to know which of their own notes
-    // the department cannot read.
-    const priv = r.is_public ? '' : '<span class="trip-log-private-tag">Private</span>';
-    // Resolved against the CURRENT legs, so a renumbered leg reads correctly.
-    // Falls back to nothing rather than showing a raw id -- an internal
-    // identifier on screen is worse than no chip at all.
-    let legTag = '';
-    if(r.leg_id){
-      const pl = state.legs.find(function(x){ return x.id === r.leg_id; });
-      if(pl) legTag = '<span class="trip-log-private-tag">Leg ' +
-        escapeHtml(String(pl.legNumber || '?')) + '</span>';
-    }
-    return '<div class="trip-log-entry">' +
-      '<div class="trip-log-entry-head">' +
-        '<span class="note-other-author">' + who + '</span>' + role + legTag + priv +
-        '<span class="trip-log-when">' + when + '</span>' + del +
-      '</div>' +
-      '<div class="note-other-body">' + escapeHtml(r.content || '') + '</div>' +
-    '</div>';
+    return tripNoteEntryHTML(r, { myId: myId, canDelete: true });
   }).join('');
 }
 
