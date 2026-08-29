@@ -3266,7 +3266,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T04:15:00Z';
+const BUILD_VERSION = '2026-08-30T04:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13207,6 +13207,19 @@ document.addEventListener('click', function(e){
 
 function openNotesPage(opts){
   const o = opts || {};
+  // *** SAVE THE OPEN LEG FIRST. ***
+  // Every other navigation path in the app calls this before leaving --
+  // goToListView, the nav tabs, the back button. This one did not, so opening
+  // notes from a leg checklist threw away anything typed since the last blur:
+  // details text AND the Y/N toggles, which live in hidden inputs and are only
+  // persisted by collectAndSave.
+  //
+  // It bit hardest exactly where the doorway is most useful -- mid-edit, going
+  // to look something up to put IN the field being edited.
+  //
+  // Not awaited, matching every other caller: the save is fire-and-forget by
+  // design and renderMain must not wait on the network.
+  autoSaveIfEditing();
   // Captured BEFORE anything is mutated. Everything needed to rebuild the
   // origin exactly, not just its name.
   state.notesOrigin = {
