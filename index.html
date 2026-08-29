@@ -3241,7 +3241,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-29T23:20:00Z';
+const BUILD_VERSION = '2026-08-30T00:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3752,6 +3752,37 @@ function uploadRetentionHTML(){
       'the fields above are kept.' +
     '</span>' +
   '</div>';
+}
+
+// DOORWAY 3 of 3, above Documents. Placed at the bottom of the checklist on
+// purpose: that is where you are when you have finished working the leg and
+// have something to say about it.
+//
+// A DOORWAY, NOT A COMPOSER. Writing happens on the notes page, so there is
+// exactly one composer in the app. Opening from here auto-pins to this leg and
+// the page announces that it has done so.
+function legNotesDoorHTML(leg){
+  const tripNo = ((leg && leg.tripNumber) || '').trim();
+  // trip_notes is keyed on the trip NUMBER. Without one there is nowhere to
+  // put the note, so the door is shown but shut, with the reason on it --
+  // the same rule the composer already states on the Trip Brief.
+  const btn = tripNo
+    ? '<button type="button" class="doc-add-btn" id="legNotesOpenBtn" ' +
+        'data-leg-notes="' + escapeHtml(leg.id) + '">Open notes</button>'
+    : '<button type="button" class="doc-add-btn" id="legNotesOpenBtn" disabled ' +
+        'title="Give this trip a trip number to add notes">Open notes</button>';
+  return '' +
+    '<div class="section" id="legNotesDoorSection">' +
+      '<div class="doc-section-head">' +
+        '<h3 class="section-title">Notes</h3>' +
+        btn +
+      '</div>' +
+      '<div class="notes-empty-hint">' +
+        (tripNo
+          ? 'Opens the trip\u2019s notes, pinned to this leg.'
+          : 'This trip has no trip number yet, so it cannot carry notes.') +
+      '</div>' +
+    '</div>';
 }
 
 function legAttachmentsBlockHTML(leg){
@@ -13482,6 +13513,8 @@ function renderMain(){
       '</div>' +
     '</div>' +
 
+    legNotesDoorHTML(leg) +
+
     legAttachmentsBlockHTML(leg) +
 
     '<div class="save-bar">' +
@@ -19258,6 +19291,13 @@ document.addEventListener('click', async function(e){
     return;
   }
   if(t.closest('#quickNotePostBtn')){ postQuickNote(); return; }
+  const legNotesBtn = t.closest('[data-leg-notes]');
+  if(legNotesBtn){
+    // Doorway 3. Both pins pre-filled -- the trip is derived from the leg
+    // inside openNotesPage, so this caller passes only what it actually knows.
+    openNotesPage({ legId: legNotesBtn.getAttribute('data-leg-notes') });
+    return;
+  }
   if(t.closest('#barNoteBtn')){
     // Doorway 1 of 3. Neither pin is set: the bottom bar carries no trip
     // context, so the trip is chosen on the page.
