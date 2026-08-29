@@ -3259,7 +3259,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T01:20:00Z';
+const BUILD_VERSION = '2026-08-30T01:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3821,10 +3821,13 @@ async function hydrateNotesDoorCount(tripNo, legId){
     // the door is the number you will find behind it.
     if(error) return;                 // leave the generic wording in place
     if(count === null || count === undefined) return;
-    const legPart = legId ? ', or add one pinned to this leg' : ', or add one';
+    const legPart = legId ? ' pinned to this leg' : '';
+    // Zero drops the "or" and leads with the add: "View no notes, or add one"
+    // is not English, and the only useful act on an empty trip is writing.
     sub.textContent = count === 0
-      ? 'No notes yet' + legPart
-      : (count === 1 ? '1 note on this trip' : count + ' notes on this trip') + legPart;
+      ? 'No notes yet \u2014 add one' + legPart
+      : 'View ' + (count === 1 ? '1 note' : count + ' notes') +
+        ' on this trip, or add one' + legPart;
   }catch(e){ /* generic wording stands */ }
 }
 
