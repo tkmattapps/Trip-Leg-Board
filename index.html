@@ -3214,7 +3214,9 @@ a.chat-open{ text-decoration:none; display:inline-block; }
     <div class="feedback-modal-head">
       <span class="feedback-modal-title">Please confirm</span>
     </div>
-    <p id="confirmMessage" style="font-size:13px; color:var(--paper-050); line-height:1.6; margin:0 0 18px;"></p>
+    <!-- pre-line so a message can carry paragraph breaks. Existing callers all
+         pass a single line, so this changes nothing for them. -->
+    <p id="confirmMessage" style="font-size:13px; color:var(--paper-050); line-height:1.6; margin:0 0 18px; white-space:pre-line;"></p>
     <div style="display:flex; gap:10px;">
       <button class="btn" id="confirmCancelBtn" style="flex:1;">Cancel</button>
       <button class="btn btn-danger" id="confirmOkBtn" style="flex:1; border-color:var(--alert-600);">Confirm</button>
@@ -3266,7 +3268,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T04:35:00Z';
+const BUILD_VERSION = '2026-08-30T05:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8923,24 +8925,19 @@ function tripBriefBandHTML(leg){
       // belongs on the checklist, which is one tap away; the brief carries the
       // status word and nothing finer.
       '<span class="tb-head-spacer"></span>' +
-      // NAMED SO THE TWO CANNOT BE CONFUSED, which "Airport notes" and
-      // "Add note" plainly were -- two nouns of the same shape read as two
-      // flavours of one feature, and neither said what it did or what it
-      // covered.
-      //   "Airport brief"  -- a NOUN. Something you open and read, like the
-      //                       Trip Brief this page already is. Archived
-      //                       history for the airport; you do not write to it
-      //                       from here.
-      //   "Add leg note"   -- a VERB, so it obviously writes, and it carries
-      //                       its own scope so it cannot be mistaken for the
-      //                       trip-level notes in the bottom bar.
+      // "Airport brief" is a NOUN: something you open and read, like the Trip
+      // Brief this page already is. Archived history for the airport; you do
+      // not write to it from here.
+      //
+      // "Add leg note" USED TO SIT BESIDE IT and has been removed. It was a
+      // placeholder that toasted "coming soon" while the destination for such
+      // a note was still an open question. That question is now answered --
+      // the notes glyph on the leg checklist opens the notes page auto-pinned
+      // to the leg -- so a second, differently-named route to the same thing
+      // would be one entry point too many. Notes have ONE mark and it is the
+      // pencil.
       '<div class="tb-band-btns">' +
         '<button type="button" class="trip-quick-btn" data-airport-notes="' + escapeHtml(leg.id) + '">Airport brief</button>' +
-        // Wired to nothing yet, deliberately. Beacon already has three per-leg
-        // note fields (dep/arr/enroute) in leg_notes, per-user and private by
-        // default; where a note written from the brief should land is its own
-        // conversation, so the control exists and the destination does not.
-        '<button type="button" class="trip-quick-btn" data-tb-note="' + escapeHtml(leg.id) + '">Add leg note</button>' +
       '</div>' +
     '</div>' +
     tripBriefRouteHTML(leg) +
@@ -12771,25 +12768,38 @@ function renderTripDetailView(){
   document.querySelectorAll('[data-airport-notes]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      showToast('Airport brief coming soon');
+      // A PLACEHOLDER THAT EXPLAINS, not a toast that dismisses itself. The
+      // button is unwired, but a control that flashes "coming soon" reads as a
+      // dead end; one that describes what will be behind it reads as a
+      // promise. It also lets Kyle show the idea to the crew before any of it
+      // is built.
+      //
+      // Names THIS leg's two airports rather than talking in general terms, so
+      // the placeholder belongs to the leg you are looking at. Design is in
+      // beacon-airport-brief-design.md.
+      const leg = state.legs.find(function(l){
+        return l.id === btn.getAttribute('data-airport-notes');
+      });
+      const dep = (((leg || {}).dep || {}).airportId || '').trim().toUpperCase();
+      const arr = (((leg || {}).arr || {}).airportId || '').trim().toUpperCase();
+      // Falls back to plain wording when a leg has no airports entered yet --
+      // "what the crew has learned about  and " would be worse than generic.
+      const where = (dep && arr) ? (dep + ' and ' + arr) : (dep || arr || 'this leg\u2019s airports');
+      showConfirm(
+        'What the crew has learned about ' + where + ' \u2014 how long fuel really ' +
+        'takes, what the handler is like, where the customs desk is, which gate ' +
+        'wants a passport rather than a badge.\n\n' +
+        'These carry forward from trip to trip, so the next crew to fly here ' +
+        'reads what you found out. You will be able to add one for the whole ' +
+        'department, or keep one just for yourself.\n\n' +
+        'Not switched on yet.',
+        { alertOnly: true, title: 'Airport brief', okLabel: 'Got it' }
+      );
     });
   });
-  // Both bound BEFORE the card handler and both stop propagation, or the tap
-  // would also fall through to the band and open the checklist underneath.
-  document.querySelectorAll('[data-tb-note]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      // DELIBERATELY NOT WIRED. Beacon already has three per-leg note fields
-      // (dep / arr / enroute) in leg_notes, per-user and private by default.
-      // Which of those a note written from the brief should land in -- or
-      // whether it needs a fourth, trip-brief-level note, and whether it
-      // should default to shared with the crew -- is a separate decision.
-      showToast('Leg notes coming soon');
-    });
-  });
-  // Bound BEFORE the card handler and stops propagation, same rule as the two
-  // buttons above. It reaches the same place the card tap does -- the point is
-  // that you can SEE it.
+  // Bound BEFORE the card handler and stops propagation, or the tap would also
+  // fall through to the band and open the checklist underneath. It reaches the
+  // same place the card tap does -- the point is that you can SEE it.
   document.querySelectorAll('[data-tb-open]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
