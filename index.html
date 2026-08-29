@@ -3281,7 +3281,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T05:50:00Z';
+const BUILD_VERSION = '2026-08-30T06:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3924,6 +3924,76 @@ function tripNotesDoorHTML(trip){
 // A DOORWAY, NOT A COMPOSER. Writing happens on the notes page, so there is
 // exactly one composer in the app. Opening from here auto-pins to this leg and
 // the page announces that it has done so.
+// ---- NEXT PAX LEG, DERIVED ------------------------------------------------
+// What the passengers are told before they leave the aircraft: when do we go
+// again, and where. That is a PAX leg, so a repositioning flight is not an
+// answer -- it is skipped, not shown as "next leg, nobody aboard".
+//
+// THE BLANK RULE. A pax count of '0' is a fact: nobody is booked, skip it. A
+// BLANK count is not a fact, it means nobody has filled it in yet. Treating
+// blank as zero would silently skip a leg that may well be carrying people;
+// treating it as non-zero would fill this section from a leg that may be a
+// reposition. So the walk STOPS at a blank and returns nothing, leaving the
+// section empty rather than confidently wrong (trap 57).
+function nextPaxLegFor(leg){
+  const tn = ((leg || {}).tripNumber || '').trim();
+  const myNum = parseInt((leg || {}).legNumber, 10);
+  if(!tn || isNaN(myNum)) return null;
+  const later = state.legs
+    .filter(function(l){
+      if(l.deleted_at) return false;
+      if(((l.tripNumber || '').trim()) !== tn) return false;
+      const n = parseInt(l.legNumber, 10);
+      return !isNaN(n) && n > myNum;
+    })
+    .sort(function(a, b){ return parseInt(a.legNumber, 10) - parseInt(b.legNumber, 10); });
+  for(const l of later){
+    const raw = String(l.paxCount == null ? '' : l.paxCount).trim();
+    if(raw === '') return null;             // unknown -- stop, do not guess past it
+    const n = parseInt(raw, 10);
+    if(isNaN(n)) return null;               // unparseable is also unknown
+    if(n > 0) return l;                     // the next leg actually carrying people
+    // n === 0: a reposition. Keep walking.
+  }
+  return null;
+}
+
+// DISAGREEMENT FLAG. A stored value always wins -- but silently winning is the
+// hazard. A preliminary sheet arrives weeks out, the crew fills these in by
+// hand, a revised sheet lands with a different answer, and the section goes on
+// confidently showing the old one. An empty field at least looks unanswered; a
+// wrong one looks finished.
+//
+// So: flag, never overwrite. Same choice the ground stop carry made for hours
+// across a date boundary, and it reuses that flag's class so the two read as
+// one idea rather than two conventions.
+//
+// Only fires when BOTH sides have a value and they differ. A blank stored value
+// is filled from the derivation, so there is nothing to disagree about; a blank
+// derivation means the paperwork has no opinion yet.
+function nextPaxLegFlagHTML(inputId, stored, derived){
+  const a = String(stored == null ? '' : stored).trim();
+  const b = String(derived == null ? '' : derived).trim();
+  if(!a || !b || a === b) return '';
+  return '<span class="field-carried-note" id="' + inputId + 'NplNote">' +
+    'Trip sheet says ' + escapeHtml(b) + ' \u2014 please check' +
+  '</span>';
+}
+
+// FILLS BLANKS, NEVER OVERWRITES -- the same rule as the ground stop carry and
+// assignNonBlank. An automated value may be offered; only a person may replace
+// one. Returns what to RENDER, so a stored value always wins.
+function nextPaxLegDefaults(leg){
+  const src = nextPaxLegFor(leg);
+  if(!src) return { destination:'', date:'', etd:'', eta:'' };
+  return {
+    destination: (((src.arr || {}).airportId) || '').trim().toUpperCase(),
+    date: (src.date || '').trim(),
+    etd: (((src.dep || {}).etdLocal) || '').trim(),
+    eta: (((src.arr || {}).etaLocal) || '').trim()
+  };
+}
+
 function legNotesDoorHTML(leg){
   const tripNo = ((leg && leg.tripNumber) || '').trim();
   // trip_notes is keyed on the trip NUMBER. Without one there is nowhere to
@@ -13494,6 +13564,9 @@ function renderMain(){
     backLabel: backLabel,
     backTo: (state.previousView === 'tripDetail' && state.previousTripKey) ? 'tripDetail' : (state.previousView === 'history' ? 'history' : 'dashboard')
   });
+  // Offered defaults for the Next pax leg section. Computed here, used in the
+  // fields below with `stored || derived` so a typed value always wins.
+  const _npl = nextPaxLegDefaults(leg);
   const tripNumForLeg = (leg.tripNumber || '').trim();
   const siblingTrip = tripNumForLeg
     ? groupIntoTrips(state.legs).find(t => t.key === tripNumForLeg)
@@ -13718,11 +13791,21 @@ function renderMain(){
     '<div class="section">' +
       '' + sectionTitleHTML('Next pax leg', 'nextLeg', leg) + '' +
       '<div class="grid-5">' +
-        field('Destination', 'nextLegDestination', leg.nextLegDestination) +
-        field('Date', 'nextLegDate', leg.nextLegDate, {type:'date', lang:'en-US'}) +
+        field('Destination', 'nextLegDestination', leg.nextLegDestination || _npl.destination,
+          {noteHTML: nextPaxLegFlagHTML('nextLegDestination', leg.nextLegDestination, _npl.destination)}) +
+        field('Date', 'nextLegDate', leg.nextLegDate || _npl.date,
+          {type:'date', lang:'en-US',
+           noteHTML: nextPaxLegFlagHTML('nextLegDate', leg.nextLegDate, _npl.date)}) +
         field('Day', 'nextLegDay', leg.nextLegDay, {readonly:true, placeholder:'auto'}) +
-        field('ETD', 'nextLegEtd', displayLocal12h(leg.nextLegEtd), {placeholder:'local time'}) +
-        field('ETA', 'nextLegEta', displayLocal12h(leg.nextLegEta), {placeholder:'local time'}) +
+        // Compared in 12-hour display form, not raw: the stored value and the
+        // derived one can be the same time written two ways, and flagging
+        // '17:00' against '5:00 PM' would be a false alarm every time.
+        field('ETD', 'nextLegEtd', displayLocal12h(leg.nextLegEtd || _npl.etd),
+          {placeholder:'local time',
+           noteHTML: nextPaxLegFlagHTML('nextLegEtd', displayLocal12h(leg.nextLegEtd), displayLocal12h(_npl.etd))}) +
+        field('ETA', 'nextLegEta', displayLocal12h(leg.nextLegEta || _npl.eta),
+          {placeholder:'local time',
+           noteHTML: nextPaxLegFlagHTML('nextLegEta', displayLocal12h(leg.nextLegEta), displayLocal12h(_npl.eta))}) +
       '</div>' +
     '</div>' +
 
