@@ -494,7 +494,23 @@
      It also made overflow-x compute to auto: over-wide content used to scroll
      sideways inside .main and will now push the page instead. Anything that
      needs it owns its own scroller (see .sched-scroll). */
-  .main{ flex:1; padding:28px 36px; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(52px + max(28px, env(safe-area-inset-bottom))); }
+  /* *** min-width:0 IS LOAD-BEARING. DO NOT REMOVE. ***
+     .main is a flex CHILD of .app, and a flex item defaults to min-width:auto,
+     which refuses to shrink below the width of its own content. That default is
+     overridden to 0 only while the item has overflow set to something other
+     than visible -- which .main DID, until the overflow above was removed.
+     Removing it silently re-armed min-width:auto.
+     Consequence, found live 29 Aug 2026: the schedule's 427 day columns made
+     .main compute 13068px wide inside a 1139px app. .sched-scroll stretched
+     with it, scrollWidth === clientWidth, and the grid had NO scrollable range
+     at all. That looked like four separate bugs -- dead month arrows, dead
+     Today button, no wheel scrolling over the grid, and the strip parked on the
+     first day of the window (December of the previous year) -- and was one.
+     Any resize recomputed the constraint correctly and "fixed" it, which is
+     also why a docked DevTools console healed the bug every time it was used to
+     inspect it. Under 700px the schedule is a bottom sheet outside this flex
+     row, so the phone never showed it. */
+  .main{ flex:1; min-width:0; padding:28px 36px; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(52px + max(28px, env(safe-area-inset-bottom))); }
   .main-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:16px; flex-wrap:wrap; }
   .main-title-group{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
   .main-title{
@@ -3286,7 +3302,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T08:10:00Z';
+const BUILD_VERSION = '2026-08-30T09:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
