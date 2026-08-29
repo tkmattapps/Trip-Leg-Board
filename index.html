@@ -868,32 +868,29 @@
   .field input::placeholder, .field textarea::placeholder{ color:var(--fog-500); }
   .field input[readonly]{ color:var(--fog-300); cursor:default; }
 
-  /* --- Dial glyph, parked INSIDE the input's right edge ---
-     Kyle's constraint: the glyph must not change the checklist layout. .field is
-     a flex COLUMN (label stacked above input) with no positioning of its own, so
-     making it relative and taking the glyph out of flow costs the six-column grid
-     nothing -- the cell keeps its exact dimensions.
-     Anchored to the BOTTOM of the field, not centred on it: the label's height
-     varies (some wrap to two lines) and the input is always the last thing in the
-     box, so bottom-anchoring is the only stable way to sit on the input itself.
-     Height 34 against the input's 36 leaves the 1px border visible either side.
-     The right padding is on .tel-on only. A field whose number is not dialable
-     shows no glyph and gets no padding, so nothing is squeezed for a control
-     that isn't there. */
-  .field.has-tel{ position:relative; }
-  .field.has-tel.tel-on input[type=text]{ padding-right:32px; }
+  /* --- Dial glyph, leading the field on the LEFT ---
+     Kyle's constraint: the glyph must not change the checklist layout. It sits in
+     a gutter carved out of the input's left padding, out of flow, so the
+     six-column grid cell keeps its exact dimensions.
+     LEFT, not right, and this is the whole point: an overflowing input is swapped
+     for a wrapping textarea on focus (see .expand-clone below). A right-hand glyph
+     ends up sitting on top of whatever line happens to reach it. A LEFT gutter is
+     clear on every line, at any height, because the padding applies to the whole
+     box -- so the glyph never has text under it no matter how the value wraps.
+     The glyph is anchored to .tel-wrap, which hugs the control, NOT to .field --
+     .field is a flex column whose label sometimes wraps to two lines, so anything
+     measured from the field box drifts. Same reasoning as .select-wrap. */
+  .tel-wrap{ position:relative; display:block; }
+  .field.has-tel.tel-on .tel-wrap input[type=text],
+  .field.has-tel.tel-on .tel-wrap textarea.expand-clone{ padding-left:32px; }
   .field.has-tel:not(.tel-on) .tel-glyph{ display:none; }
   .tel-glyph{
-    position:absolute; right:1px; bottom:1px; width:30px; height:34px;
+    position:absolute; left:1px; top:1px; width:30px; height:34px;
     display:flex; align-items:center; justify-content:center;
-    color:var(--amber-700); text-decoration:none; border-radius:0 3px 3px 0;
+    color:var(--amber-700); text-decoration:none; border-radius:3px 0 0 3px;
     cursor:pointer; -webkit-tap-highlight-color:transparent;
   }
   .tel-glyph:active{ background:var(--panel-700); }
-  /* The expand-on-focus clone (see .expand-clone above) swaps a textarea in for
-     the input while it is focused and overflowing. The glyph would then float
-     over wrapped text at an arbitrary height, so it is hidden for the duration. */
-  .field.has-tel:has(textarea.expand-clone) .tel-glyph{ display:none; }
   /* Archive/read-only surfaces render the number as text, so the number ITSELF
      is the link -- no glyph needed, and none wanted in a printed-looking view. */
   .arch-tel{ color:var(--amber-700); text-decoration:none; border-bottom:1px solid var(--hairline); }
@@ -3316,7 +3313,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T18:20:00Z';
+const BUILD_VERSION = '2026-08-30T18:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -6925,12 +6922,25 @@ function field(label, id, value, opts){
   if(type === 'textarea'){
     return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label><textarea id="' + id + '" placeholder="' + escapeHtml(ph) + '"' + ro + '>' + escapeHtml(value) + '</textarea></div>';
   }
-  // opts.tel marks this as a phone field: the glyph rides inside the input and
-  // the has-tel/tel-on classes do the showing. See telHref for the rule.
-  const telDial = opts.tel ? telHref(value) : '';
-  const telCls = opts.tel ? (' has-tel' + (telDial ? ' tel-on' : '')) : '';
-  const telHTML = opts.tel ? telGlyphHTML(telDial) : '';
-  return '<div class="field' + metaCls + telCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label><input type="' + type + '" id="' + id + '" value="' + escapeHtml(value) + '" placeholder="' + escapeHtml(ph) + '"' + ro + langAttr + ' />' + telHTML + (opts.noteHTML || '') + '</div>';
+  // opts.tel marks this as a phone field: the glyph leads the input from a left
+  // gutter and the has-tel/tel-on classes do the showing. See telHref for the rule.
+  //
+  // The input is wrapped so the glyph has something that hugs the CONTROL to
+  // position against. This also puts the expand-on-focus clone inside the wrap
+  // -- that code inserts the textarea as input.nextSibling, so it lands in the
+  // wrapper too and picks up the same left gutter. Nothing reads the input as a
+  // direct child of .field (checked: only label uses a child combinator, and all
+  // the lookups go by data-field-id or getElementById), so the wrapper is inert.
+  if(opts.tel){
+    const telDial = telHref(value);
+    const telCls = ' has-tel' + (telDial ? ' tel-on' : '');
+    return '<div class="field' + metaCls + telCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label>' +
+      '<div class="tel-wrap">' +
+      '<input type="' + type + '" id="' + id + '" value="' + escapeHtml(value) + '" placeholder="' + escapeHtml(ph) + '"' + ro + langAttr + ' />' +
+      telGlyphHTML(telDial) +
+      '</div>' + (opts.noteHTML || '') + '</div>';
+  }
+  return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label><input type="' + type + '" id="' + id + '" value="' + escapeHtml(value) + '" placeholder="' + escapeHtml(ph) + '"' + ro + langAttr + ' />' + (opts.noteHTML || '') + '</div>';
 }
 
 // A <select> that reuses field()'s wrapper, so provenance classes,
