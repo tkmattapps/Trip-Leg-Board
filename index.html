@@ -2966,9 +2966,9 @@ a.chat-open{ text-decoration:none; display:inline-block; }
            put something on the trip record. Both raise a sheet rather than
            changing the view, and neither distinction matters to the person
            pressing them. -->
-      <button type="button" class="nav-btn" id="barNoteBtn" data-nav="note" aria-label="Trip notes" title="Trip notes">
+      <button type="button" class="nav-btn" id="barNoteBtn" data-nav="note" aria-label="Notes" title="Notes">
         <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-        <span class="nav-lbl">Trip notes</span>
+        <span class="nav-lbl">Notes</span>
       </button>
     </div>
     <!-- Contextual, and NOT navigation: the leg editor's hidden status select.
@@ -3266,7 +3266,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T02:30:00Z';
+const BUILD_VERSION = '2026-08-30T03:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3841,14 +3841,22 @@ async function hydrateNotesDoor(tripNo, opts){
 
   // RLS already limits this to what you are allowed to see, so the number on
   // the door is the number you will find behind it.
-  if(sub){
-    const legPart = o.legId ? ' pinned to this leg' : '';
+  // Only the LEG door gets a count. There the list below shows just this
+  // leg's notes, so "6 notes on this trip" tells you about the ones you
+  // cannot see. On the Trip Brief the list is complete and a count would
+  // restate it.
+  if(sub && o.legId){
+    const legPart = ' pinned to this leg';
     // Zero drops the "or" and leads with the add: "View no notes, or add one"
     // is not English, and the only useful act on an empty trip is writing.
+    // "all" is doing real work here: the list below shows only THIS leg's
+    // notes, so the door has to say it reaches the whole trip. "View all 1
+    // note" is not English, so the singular drops the count entirely.
     sub.textContent = rows.length === 0
       ? 'No notes yet \u2014 add one' + legPart
-      : 'View ' + (rows.length === 1 ? '1 note' : rows.length + ' notes') +
-        ' on this trip, or add one' + legPart;
+      : (rows.length === 1
+          ? 'View the note on this trip, or add one'
+          : 'View all ' + rows.length + ' notes on this trip, or add one') + legPart;
   }
 
   if(list){
@@ -3883,8 +3891,11 @@ function tripNotesDoorHTML(trip){
     notesDoorHTML({
       tripId: tripNo,
       disabled: !tripNo,
+      // No count here. The full list sits directly underneath, so a number
+      // above it would be counting what you can already see. The door only
+      // has to say what it is FOR.
       sub: tripNo
-        ? 'Read every note on this trip, or add one'
+        ? 'Add new trip note'
         : 'This trip has no trip number yet, so it cannot carry notes'
     }) +
     '<div class="notes-door-list"></div>' +
@@ -4448,7 +4459,11 @@ function wireNoteVisButton(btn){
 
 function tripNotesBlockHTML(trip){
   // A FEED, not a field. One composer at the top, entries below it newest
-  // first. No visibility toggle: every entry is shared with the department.
+  // first.
+  //
+  // THE app's only composer, since the Trip Brief's inline copy was replaced
+  // by a doorway glyph. Visibility IS decided here, at compose time, and is
+  // committed on save -- see noteVisButtonHTML.
   return '<div class="section" id="tripNotesSection" style="margin-top:18px;">' +
       '<div class="trip-log">' +
         '<div class="trip-log-head">' +
