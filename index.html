@@ -494,23 +494,7 @@
      It also made overflow-x compute to auto: over-wide content used to scroll
      sideways inside .main and will now push the page instead. Anything that
      needs it owns its own scroller (see .sched-scroll). */
-  /* *** min-width:0 IS LOAD-BEARING. DO NOT REMOVE. ***
-     .main is a flex CHILD of .app, and a flex item defaults to min-width:auto,
-     which refuses to shrink below the width of its own content. That default is
-     overridden to 0 only while the item has overflow set to something other
-     than visible -- which .main DID, until the overflow above was removed.
-     Removing it silently re-armed min-width:auto.
-     Consequence, found live 29 Aug 2026: the schedule's 427 day columns made
-     .main compute 13068px wide inside a 1139px app. .sched-scroll stretched
-     with it, scrollWidth === clientWidth, and the grid had NO scrollable range
-     at all. That looked like four separate bugs -- dead month arrows, dead
-     Today button, no wheel scrolling over the grid, and the strip parked on the
-     first day of the window (December of the previous year) -- and was one.
-     Any resize recomputed the constraint correctly and "fixed" it, which is
-     also why a docked DevTools console healed the bug every time it was used to
-     inspect it. Under 700px the schedule is a bottom sheet outside this flex
-     row, so the phone never showed it. */
-  .main{ flex:1; min-width:0; padding:28px 36px; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(52px + max(28px, env(safe-area-inset-bottom))); }
+  .main{ flex:1; padding:28px 36px; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(52px + max(28px, env(safe-area-inset-bottom))); }
   .main-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:16px; flex-wrap:wrap; }
   .main-title-group{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
   .main-title{
@@ -883,6 +867,36 @@
   .field textarea.is-overflowing{ overflow:hidden; }
   .field input::placeholder, .field textarea::placeholder{ color:var(--fog-500); }
   .field input[readonly]{ color:var(--fog-300); cursor:default; }
+
+  /* --- Dial glyph, parked INSIDE the input's right edge ---
+     Kyle's constraint: the glyph must not change the checklist layout. .field is
+     a flex COLUMN (label stacked above input) with no positioning of its own, so
+     making it relative and taking the glyph out of flow costs the six-column grid
+     nothing -- the cell keeps its exact dimensions.
+     Anchored to the BOTTOM of the field, not centred on it: the label's height
+     varies (some wrap to two lines) and the input is always the last thing in the
+     box, so bottom-anchoring is the only stable way to sit on the input itself.
+     Height 34 against the input's 36 leaves the 1px border visible either side.
+     The right padding is on .tel-on only. A field whose number is not dialable
+     shows no glyph and gets no padding, so nothing is squeezed for a control
+     that isn't there. */
+  .field.has-tel{ position:relative; }
+  .field.has-tel.tel-on input[type=text]{ padding-right:32px; }
+  .field.has-tel:not(.tel-on) .tel-glyph{ display:none; }
+  .tel-glyph{
+    position:absolute; right:1px; bottom:1px; width:30px; height:34px;
+    display:flex; align-items:center; justify-content:center;
+    color:var(--amber-700); text-decoration:none; border-radius:0 3px 3px 0;
+    cursor:pointer; -webkit-tap-highlight-color:transparent;
+  }
+  .tel-glyph:active{ background:var(--panel-700); }
+  /* The expand-on-focus clone (see .expand-clone above) swaps a textarea in for
+     the input while it is focused and overflowing. The glyph would then float
+     over wrapped text at an arbitrary height, so it is hidden for the duration. */
+  .field.has-tel:has(textarea.expand-clone) .tel-glyph{ display:none; }
+  /* Archive/read-only surfaces render the number as text, so the number ITSELF
+     is the link -- no glyph needed, and none wanted in a printed-looking view. */
+  .arch-tel{ color:var(--amber-700); text-decoration:none; border-bottom:1px solid var(--hairline); }
 
   /* --- Per-user leg notes (dep / arr / enroute) --- */
   .leg-notes{ display:flex; flex-direction:column; gap:10px; }
@@ -3302,7 +3316,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T09:15:00Z';
+const BUILD_VERSION = '2026-08-30T18:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -6835,6 +6849,68 @@ function hoursCarriedNoteHTML(inputId, endObj){
   '</span>';
 }
 
+// --- Dialable phone numbers -------------------------------------------------
+//
+// THE RULE, and it is Kyle's: a number is dialable ONLY if it leads with a plus.
+// Nothing is inferred. We do not guess a country from the airport, we do not
+// prepend +1 to a bare ten-digit number because it looks American.
+//
+// The reason is that the stored value is whatever the trip sheet printed --
+// agentPhone is free text straight out of extraction, and nothing in this app
+// has ever normalised it. A tel: link built on a guess does not fail cleanly;
+// it dials a real number somewhere else. On a ramp abroad that is worse than no
+// link at all, because it LOOKS like it worked.
+//
+// Everything below is therefore a rejection test, not a repair attempt. If the
+// value is not obviously a single international number, it stays plain text.
+//
+// Returns the dial string ('+' + digits) or '' when not dialable.
+function telHref(value){
+  const raw = (value == null ? '' : String(value)).trim();
+  if(raw.charAt(0) !== '+') return '';
+  // Only digits and the punctuation people use to space a number. This one test
+  // throws out the three cases that would otherwise dial wrong:
+  //   extensions   "+1 860 555 1234 x205"  -- stripping letters folds 205 into
+  //                                           the number and dials 14 digits
+  //   two numbers  "+1 860 555 1234 / +1 860 555 9999"  -- concatenates
+  //   prose        "+1 860 555 1234 (after 1800L)"      -- concatenates
+  // All three are perfectly reasonable things for a handler to have printed, so
+  // they are left as text rather than mangled into something dialable.
+  if(!/^\+[0-9 ().\u2010-\u2015-]+$/.test(raw)) return '';
+  const digits = raw.slice(1).replace(/[^0-9]/g, '');
+  // E.164 caps a number at 15 digits; below about 7 it cannot be a full
+  // international number and is more likely a slot allowance or a typo.
+  if(digits.length < 7 || digits.length > 15) return '';
+  return '+' + digits;
+}
+
+// The glyph is ALWAYS emitted for a phone field, and shown or hidden by the
+// tel-on class. Rendering it conditionally would mean the glyph could never
+// appear for a number typed after the field was drawn.
+function telGlyphHTML(dial){
+  return '<a class="tel-glyph" href="' + (dial ? 'tel:' + escapeHtml(dial) : '#') + '"' +
+    ' aria-label="Call this number" title="Call">' +
+    '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"' +
+    ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>' +
+    '</svg></a>';
+}
+
+// A tel: href built at render time goes stale the moment someone corrects the
+// number, and a stale dial link is exactly the failure this feature exists to
+// avoid. Delegated so it covers every phone field on every surface, present and
+// future, with nothing to remember to wire up.
+document.addEventListener('input', function(e){
+  const input = e.target;
+  if(!input || !input.matches || !input.matches('.field.has-tel input')) return;
+  const wrap = input.closest('.field');
+  const glyph = wrap ? wrap.querySelector('.tel-glyph') : null;
+  if(!glyph) return;
+  const dial = telHref(input.value);
+  wrap.classList.toggle('tel-on', !!dial);
+  glyph.setAttribute('href', dial ? 'tel:' + dial : '#');
+});
+
 function field(label, id, value, opts){
   opts = opts || {};
   const type = opts.type || 'text';
@@ -6849,7 +6925,12 @@ function field(label, id, value, opts){
   if(type === 'textarea'){
     return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label><textarea id="' + id + '" placeholder="' + escapeHtml(ph) + '"' + ro + '>' + escapeHtml(value) + '</textarea></div>';
   }
-  return '<div class="field' + metaCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label><input type="' + type + '" id="' + id + '" value="' + escapeHtml(value) + '" placeholder="' + escapeHtml(ph) + '"' + ro + langAttr + ' />' + (opts.noteHTML || '') + '</div>';
+  // opts.tel marks this as a phone field: the glyph rides inside the input and
+  // the has-tel/tel-on classes do the showing. See telHref for the rule.
+  const telDial = opts.tel ? telHref(value) : '';
+  const telCls = opts.tel ? (' has-tel' + (telDial ? ' tel-on' : '')) : '';
+  const telHTML = opts.tel ? telGlyphHTML(telDial) : '';
+  return '<div class="field' + metaCls + telCls + '" data-field-id="' + id + '"><label' + labelIdAttr + '>' + label + '</label><input type="' + type + '" id="' + id + '" value="' + escapeHtml(value) + '" placeholder="' + escapeHtml(ph) + '"' + ro + langAttr + ' />' + telHTML + (opts.noteHTML || '') + '</div>';
 }
 
 // A <select> that reuses field()'s wrapper, so provenance classes,
@@ -12715,9 +12796,19 @@ function archivedDocsBlockHTML(trip){
 function archField(label, value){
   const v = (value == null ? '' : String(value)).trim();
   if(!v) return '';   // Empty renders as nothing, per the standing rule.
+  // Read-only surface, so the number itself is the link. archField is generic --
+  // every archived field comes through here -- but telHref is strict enough that
+  // only a real international number qualifies. The one near-miss in this app is
+  // the slot allowance, which is typed "+ / -" or "+15"; the first fails the
+  // character test and the second the digit-count floor, so neither becomes a
+  // link. Nothing else in the record leads with a plus.
+  const dial = telHref(v);
+  const shown = dial
+    ? '<a class="arch-tel" href="tel:' + escapeHtml(dial) + '">' + escapeHtml(v) + '</a>'
+    : escapeHtml(v);
   return '<div class="arch-field">' +
     '<div class="arch-field-label">' + escapeHtml(label) + '</div>' +
-    '<div class="arch-field-value">' + escapeHtml(v) + '</div>' +
+    '<div class="arch-field-value">' + shown + '</div>' +
   '</div>';
 }
 
@@ -13812,7 +13903,7 @@ function renderMain(){
             field('Slot time / number', 'depSlotTimeNumber', leg.dep.slotTimeNumber) +
             field('Slot time allowance', 'depSlotAllowance', leg.dep.slotAllowance, {placeholder:'+ / -'}) +
             field('Handling agent', 'depAgent', leg.dep.agent) +
-            field('Phone number', 'depAgentPhone', leg.dep.agentPhone) +
+            field('Phone number', 'depAgentPhone', leg.dep.agentPhone, {tel:true}) +
             field('ARINC Frequency', 'depFrequency', leg.dep.frequency) +
             field('Fuel vendor', 'depFuelVendor', leg.dep.fuelVendor) +
             field('Fuel price', 'depFuelPricePerGallon', leg.dep.fuelPricePerGallon) +
@@ -13845,7 +13936,7 @@ function renderMain(){
             field('Slot time / number', 'arrSlotTimeNumber', leg.arr.slotTimeNumber) +
             field('Slot time allowance', 'arrSlotAllowance', leg.arr.slotAllowance, {placeholder:'+ / -'}) +
             field('Handling agent', 'arrAgent', leg.arr.agent) +
-            field('Phone number', 'arrAgentPhone', leg.arr.agentPhone) +
+            field('Phone number', 'arrAgentPhone', leg.arr.agentPhone, {tel:true}) +
             field('ARINC Frequency', 'arrFrequency', leg.arr.frequency) +
             field('Fuel vendor', 'arrFuelVendor', leg.arr.fuelVendor) +
             field('Fuel price', 'arrFuelPricePerGallon', leg.arr.fuelPricePerGallon) +
