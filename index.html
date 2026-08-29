@@ -3259,7 +3259,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T01:00:00Z';
+const BUILD_VERSION = '2026-08-30T01:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3800,6 +3800,32 @@ function notesDoorHTML(opts){
         '<span>' + escapeHtml(o.sub || '') + '</span>' +
       '</span>' +
     '</button>';
+}
+
+// Fills in the note count AFTER render. A count needs a round trip and the
+// checklist must not wait on it.
+//
+// The three outcomes are deliberately DISTINCT (trap 59): the door ships with
+// the generic wording, which is also what stays on screen if the query fails
+// -- always true, never wrong. A successful zero says "No notes yet", which is
+// a fact and must not be confused with "we could not ask".
+async function hydrateNotesDoorCount(tripNo, legId){
+  const sub = document.querySelector('#legNotesDoorSection .notes-door-lbl span');
+  if(!sub || !tripNo) return;
+  try{
+    const { count, error } = await sb
+      .from('trip_notes')
+      .select('id', { count: 'exact', head: true })
+      .eq('trip_id', tripNo);
+    // RLS already limits this to what you are allowed to see, so the number on
+    // the door is the number you will find behind it.
+    if(error) return;                 // leave the generic wording in place
+    if(count === null || count === undefined) return;
+    const legPart = legId ? ', or add one pinned to this leg' : ', or add one';
+    sub.textContent = count === 0
+      ? 'No notes yet' + legPart
+      : (count === 1 ? '1 note on this trip' : count + ' notes on this trip') + legPart;
+  }catch(e){ /* generic wording stands */ }
 }
 
 // DOORWAY 3 of 3, above Documents. Placed at the bottom of the checklist on
@@ -14387,6 +14413,7 @@ function renderMain(){
   hydrateLegNotes(leg.id);
   wireLegAttachments(leg);
   hydrateLegAttachments(leg);
+  hydrateNotesDoorCount(((leg.tripNumber || '').trim()), leg.id);
   wireLegHistory(leg);
   wireFieldBlurAutosave();
 }
