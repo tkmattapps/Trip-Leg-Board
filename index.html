@@ -3266,7 +3266,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T03:10:00Z';
+const BUILD_VERSION = '2026-08-30T04:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14015,8 +14015,26 @@ function renderMain(){
         cfg.fields.forEach(fid => {
           const inp = document.getElementById(fid);
           if(!inp) return;
+          // *** NEVER OVERWRITE TYPED TEXT. ***
+          // This branch used to assign cfg.text unconditionally, so setting a
+          // toggle to N destroyed whatever was in the linked field. It cost a
+          // real note -- a handler's helicopter tail for a Brazil arrival,
+          // typed by a captain, gone in one click with nothing in the change
+          // log to show it had ever been there. (It read 'NA' afterwards; a
+          // later toggle away then saw 'NA' and blanked it, which is why the
+          // field ended up empty rather than showing the autofill.)
+          //
+          // The convenience is worth keeping: N genuinely does mean "nothing
+          // to record here", and typing NA every time is friction. But it is
+          // only a convenience when the field is EMPTY. Once a human has put
+          // something there, that text outranks any autofill -- an automated
+          // action may offer a value, only a person may replace one, the same
+          // rule the ground stop carry follows.
+          //
+          // The else-branch was always guarded (it clears only its own 'NA'),
+          // which is exactly the test this one was missing.
           if(newVal === 'N'){
-            inp.value = cfg.text;
+            if(inp.value.trim() === '') inp.value = cfg.text;
           } else if(inp.value === cfg.text){
             inp.value = '';
           }
