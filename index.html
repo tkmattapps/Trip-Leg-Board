@@ -3313,7 +3313,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T18:45:00Z';
+const BUILD_VERSION = '2026-08-30T21:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4640,30 +4640,16 @@ async function deleteTripNoteEntry(noteId){
   }
 }
 
-// Retained for the old single-field call path until it is gone.
-async function saveTripNote(tripId, content, isPublic){
-  const prof = currentUserProfile || await loadCurrentUserProfile();
-  if(!prof) return;
-  const text = content == null ? '' : content;
-  if(text.trim() === ''){
-    await sb.from('trip_notes').delete()
-      .eq('trip_id', tripId).eq('user_id', prof.id);
-    return;
-  }
-  const deptId = await getFlightDepartmentId();
-  const row = {
-    trip_id: tripId,
-    flight_department_id: deptId,
-    user_id: prof.id,
-    content: text,
-    is_public: !!isPublic,
-    author_name: prof.displayName || '',
-    author_role: prof.role || '',
-    updated_at: new Date().toISOString()
-  };
-  const { error } = await sb.from('trip_notes').upsert(row, { onConflict: 'trip_id,user_id' });
-  if(error) throw error;
-}
+// saveTripNote() WAS HERE AND HAS BEEN DELETED (29 Aug 2026). It was the old
+// single-field trip-note save, already unreachable -- nothing called it. It
+// carried the same "blank content deletes the row" shape that cost us leg
+// scratchpads on trip 415129, and its delete was WIDER: no field key, so it
+// removed every trip_note for that user on that trip in one statement. Left in
+// place it was a loaded gun for whoever wired it back up. Trip notes are
+// entries now: composed with a visibility choice, removed only by the explicit
+// deleteTripNoteEntry() above, drafted through localStorage. Nothing here to
+// restore -- if a single-field save is ever wanted again, write it fresh with
+// the guard that saveOneLegNote carries.
 
 // ---- Compose-time visibility --------------------------------------------
 // Visibility is decided ONCE, while writing, and is committed on save. There
@@ -4962,10 +4948,30 @@ async function saveLegNote(legId, field, content){
 }
 
 // Read one field's textarea + toggle out of the DOM and persist it.
+//
+// *** AN EMPTY BOX IS NOT THE SAME AS AN EMPTIED BOX. *** hydrateLegNotes fills
+// these textareas from leg_notes AFTER the leg renders, so between render and
+// the fetch landing the box is legitimately blank -- and it stays blank forever
+// if that fetch fails or the user is offline. saveLegNote treats blank as a
+// DELETE. autoSaveIfEditing fires on every navigation and reads these boxes out
+// of the DOM, so clicking off a leg before its notes arrived used to delete the
+// note that was sitting in the database. Confirmed against trip 415129.
+//
+// wireLegNotes already stamps dataset.userEdited on input, for the opposite
+// race (a late fetch overwriting live typing). The same flag settles this one:
+// a box that was never touched cannot be an intentional clear, so skip the
+// write entirely rather than destroying the row. Clearing a note by hand still
+// deletes, because that path sets the flag.
+//
+// Known and accepted: the flag lives on the DOM element, so a re-render between
+// clearing a note and navigating away loses the clear and the note returns. A
+// note that reappears is a nuisance; a note that vanishes is data loss.
 async function saveOneLegNote(legId, field){
   const ta = document.getElementById(noteTextareaId(field));
   if(!ta) return;
-  await saveLegNote(legId, field, ta.value);
+  const text = ta.value == null ? '' : ta.value;
+  if(text.trim() === '' && ta.dataset.userEdited !== '1') return;
+  await saveLegNote(legId, field, text);
 }
 
 // Flush all three note fields for the active leg. Called from collectAndSave so
