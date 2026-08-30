@@ -1737,7 +1737,21 @@
   .import-crew-out.is-ok{ color:var(--fog-500); }
   .import-crew-out.is-moved{ color:var(--amber-500); }
   .import-crew-out.is-warn{ color:var(--amber-500); }
-  .import-actions{ display:flex; gap:10px; justify-content:flex-end; }
+  .import-actions{ display:flex; gap:10px; justify-content:flex-end; align-items:center; }
+  /* ---- Reconcile selection controls ----
+     Palette untouched: every colour here is an existing variable. The row is a
+     label wrapping its own checkbox so the whole line is a hit target, which
+     matters on a phone in a cockpit far more than on a desktop. */
+  .import-pick-row{ display:flex; align-items:flex-start; gap:8px; cursor:pointer; padding:2px 0; }
+  .import-pick-row input.import-pick{ margin:2px 0 0 0; flex:0 0 auto; cursor:pointer; }
+  .import-pick-text{ flex:1 1 auto; }
+  /* Unticked lines recede rather than vanish -- you can still read what you
+     declined, which is the point of leaving it on screen. */
+  .import-pick-row:has(input.import-pick:not(:checked)) .import-pick-text{ opacity:0.5; }
+  .import-pick-all{ background:none; border:none; padding:0 6px; cursor:pointer;
+    color:var(--fog-300); font-size:12px; text-decoration:underline; }
+  .import-pick-all:hover{ color:var(--paper-050); }
+  .import-pick-count{ margin-right:auto; color:var(--fog-300); font-size:12px; }
   /* CENTRED, full width. The 520px caps below were removed with it: a centred
      column narrower than its container is what produced the tabbed-toward-the
      -middle look on a wide Mac window. Centre the text and let it use the box. */
@@ -3313,7 +3327,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-31T00:25:00Z';
+const BUILD_VERSION = '2026-08-31T01:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11673,9 +11687,22 @@ function importCrewLineHTML(leg){
   return '<div><strong>Crew as printed:</strong><div class="import-crew-list">' + people + '</div></div>';
 }
 
-function importLegCardHTML(leg, index){
+// `pick` is OPT-IN and only the reconcile view passes it. This renderer is
+// shared with the plain import preview, which has no selection concept, so a
+// checkbox must never appear there.
+function importLegCardHTML(leg, index, pick){
   const dep = leg.dep || {}, arr = leg.arr || {}, comp = leg.compliance || {};
   const rows = [];
+  if(pick){
+    const cbId = 'recA_' + index;
+    // Whole leg, not per field: a half-populated new leg is not a useful
+    // object, and there is no existing value here to protect.
+    rows.push('<label class="import-pick-row" for="' + cbId + '">' +
+      '<input type="checkbox" class="import-pick" id="' + cbId + '"' +
+        ' data-pick="add" data-index="' + index + '"' + (pick.on ? ' checked' : '') + '>' +
+      '<span class="import-pick-text">Add this leg</span>' +
+    '</label>');
+  }
   const crewLine = importCrewLineHTML(leg);
   if(crewLine) rows.push(crewLine);
   rows.push(importEndLineHTML('Departure', dep));
@@ -11924,28 +11951,105 @@ function applyLegChange(leg, built, ch){
   }
 }
 
-function reconcileUpdateCardHTML(item, index){
+/* ---- RECONCILE SELECTION STATE -------------------------------------------
+
+   What the user has ticked on the reconcile preview. Lives on the rec object
+   so it survives a re-render, and is read by the apply -- the checkboxes in
+   the DOM are the control, not the record.
+
+   DEFAULTS ARE NOT UNIFORM, deliberately:
+     adds     ON   -- a leg on the sheet that is not on the board is the
+                      ordinary reason to import at all.
+     updates  ON   -- per field. Matches what the import did before selection
+                      existed, so leaving everything alone is the old behaviour.
+     removes  OFF  -- everything else on this screen writes a field; this one
+                      destroys a leg. It should be something the user reached
+                      for, not something they failed to notice.
+
+   Keyed by leg id for updates and removes rather than array index: index is a
+   position in a list that gets rebuilt, and a stale index silently selects the
+   wrong leg. Adds have no id yet, so they key by index and are rebuilt with
+   the list. */
+function recInitSelection(rec){
+  if(!rec || rec._sel) return rec && rec._sel;
+  const sel = { adds: {}, updates: {}, removes: {} };
+  (rec.toAdd || []).forEach(function(l, i){ sel.adds[i] = true; });
+  (rec.toUpdate || []).forEach(function(it){
+    const leg = it.existingLeg;
+    if(!leg) return;
+    const byPath = {};
+    describeLegChanges(leg, it.built).forEach(function(ch){ byPath[ch.path] = true; });
+    sel.updates[leg.id] = byPath;
+  });
+  (rec.toRemove || []).forEach(function(l){ sel.removes[l.id] = false; });
+  rec._sel = sel;
+  return sel;
+}
+
+// Everything currently ticked, as counts. Drives the running total and decides
+// whether Confirm can do anything at all.
+function recSelectionCounts(rec){
+  const sel = recInitSelection(rec) || { adds:{}, updates:{}, removes:{} };
+  let adds = 0, fields = 0, legsTouched = 0, removes = 0;
+  Object.keys(sel.adds).forEach(function(k){ if(sel.adds[k]) adds++; });
+  Object.keys(sel.updates).forEach(function(legId){
+    const byPath = sel.updates[legId] || {};
+    let n = 0;
+    Object.keys(byPath).forEach(function(p){ if(byPath[p]) n++; });
+    if(n){ legsTouched++; fields += n; }
+  });
+  Object.keys(sel.removes).forEach(function(k){ if(sel.removes[k]) removes++; });
+  return { adds: adds, fields: fields, legsTouched: legsTouched, removes: removes,
+           total: adds + fields + removes };
+}
+
+function reconcileUpdateCardHTML(item, index, sel){
   const leg = item.existingLeg;
   const changes = describeLegChanges(leg, item.built);
-  const changeLines = changes.map(c =>
-    '<div>' + escapeHtml(c.label) + ': ' + escapeHtml(c.oldVal) + ' &rarr; ' + escapeHtml(c.newVal) + '</div>'
-  ).join('');
+  const picked = (sel && sel.updates && sel.updates[leg.id]) || {};
+  const changeLines = changes.map(function(c){
+    const on = picked[c.path] !== false;
+    const cbId = 'recU_' + leg.id + '_' + c.path.replace(/[^A-Za-z0-9]/g, '_');
+    return '<label class="import-pick-row" for="' + cbId + '">' +
+      '<input type="checkbox" class="import-pick" id="' + cbId + '"' +
+        ' data-pick="update" data-leg-id="' + escapeHtml(String(leg.id)) + '"' +
+        ' data-path="' + escapeHtml(c.path) + '"' + (on ? ' checked' : '') + '>' +
+      '<span class="import-pick-text">' + escapeHtml(c.label) + ': ' +
+        escapeHtml(c.oldVal) + ' &rarr; ' + escapeHtml(c.newVal) + '</span>' +
+    '</label>';
+  }).join('');
+  // Only offer a per-leg select-all when there is more than one thing to pick.
+  const legAll = changes.length > 1
+    ? '<button type="button" class="import-pick-all" data-pick-all-leg="' + escapeHtml(String(leg.id)) + '">Select all</button>'
+    : '';
   return '<div class="import-leg-card" data-reconcile-update-index="' + index + '">' +
     '<div class="import-leg-card-head">' +
       '<span class="import-leg-title">Leg ' + escapeHtml(leg.legNumber) + ' &mdash; ' + escapeHtml(item.built.cityPair || leg.cityPair) + '</span>' +
+      legAll +
       '<span class="import-leg-date">' + escapeHtml(item.built.date || leg.date) + '</span>' +
     '</div>' +
     '<div class="import-leg-body">' + (changeLines || 'Schedule and routing will be refreshed from the new trip sheet.') + '<div style="margin-top:8px; color:var(--fog-300); font-size:12px;">Performance, dispatch, and other checklist data already on this leg is left untouched.</div></div>' +
   '</div>';
 }
 
-function reconcileRemoveCardHTML(leg, index){
+function reconcileRemoveCardHTML(leg, index, sel){
+  const on = !!(sel && sel.removes && sel.removes[leg.id]);
+  const cbId = 'recR_' + String(leg.id).replace(/[^A-Za-z0-9]/g, '_');
   return '<div class="import-leg-card import-leg-card-remove" data-reconcile-remove-index="' + index + '">' +
     '<div class="import-leg-card-head">' +
       '<span class="import-leg-title">Leg ' + escapeHtml(leg.legNumber) + ' &mdash; ' + escapeHtml(leg.cityPair) + '</span>' +
       '<span class="import-leg-date">' + escapeHtml(leg.date) + '</span>' +
     '</div>' +
-    '<div class="import-leg-body">No longer on the new trip sheet. Will be removed from the board.</div>' +
+    '<div class="import-leg-body">' +
+      // Not an error, and it must not read like one. The leg is not wrong --
+      // the new sheet simply no longer lists it. Unticked by default.
+      '<label class="import-pick-row" for="' + cbId + '">' +
+        '<input type="checkbox" class="import-pick" id="' + cbId + '"' +
+          ' data-pick="remove" data-leg-id="' + escapeHtml(String(leg.id)) + '"' + (on ? ' checked' : '') + '>' +
+        '<span class="import-pick-text">Remove this leg from the board</span>' +
+      '</label>' +
+      '<div style="margin-top:6px; color:var(--fog-300); font-size:12px;">Not on the new trip sheet. Left in place unless you tick it.</div>' +
+    '</div>' +
   '</div>';
 }
 
@@ -12509,18 +12613,25 @@ function renderImportPreviewView(){
       : ('This trip' + (recFirstLegLabel(rec) ? (' (' + escapeHtml(recFirstLegLabel(rec)) + ')') : ''));
     const summaryText = recTripLabel + ' currently has ' + rec.existingCount + ' leg' + (rec.existingCount === 1 ? '' : 's') + ' on your board. This trip sheet would result in: ' + (summaryParts.join(', ') || 'no changes') + '.';
 
+    const recSel = recInitSelection(rec);
     const recSections = [];
     if(rec.toAdd.length){
-      recSections.push('<div class="view-subtitle" style="margin-bottom:8px;">New legs to add (' + rec.toAdd.length + ')</div>');
-      recSections.push('<div class="import-leg-list">' + rec.toAdd.map((l, i) => importLegCardHTML(l, i)).join('') + '</div>');
+      recSections.push('<div class="view-subtitle" style="margin-bottom:8px;">New legs to add (' + rec.toAdd.length + ')' +
+        (rec.toAdd.length > 1 ? '<button type="button" class="import-pick-all" data-pick-all-section="add">Select all</button>' : '') +
+        '</div>');
+      recSections.push('<div class="import-leg-list">' + rec.toAdd.map((l, i) => importLegCardHTML(l, i, { on: recSel.adds[i] !== false })).join('') + '</div>');
     }
     if(rec.toUpdate.length){
-      recSections.push('<div class="view-subtitle" style="margin:16px 0 8px;">Existing legs to update (' + rec.toUpdate.length + ')</div>');
-      recSections.push('<div class="import-leg-list">' + rec.toUpdate.map((it, i) => reconcileUpdateCardHTML(it, i)).join('') + '</div>');
+      recSections.push('<div class="view-subtitle" style="margin:16px 0 8px;">Existing legs to update (' + rec.toUpdate.length + ')' +
+        '<button type="button" class="import-pick-all" data-pick-all-section="update">Select all</button>' +
+        '</div>');
+      recSections.push('<div class="import-leg-list">' + rec.toUpdate.map((it, i) => reconcileUpdateCardHTML(it, i, recSel)).join('') + '</div>');
     }
     if(rec.toRemove.length){
-      recSections.push('<div class="view-subtitle" style="margin:16px 0 8px;">Legs to remove (' + rec.toRemove.length + ')</div>');
-      recSections.push('<div class="import-leg-list">' + rec.toRemove.map((l, i) => reconcileRemoveCardHTML(l, i)).join('') + '</div>');
+      recSections.push('<div class="view-subtitle" style="margin:16px 0 8px;">Legs to remove (' + rec.toRemove.length + ')' +
+        (rec.toRemove.length > 1 ? '<button type="button" class="import-pick-all" data-pick-all-section="remove">Select all</button>' : '') +
+        '</div>');
+      recSections.push('<div class="import-leg-list">' + rec.toRemove.map((l, i) => reconcileRemoveCardHTML(l, i, recSel)).join('') + '</div>');
     }
 
     const hasChanges = rec.toAdd.length || rec.toUpdate.length || rec.toRemove.length;
@@ -12530,6 +12641,7 @@ function renderImportPreviewView(){
       (!hasChanges ? '<div style="color:var(--fog-300); padding:16px 0;">This trip sheet matches your board exactly. Nothing to change.</div>' : '') +
       '<div class="import-actions">' +
         '<button type="button" class="btn" id="importCancelBtn">Cancel</button>' +
+        (hasChanges ? '<span class="import-pick-count" id="importPickCount"></span>' : '') +
         (hasChanges ? '<button type="button" class="btn btn-primary" id="importReconcileConfirmBtn">Confirm and apply</button>' : '') +
       '</div>';
 
@@ -12538,15 +12650,114 @@ function renderImportPreviewView(){
       goToListView('home');
     });
 
+    // ---- selection wiring ----------------------------------------------
+    // Delegated from the panel, so nothing has to be rebound if a card is
+    // re-rendered. The checkbox is the control; rec._sel is the record.
+    function recSectionAllOn(kind){
+      if(kind === 'add'){
+        const ks = Object.keys(recSel.adds);
+        return ks.length > 0 && ks.every(function(k){ return recSel.adds[k]; });
+      }
+      if(kind === 'remove'){
+        const ks = Object.keys(recSel.removes);
+        return ks.length > 0 && ks.every(function(k){ return recSel.removes[k]; });
+      }
+      const legIds = Object.keys(recSel.updates);
+      if(!legIds.length) return false;
+      return legIds.every(function(id){
+        const byPath = recSel.updates[id] || {};
+        const ks = Object.keys(byPath);
+        return ks.length === 0 || ks.every(function(k){ return byPath[k]; });
+      });
+    }
+    function recRefreshPickUI(){
+      const c = recSelectionCounts(rec);
+      const bits = [];
+      if(c.adds) bits.push(c.adds + ' leg' + (c.adds === 1 ? '' : 's') + ' added');
+      if(c.fields) bits.push(c.fields + ' change' + (c.fields === 1 ? '' : 's') + ' on ' + c.legsTouched + ' leg' + (c.legsTouched === 1 ? '' : 's'));
+      // Removals are stated SEPARATELY and by count, never folded into a
+      // total. Deleting a leg is not the same kind of act as writing a field.
+      if(c.removes) bits.push(c.removes + ' leg' + (c.removes === 1 ? '' : 's') + ' removed');
+      const el = document.getElementById('importPickCount');
+      if(el) el.textContent = bits.length ? ('Will apply: ' + bits.join(', ')) : 'Nothing selected';
+      const btn = document.getElementById('importReconcileConfirmBtn');
+      if(btn) btn.disabled = (c.total === 0);
+      main.querySelectorAll('[data-pick-all-leg]').forEach(function(b){
+        const byPath = recSel.updates[b.getAttribute('data-pick-all-leg')] || {};
+        const keys = Object.keys(byPath);
+        b.textContent = (keys.length && keys.every(function(k){ return byPath[k]; })) ? 'Select none' : 'Select all';
+      });
+      main.querySelectorAll('[data-pick-all-section]').forEach(function(b){
+        b.textContent = recSectionAllOn(b.getAttribute('data-pick-all-section')) ? 'Select none' : 'Select all';
+      });
+    }
+    main.addEventListener('change', function(ev){
+      const cb = ev.target;
+      if(!cb || !cb.classList || !cb.classList.contains('import-pick')) return;
+      const kind = cb.getAttribute('data-pick');
+      if(kind === 'add'){ recSel.adds[cb.getAttribute('data-index')] = cb.checked; }
+      else if(kind === 'remove'){ recSel.removes[cb.getAttribute('data-leg-id')] = cb.checked; }
+      else if(kind === 'update'){
+        const legId = cb.getAttribute('data-leg-id');
+        recSel.updates[legId] = recSel.updates[legId] || {};
+        recSel.updates[legId][cb.getAttribute('data-path')] = cb.checked;
+      }
+      recRefreshPickUI();
+    });
+    main.addEventListener('click', function(ev){
+      const b = ev.target.closest ? ev.target.closest('.import-pick-all') : null;
+      if(!b) return;
+      const legId = b.getAttribute('data-pick-all-leg');
+      if(legId){
+        const byPath = recSel.updates[legId] || {};
+        const turnOn = !Object.keys(byPath).every(function(k){ return byPath[k]; });
+        Object.keys(byPath).forEach(function(k){ byPath[k] = turnOn; });
+        main.querySelectorAll('.import-pick[data-pick="update"][data-leg-id="' + legId + '"]').forEach(function(cb){ cb.checked = turnOn; });
+        recRefreshPickUI();
+        return;
+      }
+      const section = b.getAttribute('data-pick-all-section');
+      if(!section) return;
+      const turnOn = !recSectionAllOn(section);
+      if(section === 'add'){
+        Object.keys(recSel.adds).forEach(function(k){ recSel.adds[k] = turnOn; });
+        main.querySelectorAll('.import-pick[data-pick="add"]').forEach(function(cb){ cb.checked = turnOn; });
+      } else if(section === 'remove'){
+        Object.keys(recSel.removes).forEach(function(k){ recSel.removes[k] = turnOn; });
+        main.querySelectorAll('.import-pick[data-pick="remove"]').forEach(function(cb){ cb.checked = turnOn; });
+      } else {
+        Object.keys(recSel.updates).forEach(function(id){
+          const byPath = recSel.updates[id] || {};
+          Object.keys(byPath).forEach(function(k){ byPath[k] = turnOn; });
+        });
+        main.querySelectorAll('.import-pick[data-pick="update"]').forEach(function(cb){ cb.checked = turnOn; });
+      }
+      recRefreshPickUI();
+    });
+    recRefreshPickUI();
+
     const reconcileConfirmBtn = document.getElementById('importReconcileConfirmBtn');
     if(reconcileConfirmBtn){
       reconcileConfirmBtn.addEventListener('click', async () => {
-        const confirmed = await showConfirm(summaryText + ' This cannot be undone. Continue?');
+        // Describes THE SELECTION, not the sheet. summaryText says what the
+        // trip sheet would do in full; by this point the user may have declined
+        // most of it, and confirming against the wrong number is how someone
+        // approves a change they thought they had unticked. Removals are named
+        // separately and last, because that is the part worth pausing over.
+        const _c = recSelectionCounts(rec);
+        const _bits = [];
+        if(_c.adds) _bits.push(_c.adds + ' leg' + (_c.adds === 1 ? '' : 's') + ' added');
+        if(_c.fields) _bits.push(_c.fields + ' change' + (_c.fields === 1 ? '' : 's') + ' across ' + _c.legsTouched + ' leg' + (_c.legsTouched === 1 ? '' : 's'));
+        if(_c.removes) _bits.push(_c.removes + ' leg' + (_c.removes === 1 ? '' : 's') + ' REMOVED from the board');
+        if(!_bits.length){ showToast('Nothing selected'); return; }
+        const confirmed = await showConfirm('Apply ' + _bits.join(', ') + '? This cannot be undone.');
         if(!confirmed) return;
         reconcileConfirmBtn.disabled = true;
         reconcileConfirmBtn.textContent = 'Applying...';
         try{
-          for(const leg of rec.toAdd){
+          for(let ai = 0; ai < rec.toAdd.length; ai++){
+            if(recSel.adds[ai] === false) continue;
+            const leg = rec.toAdd[ai];
             await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
           }
           for(const item of rec.toUpdate){
@@ -12560,16 +12771,21 @@ function renderImportPreviewView(){
             // describeLegChanges reported a shorter hand-kept list, so fields
             // were written that the user was never shown.
             //
-            // Now there is one list. Whatever the preview described is applied,
-            // by the same writer, and nothing else can be. When the checkboxes
-            // land, this loop filters on the entry's selected flag and needs no
-            // other change.
-            const changes = describeLegChanges(leg, built);
+            // Now there is one list, and the user's ticks filter it. Nothing
+            // can be written that was not both described AND selected.
+            const picked = recSel.updates[leg.id] || {};
+            const changes = describeLegChanges(leg, built).filter(function(ch){ return picked[ch.path] !== false; });
+            if(!changes.length) continue;   // nothing chosen on this leg: leave it entirely alone
             for(const ch of changes){ applyLegChange(leg, built, ch); }
             leg.updatedAt = Date.now();
             await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
           }
-          for(const leg of rec.toRemove){
+          // Removals are OPT-IN. The list is filtered BEFORE the loop, so with
+          // nothing ticked there is no iteration and no call to deleteLeg --
+          // not even a guarded one. A delete that is merely guarded is still a
+          // delete waiting for its guard to be wrong.
+          const _toRemove = rec.toRemove.filter(function(l){ return recSel.removes[l.id] === true; });
+          for(const leg of _toRemove){
             await deleteLeg(leg.id);
           }
           await loadLegs();
