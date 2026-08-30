@@ -3327,7 +3327,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-31T01:15:00Z';
+const BUILD_VERSION = '2026-08-31T02:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4925,27 +4925,19 @@ function formatNoteStamp(iso){
 
 function noteTextareaId(field){ return field === 'enroute' ? 'enrouteNotes' : (field + 'Notes'); }
 
-// WHAT THE USER SEES WITHOUT THIS: the scratchpad snapping. legNotesBlockHTML
-// renders an EMPTY textarea and hydrateLegNotes fills it after a round trip to
-// Supabase, so every leg you open paints blank and then pops the text in a
-// moment later. Clicking between legs made it flicker on every click.
+// [REMOVED 2026-08-31] There was an in-memory note cache here, keyed leg+field,
+// added to stop the scratchpad "snapping" as hydration landed. It rendered a
+// remembered value into the textarea on first paint.
 //
-// So remember what we have already read. The fetch still runs and still wins --
-// this only means a leg visited once in this session paints filled on the FIRST
-// frame instead of the second. Not a store of record: memory only, dies with
-// the tab, and never consulted by any save path.
+// It caused data loss on trip 415129: a note written on one leg appeared on
+// five others, and each visit then PERSISTED it to that leg, because the save
+// path could not tell painted text from typed text. After a reload it was on
+// all six.
 //
-// Keyed leg + field because that is the grain of the table, and because a leg
-// object is not to hand everywhere a note is written.
-const _legNoteCache = Object.create(null);
-function legNoteCacheKey(legId, field){ return String(legId) + '|' + field; }
-function readLegNoteCache(legId, field){
-  const v = _legNoteCache[legNoteCacheKey(legId, field)];
-  return typeof v === 'string' ? v : null;   // null = never loaded, '' = loaded and empty
-}
-function writeLegNoteCache(legId, field, text){
-  _legNoteCache[legNoteCacheKey(legId, field)] = text == null ? '' : text;
-}
+// The lesson, written down so it is not rediscovered: never pre-fill a control
+// that autosaves with a value the user did not enter. If the snap is worth
+// removing later, prefetch the trip's notes BEFORE the leg renders so the box
+// holds its OWN leg's text from the first frame -- do not paint a guess.
 
 // Read the current user's own + others' public notes for a leg. RLS returns
 // exactly: my own rows (any visibility) plus others' rows that are public and
@@ -4965,9 +4957,6 @@ async function saveLegNote(legId, field, content){
   if(text.trim() === ''){
     await sb.from('leg_notes').delete()
       .eq('leg_id', legId).eq('user_id', prof.id).eq('field', field);
-    // Cache follows the database, or navigating back would repaint a note that
-    // has just been deleted and invite you to believe the delete failed.
-    writeLegNoteCache(legId, field, '');
     return;
   }
   const deptId = await getFlightDepartmentId();
@@ -4984,9 +4973,6 @@ async function saveLegNote(legId, field, content){
   };
   const { error } = await sb.from('leg_notes').upsert(row, { onConflict: 'leg_id,user_id,field' });
   if(error) throw error;
-  // AFTER the write, never before: caching a value the database rejected would
-  // repaint the note as saved when it is not.
-  writeLegNoteCache(legId, field, text);
 }
 
 // Read one field's textarea + toggle out of the DOM and persist it.
@@ -5008,11 +4994,31 @@ async function saveLegNote(legId, field, content){
 // Known and accepted: the flag lives on the DOM element, so a re-render between
 // clearing a note and navigating away loses the clear and the note returns. A
 // note that reappears is a nuisance; a note that vanishes is data loss.
+/* *** A NOTE IS ONLY EVER WRITTEN BY THE PERSON WHO TYPED IT. ***
+
+   This used to skip only the EMPTY-and-untouched case, to stop an un-hydrated
+   box deleting a stored note. That half-guard was not enough. On trip 415129 a
+   note rendered into the wrong leg's box was then PERSISTED to that leg,
+   because non-empty text was saved unconditionally -- the code could not tell
+   text a human typed from text something else had put there.
+
+   So the rule is now symmetric and covers both directions: no userEdited flag,
+   no write. Not the delete, not the upsert, nothing.
+
+   This costs nothing real. hydrateLegNotes fills the box from the database, so
+   saving an untouched box back could only ever rewrite the value it just read.
+   The only writes that matter are the ones a person made, and those always
+   carry the flag -- wireLegNotes stamps it on the first keystroke.
+
+   Known and accepted, unchanged: the flag lives on the DOM element, so a
+   re-render between editing and navigating away loses the edit. A note that
+   fails to save is a nuisance the user can see and repeat. A note that lands
+   on five legs it was never written on is silent, and spreads. */
 async function saveOneLegNote(legId, field){
   const ta = document.getElementById(noteTextareaId(field));
   if(!ta) return;
+  if(ta.dataset.userEdited !== '1') return;
   const text = ta.value == null ? '' : ta.value;
-  if(text.trim() === '' && ta.dataset.userEdited !== '1') return;
   await saveLegNote(legId, field, text);
 }
 
@@ -5052,9 +5058,6 @@ async function hydrateLegNotes(legId){
     const fieldRows = rows.filter(function(r){ return r.field === field; });
     const mine = myId ? fieldRows.find(function(r){ return r.user_id === myId; }) : null;
     const fresh = mine ? (mine.content || '') : '';
-    // Cache unconditionally: this is what the database holds, whether or not
-    // the box is safe to repaint right now.
-    writeLegNoteCache(legId, field, fresh);
     const ta = document.getElementById(noteTextareaId(field));
     if(ta && ta.dataset.userEdited !== '1' && document.activeElement !== ta){
       ta.value = fresh;
@@ -5070,17 +5073,26 @@ async function hydrateLegNotes(legId){
 // ESCAPED, and escaped as TEXT CONTENT rather than an attribute: a scratchpad
 // is free text, so a note containing </textarea> would otherwise close the tag
 // and put the rest of the note into the page as markup.
-function legNotesBlockHTML(field, labelHtml, labelId, placeholder, legId){
+/* *** THIS BOX RENDERS EMPTY. ALWAYS. ***
+   It briefly rendered cached text, to remove a cosmetic "snap" as hydration
+   landed. That was a mistake and it cost real data on trip 415129: a note
+   written on one leg appeared on five others and then PERSISTED to them,
+   because saveOneLegNote saves whatever non-empty text it finds in this box.
+   Text nobody typed, in a box that autosaves, is a data-loss machine.
+
+   The snap is cosmetic. The notes are not. If the snap is ever worth removing
+   again, do it by prefetching notes for the whole trip BEFORE the leg renders,
+   so the box is filled with this leg's own text from the start -- never by
+   painting a remembered value and hoping the right one was remembered. */
+function legNotesBlockHTML(field, labelHtml, labelId, placeholder){
   const labelIdAttr = labelId ? ' id="' + labelId + '"' : '';
-  const cached = legId ? readLegNoteCache(legId, field) : null;
-  const initial = cached ? escapeHtml(cached) : '';
   return '<div class="leg-notes" data-note-field="' + field + '">' +
       '<div class="field leg-note-own">' +
         '<div class="leg-note-labelrow">' +
           '<label' + labelIdAttr + '>' + labelHtml + '</label>' +
           '<div class="leg-note-hint">Private \u00b7 not archived</div>' +
         '</div>' +
-        '<textarea id="' + noteTextareaId(field) + '" class="leg-note-textarea" placeholder="' + escapeHtml(placeholder || '') + '">' + initial + '</textarea>' +
+        '<textarea id="' + noteTextareaId(field) + '" class="leg-note-textarea" placeholder="' + escapeHtml(placeholder || '') + '"></textarea>' +
       '</div>' +
     '</div>';
 }
@@ -14301,7 +14313,7 @@ function renderMain(){
           '</div>' +
           // Outside the grid: the hint is a full-width note, and inside a fixed
           // six-column grid it would eat a cell and shunt the row order.
-                    '<div style="margin-top:14px">' + legNotesBlockHTML('dep', airfieldNotesLabel('dep', leg.dep.airportId), 'depNotesLabel', 'Jot something down for yourself\u2026', leg.id) + '</div>' +
+                    '<div style="margin-top:14px">' + legNotesBlockHTML('dep', airfieldNotesLabel('dep', leg.dep.airportId), 'depNotesLabel', 'Jot something down for yourself\u2026') + '</div>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -14332,7 +14344,7 @@ function renderMain(){
             ynField('Waived w/ fuel', 'arrRampFeeWaived', leg.arr.rampFeeWaived) +
             field('Min GAL to waive', 'arrRampFeeMinGallons', leg.arr.rampFeeMinGallons) +
           '</div>' +
-                    '<div style="margin-top:14px">' + legNotesBlockHTML('arr', airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotesLabel', 'Jot something down for yourself\u2026', leg.id) + '</div>' +
+                    '<div style="margin-top:14px">' + legNotesBlockHTML('arr', airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotesLabel', 'Jot something down for yourself\u2026') + '</div>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -14354,7 +14366,7 @@ function renderMain(){
         windToggleField(leg) +
         field('Relative time to destination', 'relativeTimeToDestination', '', {readonly:true, placeholder:'auto'}) +
       '</div>' +
-      '<div style="margin-top:14px">' + legNotesBlockHTML('enroute', 'Enroute Scratchpad', 'enrouteNotesLabel', 'Jot something down for yourself\u2026', leg.id) + '</div>' +
+      '<div style="margin-top:14px">' + legNotesBlockHTML('enroute', 'Enroute Scratchpad', 'enrouteNotesLabel', 'Jot something down for yourself\u2026') + '</div>' +
     '</div>' +
 
     '<div class="section">' +
