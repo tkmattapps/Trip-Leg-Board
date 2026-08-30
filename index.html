@@ -494,7 +494,19 @@
      It also made overflow-x compute to auto: over-wide content used to scroll
      sideways inside .main and will now push the page instead. Anything that
      needs it owns its own scroller (see .sched-scroll). */
-  .main{ flex:1; padding:28px 36px; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(var(--bottom-bar-h, 72px) + 28px); }
+  /* *** min-width:0 IS LOAD-BEARING. DO NOT REMOVE. ***
+     .main is a flex item, and flex items default to min-width:auto, which means
+     they refuse to shrink below their content's max-content width. .sched-row is
+     min-width:max-content, so without this .main inflates to the full width of
+     the grid, .sched-scroll stretches with it, and a scroller with no scrollable
+     range cannot scroll. That also silently kills the month steppers and Today,
+     which work by setting scrollLeft -- a no-op on an element that does not
+     overflow. One missing declaration, three dead features, and only the
+     schedule is wide enough to show it.
+     Diagnosed over about three hours on 29 Aug 2026, lost again before 31 Aug,
+     and re-applied. If it goes missing a third time the answer is not to
+     re-diagnose it: check this line first. */
+  .main{ flex:1; min-width:0; padding:28px 36px; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(var(--bottom-bar-h, 72px) + 28px); }
   .main-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:16px; flex-wrap:wrap; }
   .main-title-group{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
   .main-title{
@@ -3339,7 +3351,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-31T03:35:00Z';
+const BUILD_VERSION = '2026-08-31T04:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
