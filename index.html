@@ -2827,11 +2827,15 @@ a.chat-open{ text-decoration:none; display:inline-block; }
        sits -- so Review history sat behind the nav and could not be clicked.
        Sticking it above the bar instead worked, but gave the last edited line a
        permanent bar of its own, which is more furniture than a footnote earns.
-       So it simply ends the page. Clearance below it comes from .main's
-       measured padding-bottom (--bottom-bar-h), which a sticky element could
-       never have benefited from. */
+       So it simply ends the page.
+       It carries its OWN bottom clearance rather than relying on .main's,
+       because this is the last thing on the page and the one thing that must
+       never end up under the nav. Belt and braces with .main's padding: the
+       cost is a little empty space at the very end of a long scroll, which is
+       nothing, and the failure it prevents is an unclickable control. */
     background:var(--ink-900); border-top:1px solid var(--hairline);
     padding:14px 0; padding-right:290px; margin-top:10px; display:flex; justify-content:flex-start; align-items:center;
+    padding-bottom:calc(var(--bottom-bar-h, 72px) + 24px);
   }
   .save-hint{ font-size:12px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
   .review-history-btn{ margin-left:8px; font-size:11px; font-family:system-ui,'Inter',sans-serif; color:var(--amber-500); background:none; border:none; text-decoration:underline; cursor:pointer; padding:0; }
@@ -3335,7 +3339,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-31T03:20:00Z';
+const BUILD_VERSION = '2026-08-31T03:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13790,6 +13794,15 @@ function stickyTopOffset(){
 }
 window.addEventListener('resize', syncPageHeaderHeight);
 window.addEventListener('orientationchange', syncPageHeaderHeight);
+// The bar's nav buttons carry text labels, so its height depends on a font that
+// arrives AFTER first paint. Measured before that, --bottom-bar-h is short by
+// however much the label grew, and whatever relies on it ends up under the nav.
+// Cheap to redo, and it explains why a phone (smaller labels, or none) could
+// look right while a desktop did not.
+if(document.fonts && document.fonts.ready){
+  document.fonts.ready.then(syncPageHeaderHeight).catch(function(){});
+}
+window.addEventListener('load', syncPageHeaderHeight);
 
 function setPageHeader(opts){
   const o = opts || {};
