@@ -3351,7 +3351,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-31T04:20:00Z';
+const BUILD_VERSION = '2026-08-31T05:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5518,6 +5518,16 @@ function newLegChangeBatchId(){
   });
 }
 
+// *** DORMANT -- NO CALLERS. DO NOT RECONNECT. ***
+// Superseded 31 Aug 2026 by the log_leg_changes trigger on public.legs, which
+// diffs OLD.data against NEW.data server-side. Calling this again would write a
+// second row for every field on every save.
+//
+// Kept, not deleted, for one reason: it is the only place batch_id is written,
+// and grouping a trip-wide apply as one action is still wanted. The server
+// cannot see a client-side batch id, so if that returns it needs a mechanism of
+// its own -- and this is the record of what it used to do.
+//
 // Append change rows for one leg. Never throws (best-effort logging).
 async function logLegChanges(leg, changes){
   if(!changes || !changes.length) return;
@@ -6050,7 +6060,12 @@ async function hydrateLegHistory(leg){
   list.innerHTML = rows.map(function(r){
     const who = escapeHtml(r.changed_by_name || 'Someone');
     const when = attachFmtWhen ? attachFmtWhen(r.created_at) : new Date(r.created_at).toLocaleString();
-    const label = escapeHtml(r.field_label || r.field_path || 'Field');
+    // The database trigger writes NO field_label -- the label map lives here, in
+    // CHANGELOG_LABELS, and copying sixty entries into SQL is a far bigger drift
+    // surface than the skip list. Falling back to the raw dotted path would put
+    // 'dep.agentPhone' on screen, so resolve it the way collapseChanges already
+    // does. Rows written before 30 Aug 2026 still carry a stored label and keep it.
+    const label = escapeHtml(r.field_label || changelogLabel(r.field_path || '') || 'Field');
     const oldV = escapeHtml(changelogValFmt(r.old_value));
     const newV = escapeHtml(changelogValFmt(r.new_value));
     return '<div class="changelog-row">' +
@@ -6113,7 +6128,8 @@ async function hydrateTripHistory(trip){
   list.innerHTML = rows.map(function(r){
     const who = escapeHtml(r.changed_by_name || 'Someone');
     const when = attachFmtWhen ? attachFmtWhen(r.created_at) : new Date(r.created_at).toLocaleString();
-    const label = escapeHtml(r.field_label || r.field_path || 'Field');
+    // See hydrateLegHistory: the trigger writes no field_label.
+    const label = escapeHtml(r.field_label || changelogLabel(r.field_path || '') || 'Field');
     const legLbl = escapeHtml(r._legLabel || 'Leg');
     const oldV = escapeHtml(changelogValFmt(r.old_value));
     const newV = escapeHtml(changelogValFmt(r.new_value));
@@ -6279,7 +6295,26 @@ async function saveLeg(leg){
     try{
       const result = await storage.set('leg:' + leg.id, JSON.stringify(_persist), true);
       if(!result) throw new Error('no result');
-      if(_changes.length){ logLegChanges(leg, _changes); }
+      // *** THE CLIENT NO LONGER WRITES THE CHANGE LOG. ***
+      // A trigger on public.legs now diffs OLD.data against NEW.data and writes
+      // leg_changes server-side. The diff above is kept -- reconcileChatLinkKey
+      // below still needs it -- but it must NOT be logged, or every edit lands
+      // twice.
+      //
+      // WHY IT MOVED, so nobody moves it back: _legSnapshots holds THIS BROWSER'S
+      // copy of the leg, taken when it last loaded. The client therefore logged
+      // the difference between what this device believed and what it wrote --
+      // intent, not effect. A stale device overwriting the server saw no
+      // difference at all, wrote the whole blob anyway, and logged nothing.
+      // That is precisely the case worth recording, and it was the one case the
+      // log could not see. Found live on trip 415129, 30 Aug 2026: six fields
+      // silently reverted, no rows in leg_changes, and so no change advisory.
+      //
+      // Consequences accepted with the move:
+      //   - field_label comes back null; readers fall back to changelogLabel().
+      //   - batch_id is lost, so a trip-wide apply no longer groups as one
+      //     action. Nothing reads that column yet.
+      //   - INSERTs are not covered; the trigger is AFTER UPDATE only.
       snapshotLeg(leg);
       // If this save is the one that gave an unnumbered trip its number, move
       // any chat link across to the new key. Deliberately NOT awaited: the save
