@@ -3313,7 +3313,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T23:40:00Z';
+const BUILD_VERSION = '2026-08-31T00:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11824,27 +11824,42 @@ function legNumberIsHumanOverride(leg, builtNum){
 
 function describeLegChanges(leg, built){
   const changes = [];
-  const check = (path, oldVal, newVal) => {
+  // Each entry carries everything BOTH the preview and the apply need, so the
+  // two can never again be separate computations of the same intent:
+  //   kind   'leg' | 'end' | 'route' -- which writer handles it
+  //   target 'dep' | 'arr' for kind 'end', else ''
+  //   key    the property to write
+  //   path   stable id, used for labels and (later) the checkbox
+  // applyLegChange() is the ONLY writer. Nothing may be applied that was not
+  // produced here, which is the property that makes selection possible.
+  const check = (path, kind, target, key, oldVal, newVal) => {
     oldVal = oldVal || '';
     newVal = newVal || '';
     // AN IMPORT CANNOT EMPTY A FIELD, so a blank incoming value is not a
-    // change and must not be reported as one. The apply path guards every
-    // write with the same test (see assignNonBlank); if this reported
+    // change and must not be reported as one. The apply path never sees a
+    // blank either, now that it walks this list; if this reported
     // "$250 -> (blank)" the user would approve a change that never happened.
     // These two rules are a PAIR -- loosen one and the preview starts lying.
     if(newVal === '') return;
     if(oldVal !== newVal){
-      changes.push({ label: RECONCILE_FIELD_LABELS[path] || path, oldVal: oldVal || '(blank)', newVal: newVal });
+      changes.push({
+        path: path, kind: kind, target: target, key: key,
+        label: RECONCILE_FIELD_LABELS[path] || path,
+        oldVal: oldVal || '(blank)', newVal: newVal
+      });
     }
   };
   const dlcBuiltNum = String(built.legNumber || '').trim();
   const dlcLegNum = String(leg.legNumber || '').trim();
   if(dlcBuiltNum && dlcBuiltNum !== '?' && dlcBuiltNum !== dlcLegNum &&
      !legNumberIsHumanOverride(leg, dlcBuiltNum)){
-    changes.push({ label: 'Leg number', oldVal: dlcLegNum || '(unassigned)', newVal: dlcBuiltNum });
+    changes.push({
+      path: 'legNumber', kind: 'leg', target: '', key: 'legNumber',
+      label: 'Leg number', oldVal: dlcLegNum || '(unassigned)', newVal: dlcBuiltNum
+    });
   }
-  check('date', leg.date, built.date);
-  check('paxCount', leg.paxCount, built.paxCount);
+  check('date', 'leg', '', 'date', leg.date, built.date);
+  check('paxCount', 'leg', '', 'paxCount', leg.paxCount, built.paxCount);
 
   // *** ROUTE IS ONE DECISION, NOT THREE. ***
   // dep.city, arr.city and cityPair always move together: cityPair is composed
@@ -11859,7 +11874,10 @@ function describeLegChanges(leg, built){
   const routeIn = String(built.cityPair || '').trim();
   const routeNow = String(leg.cityPair || '').trim();
   if(routeIn && routeIn !== routeNow){
-    changes.push({ label: 'Route', oldVal: routeNow || '(blank)', newVal: routeIn });
+    changes.push({
+      path: 'route', kind: 'route', target: '', key: 'cityPair',
+      label: 'Route', oldVal: routeNow || '(blank)', newVal: routeIn
+    });
   }
 
   // Everything the import actually writes to each end, derived from the built
@@ -11871,10 +11889,39 @@ function describeLegChanges(leg, built){
     const cur = leg[end] || {};
     Object.keys(src).forEach(function(k){
       if(RECONCILE_END_SKIP_KEYS[k]) return;
-      check(end + '.' + k, cur[k], src[k]);
+      check(end + '.' + k, 'end', end, k, cur[k], src[k]);
     });
   });
   return changes;
+}
+
+/* Apply ONE change entry to a leg. The single writer for reconcile updates.
+   Takes entries straight from describeLegChanges, so anything shown on the
+   preview is written by exactly the rule that described it -- and anything
+   never shown cannot be written at all.
+
+   No blank checks and no equality checks here on purpose: an entry only
+   exists because describeLegChanges already made both. Repeating them would
+   put the decision in two places again, which is the thing this replaces. */
+function applyLegChange(leg, built, ch){
+  if(!leg || !ch) return;
+  if(ch.kind === 'leg'){
+    leg[ch.key] = built[ch.key];
+    return;
+  }
+  if(ch.kind === 'end'){
+    leg[ch.target] = leg[ch.target] || {};
+    leg[ch.target][ch.key] = (built[ch.target] || {})[ch.key];
+    return;
+  }
+  if(ch.kind === 'route'){
+    // All three, together. The pair is composed from the two cities, so
+    // writing any one of them alone leaves the leg contradicting itself.
+    leg.dep = leg.dep || {}; leg.arr = leg.arr || {};
+    leg.dep.city = (built.dep || {}).city || '';
+    leg.arr.city = (built.arr || {}).city || '';
+    leg.cityPair = built.cityPair || '';
+  }
 }
 
 function reconcileUpdateCardHTML(item, index){
@@ -11946,6 +11993,14 @@ function importUnmatchedCardHTML(item, index){
    rule the two patch-based apply sites already follow with `if(ed[k])`. This
    site was the one that did not. A human can still clear any field in the
    editor -- that is a deliberate act, which an import is not. */
+/* [NO LIVE CALLERS as of 2026-08-30.] This was the reconcile apply's writer
+   until the apply began walking describeLegChanges' list instead. Kept, not
+   deleted, for two reasons: it is the canonical statement of the blank rule
+   that several comments elsewhere point at ("guarded like assignNonBlank"),
+   and it is a fill-never-blank helper, so nothing dangerous is lying around.
+
+   If it is still unused next time someone passes through here, delete it and
+   move the rule's explanation to describeLegChanges. */
 function assignNonBlank(dst, src){
   if(!src) return;
   Object.keys(src).forEach(function(k){
@@ -12497,43 +12552,20 @@ function renderImportPreviewView(){
           for(const item of rec.toUpdate){
             const leg = item.existingLeg;
             const built = item.built;
-            const builtNum = String(built.legNumber || '').trim();
-            if(builtNum && builtNum !== '?' && !legNumberIsHumanOverride(leg, builtNum)) leg.legNumber = builtNum;
-            if(built.date) leg.date = built.date;
-            // Applied because describeLegChanges REPORTS it on the preview. A
-            // change shown to the user and then not written is worse than one
-            // never shown.
-            // Guarded like everything else here: an extraction that found no
-            // count must not erase one already recorded. '0' is a real count
-            // and survives -- the test is for blank, not for falsy.
-            if(String(built.paxCount || '').trim() !== '') leg.paxCount = built.paxCount;
-            // *** ROUTE MOVES AS ONE UNIT, AND ONLY AS A COMPLETE PAIR. ***
-            // Matches the single 'Route' line on the preview.
+            // *** THE PREVIEW IS THE INSTRUCTION. ***
+            // Previously this re-derived the same intent a second time -- an
+            // if for date, another for cityPair, assignNonBlank for the two
+            // ends -- and the two computations were kept in step by a comment.
+            // They drifted: assignNonBlank copied every non-blank key while
+            // describeLegChanges reported a shorter hand-kept list, so fields
+            // were written that the user was never shown.
             //
-            // CAPTURED BEFORE THE ASSIGNS, DELIBERATELY. assignNonBlank copies
-            // any non-blank key including city, so by the time it has run the
-            // leg's own cities are already gone and there is nothing left to
-            // put back. That is the bug this block exists to prevent, and
-            // reading them afterwards would reintroduce it in a new place.
-            const _depCityWas = leg.dep.city || '';
-            const _arrCityWas = leg.arr.city || '';
-            assignNonBlank(leg.dep, built.dep);
-            assignNonBlank(leg.arr, built.arr);
-            // Written together or not at all. A half-known route is not a
-            // route: every renderer already falls back to airport identifiers
-            // when cityPair is blank, and keeping a real route beats replacing
-            // it with half of one. Previously assignNonBlank wrote one city
-            // while the guarded cityPair stayed put, leaving the two
-            // disagreeing with nothing to say so.
-            const _routeIn = String(built.cityPair || '').trim();
-            if(_routeIn){
-              leg.dep.city = built.dep.city || '';
-              leg.arr.city = built.arr.city || '';
-              leg.cityPair = _routeIn;
-            } else {
-              leg.dep.city = _depCityWas;
-              leg.arr.city = _arrCityWas;
-            }
+            // Now there is one list. Whatever the preview described is applied,
+            // by the same writer, and nothing else can be. When the checkboxes
+            // land, this loop filters on the entry's selected flag and needs no
+            // other change.
+            const changes = describeLegChanges(leg, built);
+            for(const ch of changes){ applyLegChange(leg, built, ch); }
             leg.updatedAt = Date.now();
             await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
           }
