@@ -494,7 +494,7 @@
      It also made overflow-x compute to auto: over-wide content used to scroll
      sideways inside .main and will now push the page instead. Anything that
      needs it owns its own scroller (see .sched-scroll). */
-  .main{ flex:1; padding:28px 36px; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(52px + max(28px, env(safe-area-inset-bottom))); }
+  .main{ flex:1; padding:28px 36px; padding-top:calc(var(--page-header-h, 84px) + 16px); padding-bottom:calc(var(--bottom-bar-h, 72px) + 28px); }
   .main-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:16px; flex-wrap:wrap; }
   .main-title-group{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
   .main-title{
@@ -798,7 +798,7 @@
        configuration that comment warned about, on phones instead of desktops.
        If the rubber-band problem ever reappears, it belongs on the element that
        actually scrolls -- the document -- not on this one. */
-    .main{ padding:20px 16px; padding-top:calc(var(--page-header-h, 84px) + 12px); padding-bottom:calc(52px + max(20px, env(safe-area-inset-bottom))); }
+    .main{ padding:20px 16px; padding-top:calc(var(--page-header-h, 84px) + 12px); padding-bottom:calc(var(--bottom-bar-h, 72px) + 20px); }
     .page-header-inner{ padding-left:16px; padding-right:16px; }
     .page-header-subrow{ padding-left:16px; padding-right:16px; }
     .bottom-bar-inner{ padding-left:16px; padding-right:16px; }
@@ -3327,7 +3327,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-31T02:05:00Z';
+const BUILD_VERSION = '2026-08-31T02:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13756,6 +13756,19 @@ function syncPageHeaderHeight(){
   const strip = document.querySelector('#mainPanel .info-strip');
   const sPx = (strip && strip.offsetHeight && getComputedStyle(strip).display !== 'none') ? strip.offsetHeight : 0;
   document.documentElement.style.setProperty('--info-strip-h', sPx + 'px');
+  // *** THE BOTTOM BAR IS MEASURED, NOT ASSUMED. ***
+  // .main used to reserve a hard-coded 52px for it. The bar is taller than
+  // that: its nav buttons stack an icon over a label, and on the leg checklist
+  // the editor drops a status select into bottomBarSlot as well. So the bar
+  // overlapped whatever sat at the bottom of the page, and the buttons down
+  // there could not be reached -- worst on the two longest screens, the leg
+  // checklist and the import summary.
+  //
+  // offsetHeight ALREADY INCLUDES the bar's own safe-area padding, so whatever
+  // consumes this must not add env(safe-area-inset-bottom) again on top.
+  const bar = document.getElementById('bottomBar');
+  const bPx = (bar && bar.offsetHeight && getComputedStyle(bar).display !== 'none') ? bar.offsetHeight : 0;
+  document.documentElement.style.setProperty('--bottom-bar-h', bPx + 'px');
 }
 
 // Total height of everything pinned over the top of the page. The single
