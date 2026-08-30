@@ -3313,7 +3313,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-30T21:55:00Z';
+const BUILD_VERSION = '2026-08-30T23:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11775,8 +11775,40 @@ const RECONCILE_FIELD_LABELS = {
   'arr.fuelPaymentMethod': 'Arrival fuel payment',
   'arr.rampFee': 'Arrival ramp fee',
   'arr.rampFeeWaived': 'Arrival ramp fee waived',
-  'arr.rampFeeMinGallons': 'Arrival ramp waiver min gal'
+  'arr.rampFeeMinGallons': 'Arrival ramp waiver min gal',
+  // --- These were WRITTEN BY THE IMPORT BUT NEVER SHOWN ON THE PREVIEW. ---
+  // describeLegChanges walked a hand-kept list of paths while assignNonBlank
+  // copied every non-blank key on the built object. Anything present in the
+  // second and absent from the first was applied silently. That is now closed
+  // by deriving the change list from the built object's own keys, but the
+  // labels still have to exist or the rows read as raw paths.
+  'dep.slotReqd': 'Departure slot required',
+  'dep.slotTimeNumber': 'Departure slot time',
+  'dep.slotAllowance': 'Departure slot allowance',
+  'dep.groundTransportReqd': 'Departure ground transport required',
+  'dep.groundTransportDetails': 'Departure ground transport',
+  'dep.notes': 'Departure notes',
+  'arr.slotReqd': 'Arrival slot required',
+  'arr.slotTimeNumber': 'Arrival slot time',
+  'arr.slotAllowance': 'Arrival slot allowance',
+  'arr.groundTransportReqd': 'Arrival ground transport required',
+  'arr.groundTransportDetails': 'Arrival ground transport',
+  'arr.notes': 'Arrival notes',
+  'arr.permitReqd': 'Arrival permit required',
+  'arr.permitNumber': 'Arrival permit number'
 };
+
+// Keys on the built dep/arr objects that are NOT user-facing changes.
+//
+// An explicit DENY list, deliberately, because the allow list it replaces is
+// what caused the defect: a field added to extraction was applied without ever
+// appearing on the preview, and nothing failed loudly enough to notice. With a
+// deny list the failure mode inverts -- a new field shows up as an unlabelled
+// row, which is ugly and obvious, rather than invisible and silent.
+//
+// city lives here because the two cities and cityPair are bound into a single
+// route line (see routeChangeLine below), not because they are unimportant.
+const RECONCILE_END_SKIP_KEYS = { city: 1, tz: 1, hoursCarried: 1 };
 
 // TRUE when the incoming number is the one the PAPERWORK gave a leg a human has
 // already renumbered. Without this, re-uploading the same document would report
@@ -11812,10 +11844,36 @@ function describeLegChanges(leg, built){
     changes.push({ label: 'Leg number', oldVal: dlcLegNum || '(unassigned)', newVal: dlcBuiltNum });
   }
   check('date', leg.date, built.date);
-  check('cityPair', leg.cityPair, built.cityPair);
   check('paxCount', leg.paxCount, built.paxCount);
-  ['airportId', 'etdLocal', 'etdZ', 'agent', 'agentPhone', 'frequency', 'fuelVendor', 'fuelPricePerGallon', 'fuelPaymentMethod', 'rampFee', 'rampFeeWaived', 'rampFeeMinGallons'].forEach(k => check('dep.' + k, leg.dep[k], built.dep[k]));
-  ['airportId', 'date', 'etaLocal', 'etaZ', 'agent', 'agentPhone', 'frequency', 'fuelVendor', 'fuelPricePerGallon', 'fuelPaymentMethod', 'rampFee', 'rampFeeWaived', 'rampFeeMinGallons'].forEach(k => check('arr.' + k, leg.arr[k], built.arr[k]));
+
+  // *** ROUTE IS ONE DECISION, NOT THREE. ***
+  // dep.city, arr.city and cityPair always move together: cityPair is composed
+  // from the two cities, both ends or nothing. Reporting them as three lines
+  // would invite taking one and leaving another, and there is no coherent pair
+  // on the far side of that.
+  //
+  // Suppressed when the INCOMING pair is incomplete -- the incoming one, not
+  // the stored one. A sheet that knows only one end must leave an existing
+  // route entirely alone; writing the one city it found and blanking the pair
+  // would send every display back to airport identifiers.
+  const routeIn = String(built.cityPair || '').trim();
+  const routeNow = String(leg.cityPair || '').trim();
+  if(routeIn && routeIn !== routeNow){
+    changes.push({ label: 'Route', oldVal: routeNow || '(blank)', newVal: routeIn });
+  }
+
+  // Everything the import actually writes to each end, derived from the built
+  // object's own keys rather than a hand-kept list. assignNonBlank copies every
+  // non-blank key here, so anything omitted would be applied invisibly -- which
+  // is exactly what went wrong before.
+  ['dep', 'arr'].forEach(function(end){
+    const src = built[end] || {};
+    const cur = leg[end] || {};
+    Object.keys(src).forEach(function(k){
+      if(RECONCILE_END_SKIP_KEYS[k]) return;
+      check(end + '.' + k, cur[k], src[k]);
+    });
+  });
   return changes;
 }
 
@@ -12442,17 +12500,40 @@ function renderImportPreviewView(){
             const builtNum = String(built.legNumber || '').trim();
             if(builtNum && builtNum !== '?' && !legNumberIsHumanOverride(leg, builtNum)) leg.legNumber = builtNum;
             if(built.date) leg.date = built.date;
-            if(built.cityPair) leg.cityPair = built.cityPair;
             // Applied because describeLegChanges REPORTS it on the preview. A
             // change shown to the user and then not written is worse than one
-            // never shown. dep/arr carry their own city through the assigns
-            // below, and cityPair is composed from those, so both stay in step.
+            // never shown.
             // Guarded like everything else here: an extraction that found no
             // count must not erase one already recorded. '0' is a real count
             // and survives -- the test is for blank, not for falsy.
             if(String(built.paxCount || '').trim() !== '') leg.paxCount = built.paxCount;
+            // *** ROUTE MOVES AS ONE UNIT, AND ONLY AS A COMPLETE PAIR. ***
+            // Matches the single 'Route' line on the preview.
+            //
+            // CAPTURED BEFORE THE ASSIGNS, DELIBERATELY. assignNonBlank copies
+            // any non-blank key including city, so by the time it has run the
+            // leg's own cities are already gone and there is nothing left to
+            // put back. That is the bug this block exists to prevent, and
+            // reading them afterwards would reintroduce it in a new place.
+            const _depCityWas = leg.dep.city || '';
+            const _arrCityWas = leg.arr.city || '';
             assignNonBlank(leg.dep, built.dep);
             assignNonBlank(leg.arr, built.arr);
+            // Written together or not at all. A half-known route is not a
+            // route: every renderer already falls back to airport identifiers
+            // when cityPair is blank, and keeping a real route beats replacing
+            // it with half of one. Previously assignNonBlank wrote one city
+            // while the guarded cityPair stayed put, leaving the two
+            // disagreeing with nothing to say so.
+            const _routeIn = String(built.cityPair || '').trim();
+            if(_routeIn){
+              leg.dep.city = built.dep.city || '';
+              leg.arr.city = built.arr.city || '';
+              leg.cityPair = _routeIn;
+            } else {
+              leg.dep.city = _depCityWas;
+              leg.arr.city = _arrCityWas;
+            }
             leg.updatedAt = Date.now();
             await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
           }
