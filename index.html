@@ -2822,7 +2822,13 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   .empty-state p{ font-size:14px; max-width:340px; line-height:1.6; }
 
   .save-bar{
-    position:sticky; bottom:0; background:var(--ink-900); border-top:1px solid var(--hairline);
+    /* STICKY TO THE BAR, NOT TO THE VIEWPORT. This was bottom:0, which pins it
+       to the bottom of the scrollport -- precisely where the fixed .bottom-bar
+       sits, so it parked behind it and Review history could not be clicked.
+       Padding on .main cannot fix that: padding moves content in the flow, and
+       a sticky element has left the flow at the point where it matters.
+       Measured var, so it follows the bar when the editor makes it taller. */
+    position:sticky; bottom:var(--bottom-bar-h, 72px); background:var(--ink-900); border-top:1px solid var(--hairline);
     padding:14px 0; padding-right:290px; margin-top:10px; display:flex; justify-content:flex-start; align-items:center;
   }
   .save-hint{ font-size:12px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
@@ -3327,7 +3333,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-31T02:45:00Z';
+const BUILD_VERSION = '2026-08-31T03:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
