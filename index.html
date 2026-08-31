@@ -3351,7 +3351,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-31T23:20:00Z';
+const BUILD_VERSION = '2026-08-31T23:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14370,6 +14370,21 @@ function renderMain(){
   // The leg checklist is the densest screen: hide the utility FABs there and
   // give that top-right slot to the verify counter instead.
   document.body.classList.toggle('view-editor', state.view === 'editor');
+  /* *** THE EDITOR'S TAIL PADDING MUST NOT OUTLIVE THE EDITOR. ***
+     tuneEditorTailPadding() writes an INLINE padding-bottom on #mainPanel to
+     give the leg checklist just enough runway. It early-returns when the view
+     is not the editor, so it never clears what it wrote -- and #mainPanel is
+     the same element in every view, since renderMain only swaps innerHTML.
+     A leg with plenty of content computes need <= 0 and writes '0px', which
+     then overrides .main's own padding-bottom on EVERY later screen and puts
+     the last row underneath the fixed bottom bar.
+     Found live 31 Aug 2026: after opening a leg, the import preview's
+     "Confirm and apply" button was unreachable behind the nav. The trip page
+     masked it because .save-bar carries its own clearance. */
+  if(state.view !== 'editor'){
+    const _mp = document.getElementById('mainPanel');
+    if(_mp) _mp.style.paddingBottom = '';
+  }
   // Reset the nav bar centrally: only renderHomeView() should hide it. The leg
   // editor never reset it, so it inherited a stale inline 'none' after boot.
   if(state.view === 'home'){ setPageHeader({}); renderHomeView(); return; }
