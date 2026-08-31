@@ -3351,7 +3351,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-31T23:45:00Z';
+const BUILD_VERSION = '2026-09-01T00:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13522,10 +13522,15 @@ function archivedLegDetailHTML(trip, leg){
   const sections =
     archSection('Departure', 'departure', leg, depBody) +
     archSection('Arrival', 'arrival', leg, arrBody) +
-    archSection('Performance', 'performance', leg, perfBody) +
-    archSection('Enroute', 'enroute', leg, enrBody) +
     archSection('Permits', 'permits', leg, permBody) +
     archSection('Dispatch', 'dispatch', leg, dispBody) +
+    // *** THIS ORDER MIRRORS THE LIVE CHECKLIST AND MUST KEEP DOING SO. ***
+    // A sealed leg is read against a memory of the working screen, so the two
+    // reading in different orders is confusing exactly when someone is checking
+    // a record. Performance and Enroute moved to sit after Dispatch on 31 Aug
+    // 2026; if the editor's order changes again, change it here in the same pass.
+    archSection('Performance', 'performance', leg, perfBody) +
+    archSection('Enroute', 'enroute', leg, enrBody) +
     archSection('Pax', 'pax', leg, paxBody) +
     archSection('Crew', 'crew', leg, crewBody) +
     archSection('Next pax leg', 'nextLeg', leg, nextBody);
@@ -14564,26 +14569,6 @@ function renderMain(){
     '</div>' +
 
     '<div class="section">' +
-      '' + sectionTitleHTML('Performance', 'performance', leg) + '' +
-      '<div class="grid">' +
-        field('Trim', 'trim', leg.trim) +
-        field('Level off altitude', 'levelOff', leg.levelOff) +
-        field('Min BRF', 'minBRF', leg.minBRF) +
-      '</div>' +
-    '</div>' +
-
-    '<div class="section">' +
-      '' + sectionTitleHTML('Enroute', 'enroute', leg) + '' +
-      '<div class="grid">' +
-        field('Max shear', 'maxShear', leg.maxShear) +
-        field('ETE', 'ete', leg.ete) +
-        windToggleField(leg) +
-        field('Relative time to destination', 'relativeTimeToDestination', '', {readonly:true, placeholder:'auto'}) +
-      '</div>' +
-      '<div style="margin-top:14px">' + legNotesBlockHTML('enroute', 'Enroute Scratchpad', 'enrouteNotesLabel', 'Jot something down for yourself\u2026') + '</div>' +
-    '</div>' +
-
-    '<div class="section">' +
       '' + sectionTitleHTML('Permits', 'permits', leg) + '' +
       '<div class="grid-3">' +
         '<div class="subpanel">' +
@@ -14625,6 +14610,26 @@ function renderMain(){
       '<div class="grid">' +
         ynField('FRAT / release', 'fratRelease', leg.fratRelease) +
       '</div>' +
+    '</div>' +
+
+    '<div class="section">' +
+      '' + sectionTitleHTML('Performance', 'performance', leg) + '' +
+      '<div class="grid">' +
+        field('Trim', 'trim', leg.trim) +
+        field('Level off altitude', 'levelOff', leg.levelOff) +
+        field('Min BRF', 'minBRF', leg.minBRF) +
+      '</div>' +
+    '</div>' +
+
+    '<div class="section">' +
+      '' + sectionTitleHTML('Enroute', 'enroute', leg) + '' +
+      '<div class="grid">' +
+        field('Max shear', 'maxShear', leg.maxShear) +
+        field('ETE', 'ete', leg.ete) +
+        windToggleField(leg) +
+        field('Relative time to destination', 'relativeTimeToDestination', '', {readonly:true, placeholder:'auto'}) +
+      '</div>' +
+      '<div style="margin-top:14px">' + legNotesBlockHTML('enroute', 'Enroute Scratchpad', 'enrouteNotesLabel', 'Jot something down for yourself\u2026') + '</div>' +
     '</div>' +
 
     '<div class="section">' +
