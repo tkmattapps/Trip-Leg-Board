@@ -3351,7 +3351,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-08-31T05:40:00Z';
+const BUILD_VERSION = '2026-08-31T23:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3461,17 +3461,43 @@ const storage = {
     }
     throw new Error('key not found');
   },
+  /* *** A LEG IS NEVER WRITTEN WHOLE ONCE IT EXISTS. ***
+     The leg branch of set() is GONE, deliberately, so that rule can be checked
+     with grep rather than remembered. A whole-blob write is what let a device
+     holding a stale copy flatten another person's work: trip 415129, 30 Aug
+     2026, six fields silently reverted, and nothing in the change log because
+     the writing device could not see a difference either.
+
+     Two named methods instead. insertLeg for a leg that does not exist yet,
+     patchLeg for one that does. If you find yourself wanting to write a whole
+     existing leg, that is the bug -- not the missing method. */
+  async insertLeg(leg){
+    const deptId = await getFlightDepartmentId();
+    const { data: { user } } = await sb.auth.getUser();
+    // upsert, not insert: saveLeg retries once, and a first attempt whose
+    // response was lost must not then fail on a duplicate key.
+    const { error } = await sb.from('legs').upsert(legToRow(leg, deptId, user.id));
+    if(error) throw error;
+    return true;
+  },
+  async patchLeg(legId, patch, remove){
+    const { data, error } = await sb.rpc('patch_leg', {
+      p_leg_id: legId,
+      p_patch: patch || {},
+      p_remove: remove || []
+    });
+    if(error) throw error;
+    // NULL MEANS THE WRITE DID NOT HAPPEN -- no row, or RLS hid it. Treating
+    // that as success is the exact failure this change exists to prevent.
+    if(data === null || data === undefined){
+      throw new Error('patch refused: leg not found or not permitted');
+    }
+    return data;
+  },
   async set(key, value){
     const [type, id] = key.split(':');
     const deptId = await getFlightDepartmentId();
     const { data: { user } } = await sb.auth.getUser();
-    if(type === 'leg'){
-      const leg = JSON.parse(value);
-      const row = legToRow(leg, deptId, user.id);
-      const { error } = await sb.from('legs').upsert(row);
-      if(error) throw error;
-      return { key: key, value: value, shared: true };
-    }
     if(type === 'feedback'){
       const payload = JSON.parse(value);
       const { error } = await sb.from('feedback').upsert({ id: id, flight_department_id: deptId, submitted_by: user.id, payload: payload });
@@ -5484,6 +5510,73 @@ function diffLegs(before, after){
   return changes;
 }
 
+/* ============================================================
+   BUILD A PATCH -- what to SEND, as opposed to what to LOG.
+
+   *** THIS IS NOT diffLegs, AND IT MUST NEVER BE MADE TO SHARE ITS SKIP LIST. ***
+
+   diffLegs answers "what should a human see in the change log", so it discards
+   bookkeeping: updatedAt, lastEditedBy/Name/Role, the two tz fields, the UTC
+   offsets, crewNames, fieldMeta, sectionVerified. Correct for a log; catastrophic
+   for a save. Building the patch from that list would mean sectionVerified never
+   persisted again -- verification would appear to work and silently stop being
+   recorded -- and the same for provenance and the crew snapshots the archive
+   depends on.
+
+   So this diff has NO skip list. Every changed path is sent, bookkeeping and all.
+   The only thing it drops is underscore-prefixed runtime scratch, which saveLeg
+   already stripped before persisting (_fieldValueBaseline).
+
+   Returns { patch, remove }:
+     patch  -- a NESTED partial, deep-merged into legs.data server-side.
+     remove -- dotted paths present BEFORE and absent AFTER, deleted server-side.
+
+   *** WHY remove IS AN EXPLICIT LIST AND NOT A null CONVENTION. ***
+   A deep merge can add and overwrite but cannot express "delete this key", and
+   the app really does delete keys: hoursCarried when carried hours are confirmed
+   (three sites), the crewNames prune when a seat is vacated, and the fieldMeta
+   entry cleared by clearFieldDerived. A null-means-remove shorthand would be
+   less code, and no leg field is known to hold null today -- but that was
+   established by grep, not proof, and its failure mode is silently deleting a
+   real value. This whole change exists to stop silent data loss, so the
+   unambiguous form wins over the shorter one.
+
+   ARRAYS ARE WHOLE VALUES, matching jsonb_deep_merge. An element-wise merge
+   could never shorten crew.acm, so removing a crew member would be impossible.
+   ============================================================ */
+function buildLegPatch(before, after){
+  const remove = [];
+  function diff(b, a, prefix){
+    const out = {};
+    let changed = false;
+    Object.keys(a || {}).forEach(function(k){
+      if(k.charAt(0) === '_') return;
+      const path = prefix ? (prefix + '.' + k) : k;
+      const av = a[k];
+      const bv = b ? b[k] : undefined;
+      const aObj = av !== null && typeof av === 'object' && !Array.isArray(av);
+      const bObj = bv !== null && typeof bv === 'object' && !Array.isArray(bv);
+      if(aObj && bObj){
+        const sub = diff(bv, av, path);
+        if(sub !== undefined){ out[k] = sub; changed = true; }
+      } else if(aObj !== bObj){
+        // Shape changed (scalar <-> object). Send the whole thing; a partial
+        // merge across a shape change is not meaningful.
+        out[k] = av; changed = true;
+      } else if(JSON.stringify(av) !== JSON.stringify(bv)){
+        out[k] = av; changed = true;
+      }
+    });
+    Object.keys(b || {}).forEach(function(k){
+      if(k.charAt(0) === '_') return;
+      if(a && Object.prototype.hasOwnProperty.call(a, k)) return;
+      remove.push(prefix ? (prefix + '.' + k) : k);
+    });
+    return changed ? out : undefined;
+  }
+  return { patch: diff(before || {}, after || {}, '') || {}, remove: remove };
+}
+
 // Snapshot cache of each leg's last-persisted state, for diffing.
 let _legSnapshots = {};
 function snapshotLeg(leg){
@@ -6284,17 +6377,31 @@ async function saveLeg(leg){
   leg.lastEditedAt = leg.updatedAt;
   // Change log: diff against the last-saved snapshot BEFORE persisting.
   const _changes = diffLegs(_legSnapshots[leg.id], leg);
-  // Strip runtime-only scratch state before persisting. _fieldValueBaseline is
-  // a snapshot of the RENDERED form, used to spot genuine human edits. Saving it
-  // means a stale baseline from an earlier session gets compared against a freshly
-  // rendered form, and any harmless formatting drift reads as an edit -- silently
-  // revoking a section's verification. It must be rebuilt per editor session.
+  /* *** SEND ONLY WHAT CHANGED. ***
+     _legSnapshots[leg.id] is this browser's copy of the leg as it last stood on
+     the server. Anything a DIFFERENT device has altered since is, by definition,
+     identical on both sides of this diff -- so it is not in the patch, and cannot
+     be written. That is the whole fix: staleness stops mattering because a stale
+     device has nothing to say about a field it never touched.
+
+     ABSENCE OF A SNAPSHOT MEANS THE LEG IS NEW. loadLegs() snapshots every leg
+     it loads and saveLeg snapshots after each success, so a leg with no snapshot
+     has never been persisted from this session. It is inserted whole, which is
+     correct -- there is nothing on the server to overwrite.
+
+     _fieldValueBaseline never reaches either path: buildLegPatch skips
+     underscore-prefixed keys, and insertLeg is handed a stripped copy. That
+     baseline is a snapshot of the RENDERED form and must be rebuilt per editor
+     session; persisting it makes stale formatting read as a human edit and
+     silently revokes a section's verification. */
+  const _isNew = !_legSnapshots[leg.id];
+  const _p = _isNew ? null : buildLegPatch(_legSnapshots[leg.id], leg);
   const _persist = Object.assign({}, leg);
   delete _persist._fieldValueBaseline;
   for(let attempt = 1; attempt <= 2; attempt++){
     try{
-      const result = await storage.set('leg:' + leg.id, JSON.stringify(_persist), true);
-      if(!result) throw new Error('no result');
+      if(_isNew) await storage.insertLeg(_persist);
+      else await storage.patchLeg(leg.id, _p.patch, _p.remove);
       // *** THE CLIENT NO LONGER WRITES THE CHANGE LOG. ***
       // A trigger on public.legs now diffs OLD.data against NEW.data and writes
       // leg_changes server-side. The diff above is kept -- reconcileChatLinkKey
@@ -12829,7 +12936,9 @@ function renderImportPreviewView(){
           for(let ai = 0; ai < rec.toAdd.length; ai++){
             if(recSel.adds[ai] === false) continue;
             const leg = rec.toAdd[ai];
-            await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
+            // NEW leg: nothing on the server to overwrite, so a whole write is
+            // correct here and only here.
+            await storage.insertLeg(leg);
           }
           for(const item of rec.toUpdate){
             const leg = item.existingLeg;
@@ -12849,7 +12958,12 @@ function renderImportPreviewView(){
             if(!changes.length) continue;   // nothing chosen on this leg: leave it entirely alone
             for(const ch of changes){ applyLegChange(leg, built, ch); }
             leg.updatedAt = Date.now();
-            await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
+            // EXISTING leg. Patch, never a whole write -- an import revision is
+            // exactly when a second person is likely to be working the same
+            // trip, so this is the highest-exposure path in the file.
+            const _rp = buildLegPatch(_legSnapshots[leg.id], leg);
+            await storage.patchLeg(leg.id, _rp.patch, _rp.remove);
+            snapshotLeg(leg);
           }
           // Removals are OPT-IN. The list is filtered BEFORE the loop, so with
           // nothing ticked there is no iteration and no call to deleteLeg --
@@ -12966,14 +13080,16 @@ function renderImportPreviewView(){
       try{
         for(const leg of state.importNewLegs){
           stampExtractedProvenance(leg);
-          await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
+          await storage.insertLeg(leg);
         }
         for(const item of state.importEnrichments){
           const leg = item.targetLeg;
           Object.assign(leg.dep, item.patch.dep);
           Object.assign(leg.arr, item.patch.arr);
           leg.updatedAt = Date.now();
-          await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
+          const _ep = buildLegPatch(_legSnapshots[leg.id], leg);
+          await storage.patchLeg(leg.id, _ep.patch, _ep.remove);
+          snapshotLeg(leg);
         }
         for(const item of state.importUnmatched){
           if(!item.selectedLegId) continue;
@@ -12982,7 +13098,7 @@ function renderImportPreviewView(){
             // orphan leg from the extraction (leg number defaults to '?').
             // A brief still cannot remove anything -- it only ever adds here.
             const newLeg = buildLegFromExtraction(item.extracted);
-            await storage.set('leg:' + newLeg.id, JSON.stringify(newLeg), true);
+            await storage.insertLeg(newLeg);
             continue;
           }
           const leg = state.legs.find(l => l.id === item.selectedLegId);
@@ -12991,7 +13107,9 @@ function renderImportPreviewView(){
           Object.assign(leg.dep, patch.dep);
           Object.assign(leg.arr, patch.arr);
           leg.updatedAt = Date.now();
-          await storage.set('leg:' + leg.id, JSON.stringify(leg), true);
+          const _up = buildLegPatch(_legSnapshots[leg.id], leg);
+          await storage.patchLeg(leg.id, _up.patch, _up.remove);
+          snapshotLeg(leg);
         }
         await loadLegs();
         resetImportState();
