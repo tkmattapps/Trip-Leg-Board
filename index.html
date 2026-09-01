@@ -3380,7 +3380,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T03:20:00Z';
+const BUILD_VERSION = '2026-09-01T03:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14751,8 +14751,8 @@ function renderMain(){
           '</div>' +
           // Outside the grid: the hint is a full-width note, and inside a fixed
           // six-column grid it would eat a cell and shunt the row order.
-                    '<div style="margin-top:14px">' + wxAttestBlockHTML('dep') + '</div>' +
                     '<div style="margin-top:14px">' + legNotesBlockHTML('dep', airfieldNotesLabel('dep', leg.dep.airportId), 'depNotesLabel', 'Jot something down for yourself\u2026') + '</div>' +
+                    '<div style="margin-top:14px">' + wxAttestBlockHTML('dep') + '</div>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -14783,8 +14783,8 @@ function renderMain(){
             ynField('Waived w/ fuel', 'arrRampFeeWaived', leg.arr.rampFeeWaived) +
             field('Min GAL to waive', 'arrRampFeeMinGallons', leg.arr.rampFeeMinGallons) +
           '</div>' +
-                    '<div style="margin-top:14px">' + wxAttestBlockHTML('arr') + '</div>' +
                     '<div style="margin-top:14px">' + legNotesBlockHTML('arr', airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotesLabel', 'Jot something down for yourself\u2026') + '</div>' +
+                    '<div style="margin-top:14px">' + wxAttestBlockHTML('arr') + '</div>' +
         '</div>' +
       '</div>' +
     '</div>' +
