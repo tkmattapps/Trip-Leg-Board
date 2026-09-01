@@ -917,17 +917,26 @@
      delete over a real signature. If the read fails the box stays disabled,
      which is the honest outcome: Beacon cannot show you your own sign-off, so
      it will not let you make one. */
-  .wx-attest{
-    border:1px solid var(--amber-500); border-radius:8px;
-    padding:10px 12px; background:rgba(242,169,59,0.06);
-  }
-  .wx-attest.is-checked{ border-color:var(--ok-500); background:rgba(79,174,124,0.08); }
   .wx-attest-row{ display:flex; align-items:flex-start; gap:10px; cursor:pointer; }
-  .wx-attest-box{ width:17px; height:17px; margin:1px 0 0; flex:0 0 auto; accent-color:var(--ok-500); cursor:pointer; }
+  /* appearance:none because accent-color only paints the FILL of a ticked box
+     -- it cannot colour an empty one, and the empty state is the whole point
+     of the amber ring. Drawing the control by hand is the only way to hold a
+     colour before it is checked. */
+  .wx-attest-box{
+    appearance:none; -webkit-appearance:none;
+    width:17px; height:17px; flex:0 0 auto; margin:1px 0 0;
+    border:2px solid var(--amber-500); border-radius:4px;
+    background:transparent; cursor:pointer; position:relative;
+  }
+  .wx-attest-box:checked{ border-color:var(--ok-500); background:var(--ok-500); }
+  .wx-attest-box:checked::after{
+    content:'\2713'; position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; line-height:1; color:var(--ink-900);
+  }
   .wx-attest-box:disabled{ cursor:default; }
   .wx-attest.is-pending{ opacity:0.5; }
   .wx-attest-label{ font-size:13px; line-height:1.35; color:var(--paper-050); }
-  .wx-attest-hint{ margin-top:6px; font-size:11px; color:var(--fog-500); }
   .leg-notes{ display:flex; flex-direction:column; gap:10px; }
   .leg-note-labelrow{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
   /* Says out loud what the name only implies. A person about to type
@@ -3371,7 +3380,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T02:35:00Z';
+const BUILD_VERSION = '2026-09-01T02:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5205,9 +5214,9 @@ function wireWxAttest(legId){
     input.addEventListener('change', async function(){
       const item = box.getAttribute('data-attest-item');
       const on = input.checked;
-      // Optimistic paint, reverted below if the write fails. A signature that
-      // looks recorded but is not is worse than a slow checkbox.
-      box.classList.toggle('is-checked', on);
+      // The ring colour is driven entirely by :checked in CSS, so the box has
+      // already repainted itself. If the write fails we put input.checked back
+      // and the colour follows on its own.
       input.disabled = true;
       try{
         if(on) await setLegVerification(legId, item);
@@ -5215,7 +5224,6 @@ function wireWxAttest(legId){
       } catch(e){
         console.error('leg_verifications write', e);
         input.checked = !on;
-        box.classList.toggle('is-checked', !on);
         showToast('Could not record that. Check your connection and try again.');
       } finally {
         input.disabled = false;
@@ -5244,7 +5252,6 @@ async function hydrateWxAttest(legId){
     const item = box.getAttribute('data-attest-item');
     const mine = myId ? rows.find(function(r){ return r.item === item && r.user_id === myId; }) : null;
     input.checked = !!mine;
-    box.classList.toggle('is-checked', !!mine);
     box.classList.remove('is-pending');
     input.disabled = false;
   });
@@ -5308,7 +5315,6 @@ function wxAttestBlockHTML(end){
         '<input type="checkbox" id="' + id + '" class="wx-attest-box" disabled>' +
         '<span class="wx-attest-label">Weather, NOTAMs and Airport Reference Pages reviewed</span>' +
       '</label>' +
-      '<div class="wx-attest-hint">Yours alone \u00b7 every crew member checks their own</div>' +
     '</div>';
 }
 
