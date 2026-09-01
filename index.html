@@ -3351,7 +3351,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T00:15:00Z';
+const BUILD_VERSION = '2026-09-01T01:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8890,6 +8890,25 @@ function ynField(label, id, value){
     '</div><input type="hidden" id="' + id + '" value="' + escapeHtml(value) + '" /></div>';
 }
 
+/* The Pax section heading carries the extracted count: "Pax 4".
+
+   *** BLANK AND ZERO ARE DIFFERENT, AND THE HEADING HAS TO SAY SO. ***
+   '' means the paperwork never stated a count, so the heading claims nothing
+   and reads simply "Pax". '0' means the paperwork DID state nobody aboard --
+   a repositioning leg -- and that is a real answer, so it shows as "Pax 0".
+   Collapsing the two would either invent a zero nobody wrote down, or hide one
+   somebody did. nextPaxLegFor() walks the same distinction when deciding which
+   later leg is carrying people, so it must not be blurred here either.
+
+   The count is EXTRACTION-ONLY. There has never been a field for it on the
+   checklist and collectAndSave merely preserves it, so this is a report, not a
+   control -- which is why it lives in the heading rather than in a box that
+   would invite typing into something the next import overwrites. */
+function paxSectionTitle(leg){
+  const n = String((leg && leg.paxCount) == null ? '' : leg.paxCount).trim();
+  return n === '' ? 'Pax' : ('Pax ' + n);
+}
+
 function paxTransportTitle(direction, code){
   const label = direction === 'to' ? 'Pax transport to' : 'Pax transport from';
   const trimmed = (code || '').trim();
@@ -13502,7 +13521,7 @@ function archivedLegDetailHTML(trip, leg){
   const dispBody = archYN('FRAT / release', leg.fratRelease);
 
   const paxBody =
-    archField('Pax total / notes', leg.paxTotalNotes) +
+    archField('Pax remarks', leg.paxTotalNotes) +
     archYN('Ground transport arranged \u00b7 ' + (dep.airportId || 'departure'), dep.groundTransportReqd) +
     archField('Details', (dep.groundTransportDetails || dep.paxBaggageNotes)) +
     archYN('Ground transport arranged \u00b7 ' + (arr.airportId || 'arrival'), arr.groundTransportReqd) +
@@ -13510,7 +13529,7 @@ function archivedLegDetailHTML(trip, leg){
 
   const crewBody =
     archivedCrewLineHTML(leg) +
-    archField('Hotel / rental car notes', (leg.crewHotelCarNotes || arr.hotelCarNotes));
+    archField('Crew remarks', (leg.crewHotelCarNotes || arr.hotelCarNotes));
 
   const nextBody =
     archField('Destination', leg.nextLegDestination) +
@@ -14633,8 +14652,21 @@ function renderMain(){
     '</div>' +
 
     '<div class="section">' +
-      '' + sectionTitleHTML('Pax', 'pax', leg) + '' +
-      field('Pax total / notes', 'paxTotalNotes', leg.paxTotalNotes, {type:'textarea'}) +
+      '' + sectionTitleHTML(paxSectionTitle(leg), 'pax', leg) + '' +
+      /* "Remarks", NOT "notes". Notes means one thing in Beacon -- the notes
+         page, reached by three doorways -- and a second free-text field wearing
+         that word would dilute it. "Scratchpad" is likewise taken (the private
+         per-user pads on Departure, Arrival and Enroute) and "brief" is heavily
+         spoken for. Remarks is aviation-native, unclaimed, and means exactly
+         "free text about the thing above it".
+
+         *** THE PLACEHOLDER DELIBERATELY DOES NOT INVITE PASSENGER NAMES. ***
+         Terms 2.1(b) prohibits passenger data outright and the extraction
+         refuses names, so a prompt asking who is aboard would push people into
+         exactly what the rest of the app is built to keep out. It points at
+         operational detail instead. */
+      field('Pax remarks', 'paxTotalNotes', leg.paxTotalNotes,
+            {type:'textarea', placeholder:'Catering, mobility assistance, pets, extra baggage\u2026'}) +
       '<div class="grid-2" style="margin-top:14px">' +
         '<div class="subpanel">' +
           '<div class="subpanel-title" id="depPaxTransportTitle">' + paxTransportTitle('to', leg.dep.airportId) + '</div>' +
@@ -14651,7 +14683,12 @@ function renderMain(){
 
     '<div class="section">' +
       '' + sectionTitleHTML('Crew', 'crew', leg) + '' +
-      field('Hotel / rental car notes', 'crewHotelCarNotes', leg.crewHotelCarNotes || leg.arr.hotelCarNotes || '', {type:'textarea'}) +
+      /* Broadened from "Hotel / rental car notes" to match the Pax section's
+         wording. Existing content stays valid -- hotel and car are still the
+         commonest things recorded here, which is why the placeholder leads with
+         them so nobody stops entering them. */
+      field('Crew remarks', 'crewHotelCarNotes', leg.crewHotelCarNotes || leg.arr.hotelCarNotes || '',
+            {type:'textarea', placeholder:'Hotel, rental car, crew transport\u2026'}) +
     '</div>' +
 
     '<div class="section">' +
