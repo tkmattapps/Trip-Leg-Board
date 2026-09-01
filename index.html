@@ -3506,7 +3506,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T11:15:00Z';
+const BUILD_VERSION = '2026-09-01T11:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5581,6 +5581,25 @@ function legVerifCacheGet(legId){
   const r = legVerifCache[legId];
   return Array.isArray(r) ? r : null;
 }
+
+/* "Did I sign this item?" answered against a rows array rather than the live
+   cache. ONE implementation, because this was briefly written out by hand in
+   four places -- the checkbox markup, the section title, the rings and the
+   paint functions -- and four copies of a user-identity test is how one of them
+   quietly stops matching the others.
+   Never consulted for whether a control is ENABLED; that is legVerif.ready. */
+function rowsSayIVerified(rows, item){
+  if(!Array.isArray(rows) || !rows.length) return false;
+  const me = myUserId();
+  if(!me) return false;
+  return rows.some(function(r){ return r.item === item && r.user_id === me; });
+}
+// Best available answer for drawing: the live rows once they are in, the cached
+// rows before that, false if we have neither.
+function drawIVerified(legId, item){
+  if(legVerif.ready) return iVerified(item);
+  return rowsSayIVerified(legVerifCacheGet(legId), item);
+}
 function legVerifCachePut(legId, rows){
   if(legId) legVerifCache[legId] = rows.slice();
 }
@@ -5750,14 +5769,11 @@ function wireWxAttest(legId){
    box cannot be clicked and cannot write. */
 function applyWxAttestBoxes(opts){
   const preview = (opts && opts.preview) || null;
-  const me = myUserId();
   document.querySelectorAll('.wx-attest').forEach(function(box){
     const input = box.querySelector('.wx-attest-box');
     if(!input) return;
     const item = box.getAttribute('data-attest-item');
-    input.checked = preview
-      ? (!!me && preview.some(function(r){ return r.item === item && r.user_id === me; }))
-      : iVerified(item);
+    input.checked = preview ? rowsSayIVerified(preview, item) : iVerified(item);
     box.classList.remove('is-pending');
     input.disabled = !legVerif.ready;
   });
@@ -5786,15 +5802,12 @@ function renderSignoffLine(key, preview){
 // different questions, two different places on screen, never merged.
 function applySectionVerifyUI(opts){
   const preview = (opts && opts.preview) || null;
-  const me = myUserId();
   document.querySelectorAll('.section[data-section-body]').forEach(function(sec){
     const key = sec.getAttribute('data-section-body');
     const btn = sec.querySelector('.section-verify-btn');
     // Same rule as the checkboxes: preview decides the tick, ready decides the
     // disabled state.
-    const mine = preview
-      ? (!!me && preview.some(function(r){ return r.item === key && r.user_id === me; }))
-      : iVerified(key);
+    const mine = preview ? rowsSayIVerified(preview, key) : iVerified(key);
     if(btn){
       btn.disabled = !legVerif.ready;
       btn.classList.toggle('is-verified', mine);
@@ -5886,11 +5899,27 @@ async function hydrateLegNotes(legId){
    the string "on" whether it is ticked or not. A checkbox wired as a normal
    field is invisible to change detection: no baseline, no demotion, silently
    inert. It gets its own wiring instead; see wireWxAttest. */
-function wxAttestBlockHTML(end){
+/* legId is optional and is used ONLY to draw the first frame correctly. The
+   box used to render unticked and half-faded every time, then get corrected a
+   frame later once the cached state was applied -- which read as a blink on
+   every leg switch even though the value never actually changed. Rendering it
+   right first time means there is nothing to correct.
+
+   `is-pending` (opacity 0.5) is now withheld when the state is already known,
+   for the same reason: a fade that exists only to be removed is a flicker.
+
+   STILL DISABLED, ALWAYS, whatever the cache says. The tick is cosmetic until
+   the live read lands; only hydrateLegVerifications enables the control. So
+   this cannot let a click act on cached state. */
+function wxAttestBlockHTML(end, legId){
   const id = end + 'WxReviewed';
-  return '<div class="wx-attest is-pending" data-attest-item="' + end + '.wxReviewed">' +
+  const item = end + '.wxReviewed';
+  const known = !!(legId && legVerifCacheGet(legId));
+  const on = known && rowsSayIVerified(legVerifCacheGet(legId), item);
+  return '<div class="wx-attest' + (known ? '' : ' is-pending') + '" data-attest-item="' + item + '">' +
       '<label class="wx-attest-row" for="' + id + '">' +
-        '<input type="checkbox" id="' + id + '" class="wx-attest-box" disabled>' +
+        '<input type="checkbox" id="' + id + '" class="wx-attest-box"' +
+          (on ? ' checked' : '') + ' disabled>' +
         '<span class="wx-attest-label">Weather, NOTAMs and Airport Reference Pages reviewed</span>' +
       '</label>' +
     '</div>';
@@ -7773,13 +7802,15 @@ function paintSectionRing(sectionEl, verified, broken){
 // Apply rings across the whole editor on first render.
 function paintSectionRings(leg){
   if(!leg) return;
+  // MY signature, not the leg-level bit. Falls back to the cached rows for this
+  // leg before the live read lands, so a ring that was green stays green across
+  // a leg switch instead of dropping out and coming back. Where nothing is
+  // cached this is false for everything, as before -- unknown renders as
+  // unsigned, and the controls are disabled, so nothing can be written from it.
   document.querySelectorAll('.section[data-section-body]').forEach(sec => {
     sec.classList.remove('is-verified','has-broken-verify');
     const key = sec.getAttribute('data-section-body');
-    // MY signature, not the leg-level bit. Before hydration this is false for
-    // everything, which is correct: unknown renders as unsigned but the buttons
-    // are disabled, so nothing can be written from that state.
-    paintSectionRing(sec, iVerified(key), false);
+    paintSectionRing(sec, drawIVerified(leg.id, key), false);
   });
 }
 
@@ -7846,17 +7877,30 @@ function sectionTitleHTML(label, key, leg){
   // about whether the data was CORRECT, and competed with Verify. Verify is the
   // single control now. Stored sectionComplete data is left untouched/harmless.
   void complete;
-  // RENDERS UNCHECKED AND DISABLED, ALWAYS. The button reflects MY signature,
-  // which lives in leg_verifications and is not known until the fetch lands.
-  // applySectionVerifyUI paints the truth a moment later. Painting the leg-level
-  // bit here instead would show someone else's sign-off as though it were mine.
-  // The signoffs div is rendered empty and stays in the DOM so hydration can
-  // fill it in place. It sits AFTER the touch line: refreshSectionTouchLine
-  // inspects the title's next sibling, so anything inserted between the two
-  // would break the touch line's in-place update.
-  return '<div class="section-title">' + escapeHtml(label) +
-    '<button type="button" class="section-verify-btn" data-verify-key="' + key + '" disabled>' +
-      '<span class="verify-mark">&#10003;</span><span class="verify-label">' + escapeHtml(label) + '</span>' +
+  /* RENDERS DISABLED, ALWAYS -- but no longer necessarily unchecked.
+     The button reflects MY signature, which lives in leg_verifications. It used
+     to render blank on every leg switch and get corrected once the fetch
+     landed, which read as a flicker on a value that had not changed. Where this
+     leg's rows were already read this session, the cache answers now.
+
+     *** PER-USER ROWS ONLY. NEVER THE BLOB BIT. *** leg.sectionVerified is the
+     leg-level claim "somebody signed this", and painting it here would show a
+     colleague's sign-off as though it were mine. The cache holds the same rows
+     the live read returns, so the question asked is still "did I sign this".
+
+     Disabled regardless of the cache: only applySectionVerifyUI, after the live
+     read, enables the control. A previewed tick cannot be clicked.
+
+     The signoffs div is rendered empty and stays in the DOM so hydration can
+     fill it in place. It sits AFTER the touch line: refreshSectionTouchLine
+     inspects the title's next sibling, so anything inserted between the two
+     would break the touch line's in-place update. */
+  const mine = rowsSayIVerified(leg && leg.id ? legVerifCacheGet(leg.id) : null, key);
+  return '<div class="section-title' + (mine ? ' is-checked' : '') + '">' + escapeHtml(label) +
+    '<button type="button" class="section-verify-btn' + (mine ? ' is-verified' : '') + '" data-verify-key="' + key + '" disabled>' +
+      '<span class="verify-mark">&#10003;</span><span class="verify-label">' +
+        escapeHtml(mine ? 'Checked' : label) +
+      '</span>' +
     '</button>' +
   '</div>' +
   sectionTouchLine(leg, key) +
@@ -16002,7 +16046,7 @@ function renderMain(){
         // condition on signing THIS section off.
         // It also falls outside the verification ring, which paints .subpanel
         // cards and .field[data-field-id] wrappers -- this is neither.
-        '<div style="margin-top:14px">' + wxAttestBlockHTML('dep') + '</div>' +
+        '<div style="margin-top:14px">' + wxAttestBlockHTML('dep', leg.id) + '</div>' +
       '</div>' +
     '</div>' +
 
@@ -16041,7 +16085,7 @@ function renderMain(){
         // condition on signing THIS section off.
         // It also falls outside the verification ring, which paints .subpanel
         // cards and .field[data-field-id] wrappers -- this is neither.
-        '<div style="margin-top:14px">' + wxAttestBlockHTML('arr') + '</div>' +
+        '<div style="margin-top:14px">' + wxAttestBlockHTML('arr', leg.id) + '</div>' +
       '</div>' +
     '</div>' +
 
