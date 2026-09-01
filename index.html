@@ -3532,7 +3532,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T17:20:00Z';
+const BUILD_VERSION = '2026-09-01T17:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15641,11 +15641,12 @@ function wireAirportBriefDocs(){
       // The test here is whether the uploader is free to pass the file on.
       // The second sentence states visibility and permanence together, because
       // an airport file is not attached to a trip at all -- archive never
-      // touches it -- so it outlives the trip that prompted it and shows up
+      // touches it -- it stays with the airport, outlives the trip that prompted
+      // it, and shows up
       // for whoever goes there next.
       'Upload only what you\u2019re free to share \u2014 your own notes and briefs, '
         + 'nothing confidential. Anyone in your department can open it, and it '
-        + 'stays on this airport for every trip that follows.',
+        + 'stays with this airport for every trip that follows.',
       {
         title: 'Before you upload',
         okLabel: 'Choose file',
