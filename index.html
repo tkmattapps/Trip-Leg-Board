@@ -3532,7 +3532,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T14:05:00Z';
+const BUILD_VERSION = '2026-09-01T15:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15312,7 +15312,7 @@ function notesTabsHTML(){
   const air = notesModeIsAirport();
   return '<div class="notes-tabs">' +
       '<button type="button" class="notes-tab' + (air ? '' : ' is-on') + '" data-notes-mode="trip">Trip note</button>' +
-      '<button type="button" class="notes-tab' + (air ? ' is-on' : '') + '" data-notes-mode="airport">Airport brief</button>' +
+      '<button type="button" class="notes-tab' + (air ? ' is-on' : '') + '" data-notes-mode="airport">Destination notes</button>' +
     '</div>';
 }
 
@@ -15401,21 +15401,21 @@ function syncAbSourceButton(btn){
 // a line.
 const AB_KIND_META = {
   ops: {
-    tab: 'Ops',
+    tab: 'Airport brief',
     sub: 'How this airport works \u2014 handlers, fuel, customs, flight plan processing.',
     body: 'What happened here\u2026',
     advice: 'What should the next crew do about it\u2026',
     empty: 'Nothing written about operations at '
   },
   city: {
-    tab: 'City',
+    tab: 'City brief',
     sub: 'Where to eat, hotels to avoid, getting around.',
     body: 'What you found here\u2026',
     advice: 'What should the next crew know\u2026',
     empty: 'Nothing written about the city at '
   },
   cabin: {
-    tab: 'Cabin',
+    tab: 'Cabin brief',
     sub: 'Catering, provisioning and cabin service reference.',
     body: 'What you found here\u2026',
     advice: 'What should the next crew know\u2026',
