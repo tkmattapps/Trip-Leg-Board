@@ -2068,25 +2068,27 @@
      effectively unreachable. Small mark, large target.
      The dot lives in a child span rather than being the button's own
      background, so the hit area and the mark can be sized independently. */
+  /* A PILL, not a circle: the label is inside the button so the word is part
+     of the hit area rather than a caption sitting next to it. Height stays 32px
+     so the thumb target never got smaller when the dot gained a label. */
   .tb-status-btn{
     flex:0 0 auto;
-    width:32px; height:32px; padding:0; border:0; border-radius:50%;
-    display:inline-flex; align-items:center; justify-content:center;
+    height:32px; padding:0 12px; border:0; border-radius:16px;
+    display:inline-flex; align-items:center; justify-content:center; gap:7px;
     background:none; cursor:pointer;
     transition:background 0.15s ease;
   }
   .tb-status-btn:hover{ background:rgba(255,255,255,0.08); }
+  .tb-status-label{
+    font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600;
+    letter-spacing:0.04em; color:var(--paper-050); white-space:nowrap;
+  }
   .tb-status-dot{ display:block; width:14px; height:14px; border-radius:50%; }
   /* Same three colours the app defines in its own STATUSES list. */
   .tb-status-planning{ background:#F2A93B; }
   .tb-status-ready{ background:#3DBE6B; }
   .tb-status-flown{ background:#4A9DE0; }
 
-  /* An attachment count of zero is not information. Hidden until there is
-     something to count -- hydrateTripLegAttachBadges toggles this class, and
-     the band ships with it already on so a "0" never flashes before the
-     count arrives. */
-  .tb-band .leg-attach-badge-zero{ display:none; }
 
   /* Line two: both ends and the figures, side by side.
      The ends still share the slack, but each end is now a ROW -- label, city,
@@ -2238,7 +2240,6 @@
   }
   .tb-foot-spacer{ flex:1 1 auto; }
   .tb-figs{ flex:0 1 auto; display:flex; gap:18px; align-items:baseline; }
-  .tb-foot .leg-attach-badge{ flex:0 0 auto; }
   .tb-fig{ display:flex; align-items:baseline; gap:5px; white-space:nowrap; }
   .tb-fig-label{
     font-family:system-ui,'Inter',sans-serif; font-size:9px; letter-spacing:0.08em;
@@ -3391,7 +3392,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T05:10:00Z';
+const BUILD_VERSION = '2026-09-01T05:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -9886,20 +9887,22 @@ function tripBriefBandHTML(leg){
         tripBriefFigHTML('PAX', leg.paxCount) +
       '</div>' +
       '<span class="tb-foot-spacer"></span>' +
-      // Ships with the zero class already on, so no "0" flashes before
-      // hydrateTripLegAttachBadges reports the real count.
-      '<span class="leg-attach-badge leg-attach-badge-zero" data-attach-badge="' + escapeHtml(leg.id) + '">' + LEG_PAPERCLIP_BADGE_SVG + '0</span>' +
-      // A COLOURED CIRCLE, no text. Amber planning, green ready, blue flown.
-      // The dot is 14px but the BUTTON around it is 32px, so the target stays
-      // thumb-sized while the mark stays small -- the reason the old bare dot
-      // failed was that the 12px circle WAS the hit area, not that a dot is
-      // the wrong mark.
-      // With no label, the status has to reach a screen reader some other way,
-      // hence aria-label naming the current value.
+      // THE PAPERCLIP USED TO SIT HERE. A count of attachments told you almost
+      // nothing at a glance, and the space is worth more spent saying what the
+      // control beside it does. Paperclips elsewhere in the app are untouched;
+      // hydrateTripLegAttachBadges selects by attribute, so the other card's
+      // badge still hydrates with this one gone.
+      //
+      // DOT PLUS THE CURRENT VALUE IN WORDS. The colour alone said "status"
+      // but never said "press me", and a bare dot cannot be read aloud. The
+      // whole pill is the button, so the word is as clickable as the dot --
+      // the click handler binds to [data-leg-quick] on the button itself and
+      // anything inside it bubbles up, no extra wiring.
       '<button type="button" class="tb-status-btn"' +
         ' data-leg-quick="status" data-leg-id="' + escapeHtml(leg.id) + '"' +
         ' title="Change status" aria-label="Change status \u2014 currently ' + statusLabel(leg.status) + '">' +
         '<span class="tb-status-dot tb-status-' + escapeHtml(leg.status) + '"></span>' +
+        '<span class="tb-status-label">' + escapeHtml(statusLabel(leg.status)) + '</span>' +
       '</button>' +
     '</div>' +
   '</div>';
