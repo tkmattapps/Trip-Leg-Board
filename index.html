@@ -3503,7 +3503,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T09:20:00Z';
+const BUILD_VERSION = '2026-09-01T10:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5308,20 +5308,79 @@ async function clearLegVerification(legId, item){
    failed read would send a crew to an airport telling them there was nothing
    to know.
    ============================================================ */
-const abPresence = Object.create(null);
+// TWO CACHES, NOT ONE. Written entries and shelf files live in different
+// tables and are read separately, so they are counted separately. A single
+// merged number could not tell the tooltip which of the two it was looking at,
+// and -- more importantly -- could not distinguish "no files" from "have not
+// asked about files yet". Merging happens at the point of wording, below.
+const abPresence = Object.create(null);      // airport_briefs, live rows
+const abFilePresence = Object.create(null);  // trip_attachments, scope 'airport'
 
 // Returns true only where the count is KNOWN and above zero.
 function abHasBriefs(code){
   const c = String(code || '').trim().toUpperCase();
   return (abPresence[c] || 0) > 0;
 }
+function abHasFiles(code){
+  const c = String(code || '').trim().toUpperCase();
+  return (abFilePresence[c] || 0) > 0;
+}
 
-// One query for however many codes are on screen. Counts every subject
-// together: the mark says "there is something here", and which of the three
-// tabs it is under is the airport page's business, not the glyph's.
-//
-// Failure leaves the cache UNTOUCHED rather than writing zeros, so a dead
-// connection degrades to "no marks" and never to "definitely nothing".
+/* What do we actually know about this code? One place, so the glyph and the
+   chooser sheet can never disagree about what is there.
+
+   `known` is tracked per source. An airport whose entries read succeeded and
+   whose files read failed is "2 entries, files unknown" -- and the wording
+   below says nothing at all about files rather than implying there are none. */
+function abPresenceInfo(code){
+  const c = String(code || '').trim().toUpperCase();
+  const e = abPresence[c] || 0;
+  const f = abFilePresence[c] || 0;
+  return {
+    entries: e,
+    files: f,
+    entriesKnown: (c in abPresence),
+    filesKnown: (c in abFilePresence),
+    any: (e > 0 || f > 0),
+    // Only "nothing here" once BOTH reads have come back empty.
+    knownEmpty: (c in abPresence) && (c in abFilePresence) && e === 0 && f === 0
+  };
+}
+
+function abFileCountLabel(n){ return n === 1 ? '1 file' : (n + ' files'); }
+
+// The short label for the chooser sheet. Ellipsis where nothing is known yet.
+function abPresenceLabel(code){
+  const i = abPresenceInfo(code);
+  if(i.entries > 0 && i.files > 0) return 'Briefs and files';
+  if(i.entries > 0) return 'Briefs to read';
+  if(i.files > 0) return abFileCountLabel(i.files);
+  return i.knownEmpty ? 'Nothing written yet' : '\u2026';
+}
+
+// The sentence behind the glyph. Says what is actually there, because a crew
+// member deciding whether to tap deserves to know whether they are about to
+// read three lines or open a chart.
+function abPresenceTooltip(code){
+  const i = abPresenceInfo(code);
+  const tail = ' \u2014 open Airport brief';
+  if(i.entries > 0 && i.files > 0){
+    return 'Crew notes and ' + abFileCountLabel(i.files) + ' for this airport' + tail;
+  }
+  if(i.entries > 0) return 'Crew have written about this airport' + tail;
+  return abFileCountLabel(i.files) + ' on this airport' + tail;
+}
+
+/* One pass for however many codes are on screen: one query per table, not one
+   per airport. Counts every subject together -- the mark says "there is
+   something here", and which of the three tabs it sits under is the airport
+   page's business, not the glyph's.
+
+   THE TWO READS FAIL INDEPENDENTLY. Each writes zeros only into its own cache,
+   and only for the codes it actually asked about. A successful read that
+   returned no row for KLAX is real evidence that KLAX has nothing; it is not
+   evidence about any other airport, and a failed read is not evidence at all.
+   A dead connection degrades to "no marks", never to "definitely nothing". */
 async function loadAirportBriefPresence(codes){
   const want = [];
   (codes || []).forEach(function(c){
@@ -5329,34 +5388,48 @@ async function loadAirportBriefPresence(codes){
     if(up.length === 4 && want.indexOf(up) === -1) want.push(up);
   });
   if(!want.length) return;
-  let rows;
+
+  // Written entries. Soft-deleted rows are excluded here as everywhere.
   try {
     const { data, error } = await sb.from('airport_briefs')
       .select('icao')
       .in('icao', want)
       .is('deleted_at', null);
     if(error) throw error;
-    rows = data || [];
+    want.forEach(function(c){ abPresence[c] = 0; });
+    (data || []).forEach(function(r){
+      const c = String(r.icao || '').trim().toUpperCase();
+      if(c in abPresence) abPresence[c] += 1;
+    });
   } catch(e){
     console.error('airport_briefs presence', e);
-    return;
   }
-  // Zeros are written ONLY for codes this query actually asked about. A
-  // successful read that returned no row for KLAX is real evidence that KLAX
-  // has nothing; it is not evidence about any other airport.
-  want.forEach(function(c){ abPresence[c] = 0; });
-  rows.forEach(function(r){
-    const c = String(r.icao || '').trim().toUpperCase();
-    if(c in abPresence) abPresence[c] += 1;
-  });
+
+  // Shelf files. No deleted_at on this table -- removal is a hard delete, so
+  // the row's existence is the whole test.
+  try {
+    const { data, error } = await sb.from('trip_attachments')
+      .select('icao')
+      .eq('scope', 'airport')
+      .in('icao', want);
+    if(error) throw error;
+    want.forEach(function(c){ abFilePresence[c] = 0; });
+    (data || []).forEach(function(r){
+      const c = String(r.icao || '').trim().toUpperCase();
+      if(c in abFilePresence) abFilePresence[c] += 1;
+    });
+  } catch(e){
+    console.error('airport files presence', e);
+  }
 }
 
 // The mark itself. Empty string where there is nothing to say, so callers can
-// concatenate it unconditionally.
+// concatenate it unconditionally. A file alone now raises the glyph: an
+// airport diagram nobody can find is the same as no airport diagram.
 function abMarkHTML(code){
-  if(!abHasBriefs(code)) return '';
-  const t = 'Crew have written about this airport \u2014 open Airport brief';
-  return '<span class="ab-mark" title="' + t + '" aria-label="' + t + '">' +
+  if(!abPresenceInfo(code).any) return '';
+  const t = abPresenceTooltip(code);
+  return '<span class="ab-mark" title="' + escapeHtml(t) + '" aria-label="' + escapeHtml(t) + '">' +
     NOTES_DOOR_ICON + '</span>';
 }
 
@@ -15033,15 +15106,13 @@ let abPickState = { legId: null, dep: '', arr: '' };
 
 function abPickRowHTML(code, end){
   if(!code) return '';
-  const has = abHasBriefs(code);
-  const known = (code in abPresence);
+  // Same source of truth as the glyph, so the row and the mark beside it can
+  // never say different things.
   return '<button type="button" class="ab-pick-row" data-ab-pick="' + escapeHtml(code) + '">' +
     '<span class="ab-pick-end">' + end + '</span>' +
     '<span class="ab-pick-code">' + escapeHtml(code) + '</span>' +
     abMarkHTML(code) +
-    '<span class="ab-pick-what">' +
-      (has ? 'Briefs to read' : (known ? 'Nothing written yet' : '\u2026')) +
-    '</span>' +
+    '<span class="ab-pick-what">' + escapeHtml(abPresenceLabel(code)) + '</span>' +
   '</button>';
 }
 
