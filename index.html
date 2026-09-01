@@ -3380,7 +3380,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T03:30:00Z';
+const BUILD_VERSION = '2026-09-01T03:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7110,7 +7110,13 @@ function sectionFieldIds(key){
   const ids = [];
   // Selects count too: the tail-number picker is a real field, and leaving it out
   // meant verifying a section silently skipped it.
-  el.querySelectorAll('input[id], textarea[id], select[id]').forEach(n => { if(n.id) ids.push(n.id); });
+  // The attestation checkbox is INSIDE the section but is NOT a leg field: it
+  // is a leg_verifications row belonging to one user. Left in, verifying would
+  // write a fieldMeta entry for an id that maps to nothing on the blob, and
+  // that junk would then persist in the leg forever.
+  el.querySelectorAll('input[id], textarea[id], select[id]').forEach(n => {
+    if(n.id && !n.classList.contains('wx-attest-box')) ids.push(n.id);
+  });
   return ids;
 }
 // Section wrappers are plain <div class="section">. Tag each one with its key
@@ -14752,8 +14758,15 @@ function renderMain(){
           // Outside the grid: the hint is a full-width note, and inside a fixed
           // six-column grid it would eat a cell and shunt the row order.
                     '<div style="margin-top:14px">' + legNotesBlockHTML('dep', airfieldNotesLabel('dep', leg.dep.airportId), 'depNotesLabel', 'Jot something down for yourself\u2026') + '</div>' +
-                    '<div style="margin-top:14px">' + wxAttestBlockHTML('dep') + '</div>' +
         '</div>' +
+        // OUTSIDE the .subpanel card, still inside the .section. The card is
+        // the shared record of the leg; this is one person's statement about
+        // themselves, so it does not belong in the same container. Keeping it
+        // in the section is what makes the verify gate legible: it reads as a
+        // condition on signing THIS section off.
+        // It also falls outside the verification ring, which paints .subpanel
+        // cards and .field[data-field-id] wrappers -- this is neither.
+        '<div style="margin-top:14px">' + wxAttestBlockHTML('dep') + '</div>' +
       '</div>' +
     '</div>' +
 
@@ -14784,8 +14797,15 @@ function renderMain(){
             field('Min GAL to waive', 'arrRampFeeMinGallons', leg.arr.rampFeeMinGallons) +
           '</div>' +
                     '<div style="margin-top:14px">' + legNotesBlockHTML('arr', airfieldNotesLabel('arr', leg.arr.airportId), 'arrNotesLabel', 'Jot something down for yourself\u2026') + '</div>' +
-                    '<div style="margin-top:14px">' + wxAttestBlockHTML('arr') + '</div>' +
         '</div>' +
+        // OUTSIDE the .subpanel card, still inside the .section. The card is
+        // the shared record of the leg; this is one person's statement about
+        // themselves, so it does not belong in the same container. Keeping it
+        // in the section is what makes the verify gate legible: it reads as a
+        // condition on signing THIS section off.
+        // It also falls outside the verification ring, which paints .subpanel
+        // cards and .field[data-field-id] wrappers -- this is neither.
+        '<div style="margin-top:14px">' + wxAttestBlockHTML('arr') + '</div>' +
       '</div>' +
     '</div>' +
 
