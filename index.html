@@ -911,7 +911,7 @@
   /* Per-user attestation box. AMBER until the person ticks it, green after.
      Amber here means "you have not answered this yet", the same sense it
      carries on critical fields -- not "something is wrong".
-     The box renders DISABLED and only enables once hydrateWxAttest has read
+     The box renders DISABLED and only enables once hydrateLegVerifications has read
      this user's real state. An unticked box before hydration lands is not a
      statement that nobody ticked it, and a click in that window would write a
      delete over a real signature. If the read fails the box stays disabled,
@@ -2737,6 +2737,17 @@ a.chat-open{ text-decoration:none; display:inline-block; }
     font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:0.02em;
     color:var(--fog-500); opacity:0.85; margin:-6px 0 12px 0;
   }
+  /* OTHER PEOPLE'S SIGNATURES on this section. Deliberately NOT the amber/green
+     verification palette: those colours answer "have YOU checked this", and this
+     line answers a different question. It is information, not a state of yours.
+     Empty and collapsed when nobody else has signed. */
+  .section-signoffs{ display:none; }
+  .section-signoffs.has-signoffs{
+    display:block;
+    font-family:system-ui,'Inter',sans-serif; font-size:10px; letter-spacing:0.02em;
+    color:var(--fog-500); margin:-6px 0 12px 0;
+  }
+  .section-verify-btn[disabled]{ opacity:0.45; cursor:default; }
 
   /* Provenance on Y/N toggles: keep the button's red/green fill (that carries the
      warning meaning) and tint only the LABEL TEXT cyan, exactly like text fields. */
@@ -3380,7 +3391,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T03:45:00Z';
+const BUILD_VERSION = '2026-09-01T05:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5130,6 +5141,57 @@ async function clearLegVerification(legId, item){
   if(error) throw error;
 }
 
+/* ============================================================
+   THIS USER'S VIEW OF ONE LEG'S SIGNATURES.
+
+   Held in memory for the leg currently open, hydrated once by
+   hydrateLegVerifications. Every synchronous read site (ring, button, progress
+   pill) asks these accessors instead of the leg blob.
+
+   `ready` is the whole safety story. Until the fetch lands we do not know what
+   this user has signed, and "unknown" must never render as "not signed" --
+   a button painted unchecked in that window is one click away from deleting a
+   real signature. So ready===false means every accessor answers false AND every
+   control stays disabled. If the read fails it stays false, deliberately: if
+   Beacon cannot show you your own sign-off it must not let you make one.
+   ============================================================ */
+const legVerif = { legId: null, ready: false, rows: [] };
+
+function myUserId(){ return currentUserProfile ? currentUserProfile.id : null; }
+
+// Have I signed this item? Items are section keys ('departure') or attestation
+// keys ('dep.wxReviewed') -- one namespace, no collisions.
+function iVerified(item){
+  if(!legVerif.ready) return false;
+  const me = myUserId();
+  if(!me) return false;
+  return legVerif.rows.some(function(r){ return r.item === item && r.user_id === me; });
+}
+// Anyone at all -- this is what the leg-level bit on the blob tracks.
+function anyoneVerified(item){
+  return legVerif.ready && legVerif.rows.some(function(r){ return r.item === item; });
+}
+// Everyone EXCEPT me. My own state is already on the button.
+function othersWhoVerified(item){
+  if(!legVerif.ready) return [];
+  const me = myUserId();
+  return legVerif.rows
+    .filter(function(r){ return r.item === item && r.user_id !== me; })
+    .map(function(r){ return (r.author_name || '').trim(); })
+    .filter(Boolean);
+}
+// Optimistic local update. The button repaints immediately; the row write
+// follows, and the caller reverts this on failure.
+function legVerifSetLocal(item, on){
+  const me = myUserId();
+  if(!me) return;
+  legVerif.rows = legVerif.rows.filter(function(r){ return !(r.item === item && r.user_id === me); });
+  if(on) legVerif.rows.push({
+    item: item, user_id: me, author_name: currentUserName(),
+    author_role: '', verified_at: new Date().toISOString()
+  });
+}
+
 // Read one field's textarea + toggle out of the DOM and persist it.
 //
 // *** AN EMPTY BOX IS NOT THE SAME AS AN EMPTIED BOX. *** hydrateLegNotes fills
@@ -5204,7 +5266,7 @@ function wireLegNotes(legId){
 // private, so there is never anything of anyone else's to show.
 // Guards against overwriting in-progress typing and against stale navigation.
 // Wire the attestation checkboxes. Called BEFORE hydration, but every box
-// renders disabled, so nothing can be written until hydrateWxAttest has read
+// renders disabled, so nothing can be written until hydrateLegVerifications has read
 // this user's real state and enabled them. That ordering is the whole guard.
 function wireWxAttest(legId){
   document.querySelectorAll('.wx-attest').forEach(function(box){
@@ -5240,21 +5302,64 @@ function wireWxAttest(legId){
 // resolves, and stay disabled forever if the read fails -- deliberately. If
 // Beacon cannot show you your own sign-off it must not let you make one, and
 // it must not let a click delete one it never managed to display.
-async function hydrateWxAttest(legId){
-  let rows;
-  try { rows = await fetchLegVerifications(legId); }
-  catch(e){ console.error('leg_verifications load', e); return; } // boxes stay disabled
-  if(state.activeId !== legId) return; // navigated away while loading
-  const myId = currentUserProfile ? currentUserProfile.id : null;
+// Paint the attestation boxes from the hydrated rows. No fetch of its own --
+// one read serves the checkboxes and the section buttons alike.
+function applyWxAttestBoxes(){
   document.querySelectorAll('.wx-attest').forEach(function(box){
     const input = box.querySelector('.wx-attest-box');
     if(!input) return;
     const item = box.getAttribute('data-attest-item');
-    const mine = myId ? rows.find(function(r){ return r.item === item && r.user_id === myId; }) : null;
-    input.checked = !!mine;
+    input.checked = iVerified(item);
     box.classList.remove('is-pending');
-    input.disabled = false;
+    input.disabled = !legVerif.ready;
   });
+}
+
+// Paint one section's "who else signed this" line.
+function renderSignoffLine(key){
+  const el = document.querySelector('.section-signoffs[data-signoffs="' + key + '"]');
+  if(!el) return;
+  const names = othersWhoVerified(key);
+  if(!names.length){ el.textContent = ''; el.classList.remove('has-signoffs'); return; }
+  el.textContent = 'Verified by ' + names.join(', ');
+  el.classList.add('has-signoffs');
+}
+
+// Paint every section button, ring and names line from the hydrated rows.
+// The button shows MY signature. The names line shows everyone else's. Two
+// different questions, two different places on screen, never merged.
+function applySectionVerifyUI(){
+  document.querySelectorAll('.section[data-section-body]').forEach(function(sec){
+    const key = sec.getAttribute('data-section-body');
+    const btn = sec.querySelector('.section-verify-btn');
+    const mine = iVerified(key);
+    if(btn){
+      btn.disabled = !legVerif.ready;
+      btn.classList.toggle('is-verified', mine);
+      const lbl = btn.querySelector('.verify-label');
+      if(lbl) lbl.textContent = mine ? 'Checked' : (SECTION_LABELS[key] || 'Check');
+      const t = btn.closest('.section-title');
+      if(t) t.classList.toggle('is-checked', mine);
+    }
+    paintSectionRing(sec, mine, false);
+    renderSignoffLine(key);
+  });
+}
+
+// One read per leg open. Fills legVerif, then paints everything that depends
+// on it. On failure legVerif.ready stays false and every control stays
+// disabled -- see the comment on legVerif for why that is the safe direction.
+async function hydrateLegVerifications(legId){
+  legVerif.legId = legId; legVerif.ready = false; legVerif.rows = [];
+  applyWxAttestBoxes();
+  applySectionVerifyUI();
+  let rows;
+  try { rows = await fetchLegVerifications(legId); }
+  catch(e){ console.error('leg_verifications load', e); return; } // controls stay disabled
+  if(state.activeId !== legId) return; // navigated away while loading
+  legVerif.legId = legId; legVerif.rows = rows; legVerif.ready = true;
+  applyWxAttestBoxes();
+  applySectionVerifyUI();
 }
 
 async function hydrateLegNotes(legId){
@@ -7198,7 +7303,10 @@ function paintSectionRings(leg){
   document.querySelectorAll('.section[data-section-body]').forEach(sec => {
     sec.classList.remove('is-verified','has-broken-verify');
     const key = sec.getAttribute('data-section-body');
-    paintSectionRing(sec, !!(leg.sectionVerified && leg.sectionVerified[key]), false);
+    // MY signature, not the leg-level bit. Before hydration this is false for
+    // everything, which is correct: unknown renders as unsigned but the buttons
+    // are disabled, so nothing can be written from that state.
+    paintSectionRing(sec, iVerified(key), false);
   });
 }
 
@@ -7261,17 +7369,25 @@ function resetVerifyButtonLabel(btn){
 
 function sectionTitleHTML(label, key, leg){
   const complete = !!(leg.sectionComplete && leg.sectionComplete[key]);
-  const verified = !!(leg.sectionVerified && leg.sectionVerified[key]);
   // 'Complete' was retired: it auto-ticked on data presence, which said nothing
   // about whether the data was CORRECT, and competed with Verify. Verify is the
   // single control now. Stored sectionComplete data is left untouched/harmless.
   void complete;
-  return '<div class="section-title' + (verified ? ' is-checked' : '') + '">' + escapeHtml(label) +
-    '<button type="button" class="section-verify-btn' + (verified ? ' is-verified' : '') + '" data-verify-key="' + key + '">' +
-      '<span class="verify-mark">&#10003;</span><span class="verify-label">' + (verified ? 'Checked' : escapeHtml(label)) + '</span>' +
+  // RENDERS UNCHECKED AND DISABLED, ALWAYS. The button reflects MY signature,
+  // which lives in leg_verifications and is not known until the fetch lands.
+  // applySectionVerifyUI paints the truth a moment later. Painting the leg-level
+  // bit here instead would show someone else's sign-off as though it were mine.
+  // The signoffs div is rendered empty and stays in the DOM so hydration can
+  // fill it in place. It sits AFTER the touch line: refreshSectionTouchLine
+  // inspects the title's next sibling, so anything inserted between the two
+  // would break the touch line's in-place update.
+  return '<div class="section-title">' + escapeHtml(label) +
+    '<button type="button" class="section-verify-btn" data-verify-key="' + key + '" disabled>' +
+      '<span class="verify-mark">&#10003;</span><span class="verify-label">' + escapeHtml(label) + '</span>' +
     '</button>' +
   '</div>' +
-  sectionTouchLine(leg, key);
+  sectionTouchLine(leg, key) +
+  '<div class="section-signoffs" data-signoffs="' + key + '"></div>';
 }
 
 /* The carried-hours caption. Rendered ONLY when the carry crossed a date
@@ -14968,9 +15084,9 @@ function renderMain(){
     const el = document.getElementById('verifyProgress');
     if(!el) return;
     const total = ALL_SECTION_KEYS.length;
-    const done = ALL_SECTION_KEYS.filter(function(k){
-      return !!(leg.sectionVerified && leg.sectionVerified[k]);
-    }).length;
+    // MY count. The pill sits above buttons that show my own signatures, so
+    // counting anyone's sign-off here would contradict what is on screen.
+    const done = ALL_SECTION_KEYS.filter(function(k){ return iVerified(k); }).length;
     const allDone = done === total;
     const label = allDone ? 'CHECKLIST COMPLETE' : (done + ' of ' + total + ' checked');
     // Tapping still jumps DOWN to the next unverified section; the chevron that
@@ -14982,9 +15098,7 @@ function renderMain(){
     el.setAttribute('title', allDone ? 'Every section signed off' : 'Jump to next unchecked item');
   }
   function jumpToNextUnverified(){
-    const order = ALL_SECTION_KEYS.filter(function(k){
-      return !(leg.sectionVerified && leg.sectionVerified[k]);
-    });
+    const order = ALL_SECTION_KEYS.filter(function(k){ return !iVerified(k); });
     if(!order.length) return;
     // The header AND the sticky strip both cover the top of the page. Using
     // the header alone put the next section's verify button underneath the
@@ -15207,8 +15321,8 @@ function renderMain(){
     const vbtn0 = sectionEl.querySelector('.section-verify-btn');
     const vkey = sectionEl.getAttribute('data-section-body')
       || (vbtn0 ? vbtn0.getAttribute('data-verify-key') : null);
-    if(vkey && leg.sectionVerified && leg.sectionVerified[vkey] && sectionHasRedToggle(sectionEl)){
-      leg.sectionVerified[vkey] = false;
+    if(vkey && iVerified(vkey) && sectionHasRedToggle(sectionEl)){
+      demoteSectionForMe(leg, vkey);
       const vb = sectionEl.querySelector('.section-verify-btn');
       if(vb){
         vb.classList.remove('is-verified');
@@ -15493,10 +15607,12 @@ function renderMain(){
     const body = wrap.closest('[data-section-body]');
     if(body){
       const key = body.getAttribute('data-section-body');
-      const wasVerified = !!(leg.sectionVerified && leg.sectionVerified[key]);
+      // Amber means "you just invalidated YOUR OWN sign-off", so this asks
+      // about my row, not the leg-level bit. Read before the demotion below.
+      const wasVerified = iVerified(key);
       // Amber only if a real sign-off was just invalidated.
       paintSectionRing(body, false, wasVerified || m.brokeVerify);
-      if(leg.sectionVerified) leg.sectionVerified[key] = false;
+      demoteSectionForMe(leg, key);
       const vbtn = main.querySelector('.section-verify-btn[data-verify-key="' + key + '"]');
       if(vbtn){
         vbtn.classList.remove('is-verified');
@@ -15542,9 +15658,11 @@ function renderMain(){
     const body = wrap.closest('[data-section-body]');
     if(body){
       const key = body.getAttribute('data-section-body');
-      const wasVerified = !!(leg.sectionVerified && leg.sectionVerified[key]);
+      // Amber means "you just invalidated YOUR OWN sign-off", so this asks
+      // about my row, not the leg-level bit. Read before the demotion below.
+      const wasVerified = iVerified(key);
       paintSectionRing(body, false, wasVerified || m.brokeVerify);
-      if(leg.sectionVerified) leg.sectionVerified[key] = false;
+      demoteSectionForMe(leg, key);
       const vbtn = main.querySelector('.section-verify-btn[data-verify-key="' + key + '"]');
       if(vbtn){
         vbtn.classList.remove('is-verified');
@@ -15559,8 +15677,13 @@ function renderMain(){
   main.querySelectorAll('.section-verify-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const key = btn.getAttribute('data-verify-key');
+      // The button is disabled until hydration; this is the belt to that braces.
+      // Acting on an unknown signature state is how a real sign-off gets deleted.
+      if(!legVerif.ready) return;
       if(!leg.sectionVerified) leg.sectionVerified = {};
-      const nowVerified = !leg.sectionVerified[key];
+      // MY signature decides the direction, not the leg-level bit. Pressing
+      // again withdraws mine only -- anyone else's stands.
+      const nowVerified = !iVerified(key);
       // Safety rail (previously tied to the retired Complete control): an
       // unresolved red toggle must block sign-off, since Verify now gates Ready.
       if(nowVerified){
@@ -15582,7 +15705,7 @@ function renderMain(){
       if(nowVerified){
         const gateEnd = (key === 'departure') ? 'dep' : (key === 'arrival' ? 'arr' : '');
         const attest = gateEnd ? document.getElementById(gateEnd + 'WxReviewed') : null;
-        // Disabled means hydrateWxAttest has not resolved. Unchecked in that
+        // Disabled means hydrateLegVerifications has not resolved. Unchecked in that
         // window is "not known yet", never "not reviewed", so this must not
         // accuse the user of skipping something they may well have done.
         if(attest && attest.disabled){
@@ -15598,7 +15721,22 @@ function renderMain(){
         // rendering fault the user has no way to clear, and locking every
         // sign-off behind a bug is worse than the gate being skipped.
       }
-      leg.sectionVerified[key] = nowVerified;
+      // Two records, two meanings. The ROW is my personal statement. The blob
+      // bit is the leg-level one Ready and the archive read: true while any
+      // signature stands, false only when the last one is withdrawn.
+      legVerifSetLocal(key, nowVerified);
+      leg.sectionVerified[key] = anyoneVerified(key);
+      renderSignoffLine(key);
+      btn.disabled = true;
+      (nowVerified ? setLegVerification(leg.id, key) : clearLegVerification(leg.id, key))
+        .catch(function(e){
+          console.error('leg_verifications section write', e);
+          legVerifSetLocal(key, !nowVerified);
+          leg.sectionVerified[key] = anyoneVerified(key);
+          applySectionVerifyUI();
+          showToast('Could not record that. Check your connection and try again.');
+        })
+        .then(function(){ btn.disabled = false; });
       const who = currentUserName();
       sectionFieldIds(key).forEach(fid => {
         if(nowVerified) markFieldVerified(leg, fid, who);
@@ -15798,7 +15936,7 @@ function renderMain(){
   wireLegNotes(leg.id);
   hydrateLegNotes(leg.id);
   wireWxAttest(leg.id);
-  hydrateWxAttest(leg.id);
+  hydrateLegVerifications(leg.id);
   wireLegAttachments(leg);
   hydrateLegAttachments(leg);
   hydrateNotesDoor(((leg.tripNumber || '').trim()), { legId: leg.id });
@@ -16629,15 +16767,39 @@ function applyHumanEditProvenance(leg, before){
   });
   leg._fieldValueBaseline = baseline;
 }
+/* My own edit invalidates MY signature and nobody else's.
+   This fires only from paths the local user drove -- typing in a field,
+   pasting, tripping a red toggle -- so withdrawing my row is the honest
+   response and does not touch anyone else's statement.
+   The blob bit is the LEG-LEVEL claim ("somebody has signed this off") and
+   survives as long as one signature remains, which is what keeps Ready and
+   the archive working unchanged.
+   NOTE: other people's signatures are left standing over changed data. That
+   is the gap step 5b closes by showing them as verified-then-changed. Until
+   then, deleting them would revoke a statement that is not mine to revoke,
+   and that is the worse of the two errors. */
+function demoteSectionForMe(leg, key){
+  if(!key) return;
+  if(legVerif.ready && iVerified(key)){
+    legVerifSetLocal(key, false);
+    clearLegVerification(leg.id, key).catch(function(e){
+      console.error('leg_verifications demote', e);
+    });
+  }
+  if(!leg.sectionVerified) leg.sectionVerified = {};
+  // Before hydration we cannot know who else signed, so fall back to today's
+  // behaviour and clear the bit rather than inventing a survivor.
+  leg.sectionVerified[key] = legVerif.ready ? anyoneVerified(key) : false;
+  renderSignoffLine(key);
+}
+
 function clearSectionVerifyForField(leg, fid){
   const w = document.querySelector('.field[data-field-id="' + fid + '"]');
   if(!w) return;
   const body = w.closest('[data-section-body]');
   if(!body) return;
   const key = body.getAttribute('data-section-body');
-  if(leg.sectionVerified && leg.sectionVerified[key]){
-    leg.sectionVerified[key] = false;
-  }
+  demoteSectionForMe(leg, key);
 }
 
 /* ---- Provisional dates -------------------------------------------------------
