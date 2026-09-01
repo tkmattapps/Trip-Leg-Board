@@ -1287,17 +1287,6 @@
      nothing vanishes -- a silent loss is the failure mode that cost a whole day
      of debugging on 27 Aug 2026. */
 
-  .sched-blk-pencil{ background:transparent !important; }
-  /* The dot on the category button and in the legend must match the grid, or
-     the button teaches the wrong shape. */
-  .sched-key-dot-pencil{ background:transparent !important; }
-  /* A superseded pencil is still listed, because it is still a record and still
-     removable -- it is merely no longer the truth about the day. Dimmed, not
-     struck through: it was not wrong, it was overtaken. */
-  .sched-existing-lbl-done{ color:var(--fog-500); }
-  .sched-superseded{ font-size:10px; text-transform:uppercase; letter-spacing:0.04em;
-    color:var(--fog-500); border:1px solid var(--hairline); border-radius:3px;
-    padding:1px 4px; margin-left:6px; white-space:nowrap; }
   .sched-cat-note{ font-size:11px; line-height:1.45; color:var(--fog-500);
     border-left:2px solid #3DBE6B; padding:2px 0 2px 9px; margin:10px 0 2px; }
   /* *** THERE ARE NO WEEKENDS IN AVIATION. ***
@@ -3532,7 +3521,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T21:05:00Z';
+const BUILD_VERSION = '2026-09-01T21:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -19289,17 +19278,17 @@ function quickNoteBodyHTML(activeTripId){
 // NOTE: #E8D44F is the one fill in this table that needs DARK text, not paper.
 const SCHED_COLORS = {
   flight:         '#24CC78',
-  flight_pencil:  '#24CC78',   // SAME GREEN AS A REAL FLIGHT, ON PURPOSE
   // *** BACKFILLED DUTY IS DUTY. *** A day flown in March 2026, before the
   // department adopted Beacon, was as real as one flown today -- it simply has
   // no leg behind it and never will. Same green, no qualifier, no hollow
   // outline: the grid's job is to show 2026 as the year it actually was.
   // The distinction lives in the day panel, in words, where it costs nothing.
   //
-  // NOTE THIS BREAKS AN ASSUMPTION YOU MAY BE CARRYING: green no longer means
-  // "counts toward the tally". flight_pencil is green and does NOT count;
-  // flight_historical is green and DOES. Green means flying-related. The
-  // counting rules live in the tally and nowhere else.
+  // Green means flying-related, not "counts toward the tally". flight_historical
+  // is green and DOES count; the counting rules live in the tally and nowhere
+  // else. (This note used to carry a second example, flight_pencil, which was
+  // green and did not count. The pencil was removed on 1 Sep 2026 -- see
+  // SCHED_CREW_CATS.)
   flight_historical: '#24CC78',
   away_on_trip:   '#24CC78',   // ONE TRIP, ONE COLOUR -- see schedCellHTML
   training:       '#2477CB',
@@ -19355,7 +19344,7 @@ function schedIsClash(entries){
   if(!entries || entries.length < 2) return false;
   let flying = false, protectedDay = false;
   entries.forEach(function(e){
-    if(e.kind === 'flight' || e.kind === 'flight_pencil' || e.kind === 'away_on_trip'
+    if(e.kind === 'flight' || e.kind === 'away_on_trip'
        || e.kind === 'flight_historical') flying = true;
     else if(SCHED_PROTECTED[e.kind]) protectedDay = true;
   });
@@ -19364,7 +19353,6 @@ function schedIsClash(entries){
 
 const SCHED_LABELS = {
   flight:         'Flight duty',
-  flight_pencil:  'Flight duty (penciled)',
   flight_historical: 'Flight duty \u2014 before Beacon',
   away_on_trip:   'Away on trip \u2014 not flying',
   training:       'Training / on-site',
@@ -19499,7 +19487,7 @@ async function schedRpcPaged(fnName, args){
 // gates and a day panel that lists flight duty the grid says is not there.
 //
 // ONLY `flight` is dropped. It is the one kind whose existence depends on an
-// extracted leg. flight_pencil, flight_historical and every hand category are
+// extracted leg. flight_historical and every hand category are
 // stored facts somebody entered, and dumb mode keeps every stored fact -- the
 // dividing line is the leg chain, not "derived-looking". The other derived kind,
 // away_on_trip, is built client-side by schedFillAwayDays and is skipped at the
@@ -19641,10 +19629,6 @@ function schedFillAwayDays(idx){
         // away_on_trip here gives every interior day a key belonging to the trip,
         // the run becomes continuous, and the span-suppression rule then hides the
         // redundant backfill because the day is no longer backfill-only.
-        //
-        // NOT skipped for flight_pencil either, deliberately: the same argument
-        // applies, and a pencil inside a confirmed trip is exactly the leftover
-        // the grid is supposed to surface.
         if(!byDay[iso]) byDay[iso] = [];
         byDay[iso].push({ kind: 'away_on_trip', ref: '', detail: '', trip: key });
       }
@@ -19698,7 +19682,7 @@ function schedKindLabel(kind, ownerKind){
 // (trap T-2). The way to get that wrong is to reimplement the filter; so this
 // function IS the rule, and schedCellHTML calls it too.
 //
-// Unchanged from before run bars: where a real leg exists on a day, a penciled or
+// Unchanged from before run bars: where a real leg exists on a day, a
 // backfilled flight on that day does not draw. SUPPRESSED AT THE RENDER, never
 // deleted -- the records survive, the day panel still lists them, and the whole
 // backfill can still be cleared by category.
@@ -19713,7 +19697,6 @@ function schedSuppressEntries(entries){
   const seen = {};
   const out = [];
   entries.forEach(function(e){
-    if(e.kind === 'flight_pencil' && hasRealFlight) return;
     if(e.kind === 'flight_historical' && hasRealFlight) return;
     // *** DEDUPE BY RUN KEY, NOT BY KIND. ***
     // This used to key on e.kind, which meant a day holding both a real leg and
@@ -19754,7 +19737,7 @@ function schedSuppressEntries(entries){
 // stretch of days, a backfilled duty day anywhere inside that stretch is the same
 // fact told twice by a worse source, and the real trip wins for all of it.
 //
-// So: find every real trip's span first, then suppress backfill and pencil days
+// So: find every real trip's span first, then suppress backfill days
 // inside any of them. SUPPRESSED AT THE RENDER, never deleted -- the rows survive
 // and the whole backfill can still be cleared by category in one statement.
 function schedRealTripSpans(ownedDays, dayISOList){
@@ -19764,9 +19747,9 @@ function schedRealTripSpans(ownedDays, dayISOList){
     const entries = ownedDays[dayISOList[i]] || [];
     for(let j = 0; j < entries.length; j++){
       const e = entries[j];
-      // Only a REAL leg or its derived away day defines a span. A pencil must
-      // never suppress a backfill: a provisional plan is not evidence the day
-      // was flown, and letting it hide history would erase the record.
+      // Only a REAL leg or its derived away day defines a span. A backfilled
+      // day must never define one: it is the weaker record of an absence, and
+      // letting it set the bounds would let history suppress itself.
       if(e.kind !== 'flight' && e.kind !== 'away_on_trip') continue;
       const k = schedRunKeyFor(e);
       if(!byTrip[k]) byTrip[k] = { from: i, to: i };
@@ -19788,7 +19771,7 @@ function schedSuppressedDays(ownedDays, dayISOList){
     const inSpan = spans.some(function(s){ return i >= s.from && i <= s.to; });
     if(inSpan){
       const filtered = ents.filter(function(e){
-        return e.kind !== 'flight_historical' && e.kind !== 'flight_pencil';
+        return e.kind !== 'flight_historical';
       });
       // Never empty a day that had something in it. If a backfill row were the
       // ONLY entry on a day inside the span, dropping it would punch a hole
@@ -19802,10 +19785,8 @@ function schedSuppressedDays(ownedDays, dayISOList){
 
 // The kinds whose identity is a TRIP rather than a reason. away_on_trip is the
 // derived interior of a trip and flight_historical is a backfilled duty day, so
-// both belong to a trip in exactly the same sense a leg does. flight_pencil is
-// included too: a penciled span is one intention, and splitting it per note
-// would make a provisional trip look like several.
-const SCHED_TRIP_KINDS = { flight:1, away_on_trip:1, flight_pencil:1, flight_historical:1 };
+// both belong to a trip in exactly the same sense a leg does.
+const SCHED_TRIP_KINDS = { flight:1, away_on_trip:1, flight_historical:1 };
 
 // ---- RUN DETECTION -------------------------------------------------------
 //
@@ -20028,25 +20009,6 @@ function schedRunLabel(e, dayRuns){
   return '<span class="sched-run-n" style="--run-w:' + w + 'px">' + escapeHtml(txt) + '</span>';
 }
 
-// The pencil outline, drawn edge by edge. A continuous hollow run must read as
-// ONE outlined shape, so the internal verticals are omitted -- otherwise the
-// outline draws a rule at every day boundary and the run looks like the confetti
-// it replaced. Top and bottom always draw; left only on the first day, right
-// only on the last.
-function schedPencilShadow(col, e, dayRuns){
-  const r = schedRunAt(e, dayRuns);
-  const parts = [];
-  if(!r || r.len < 2){
-    return 'box-shadow:inset 0 0 0 2px ' + col;
-  }
-  parts.push('inset 0 2px 0 0 ' + col);
-  parts.push('inset 0 -2px 0 0 ' + col);
-  if(r.isFirst) parts.push('inset 2px 0 0 0 ' + col);
-  if(r.isLast)  parts.push('inset -2px 0 0 0 ' + col);
-  return 'box-shadow:' + parts.join(',');
-}
-
-
 function schedRunText(run){
   // A one-day run gets NO number. "1" is noise -- the cell is already exactly
   // one day wide and says so by being that wide.
@@ -20116,27 +20078,6 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   // so it survives collapsing untouched -- the only thing removed is repetition
   // of the SAME category, which never carried information in the first place.
   const shown = [];
-  // *** A REAL TRIP SUPERSEDES A PENCIL, PER DAY, WITHOUT ANYONE TIDYING UP. ***
-  //
-  // Kyle, 26 Aug 2026: "what I don't want is for Eric to have to go back and
-  // erase all of his penciled in trips... the trip itself should supersede the
-  // penciling in, so he doesn't have to erase them."
-  //
-  // Decided DAY BY DAY, not record by record, which is what makes it self-
-  // maintaining. Where the real trip covers a penciled day the solid block wins
-  // and the hollow one does not draw -- nothing to clean up, and crew reading
-  // the grid see one truthful block instead of a guess sitting next to a fact.
-  // Where a penciled day falls OUTSIDE the trip it keeps showing hollow, because
-  // that day genuinely has not been resolved. A four-day pencil against a
-  // two-day trip therefore goes quiet on the overlap and stays hollow on the two
-  // stragglers, which is exactly the reconciliation Eric needs to see. The grid
-  // surfaces the leftovers by itself rather than making him hunt for them.
-  //
-  // *** SUPPRESSED, NOT DELETED. *** The pencil row is still in entries, still
-  // listed in the day panel, and still removable there. This is a rendering
-  // decision. Erasing the record would destroy the evidence that the plan moved.
-  // Clearing a leftover day stays a MANUAL delete, per Kyle -- by then the trip
-  // is the record of what happened and the pencil has done its job.
   // *** SUPPRESSION IS COMPUTED ONCE PER ROW AND HANDED IN. ***
   // It cannot be done here any more: the span rule needs to see the whole row to
   // know which days a real trip covers, and a cell sees exactly one day. The
@@ -20152,12 +20093,6 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
     const col = schedKindColor(e.kind, ownerKind);
     const label = schedKindLabel(e.kind, ownerKind);
     const title = e.detail ? (label + ' \u2014 ' + e.detail) : label;
-    // *** A PENCIL IS VISIBLE TO THE WHOLE DEPARTMENT, SO THE ENTIRE SAFETY OF
-    // THE FEATURE RESTS ON THIS LINE. *** Same green -- it means flying -- but
-    // HOLLOW rather than solid. Not a lighter green, which reads as a rendering
-    // artefact at 30px and disappears on a dim screen; an outline, which reads
-    // as "not filled in yet" without anyone being told. A pencil that looked
-    // like a confirmed flight would be a way to accidentally promise a trip.
     // *** ONE TRIP READS AS ONE CONTINUOUS THING. ***
     // Not a third green and not a new hue: three greens on a grid becomes a code
     // you have to learn, and Kyle's constraint is that the schedule must be
@@ -20181,15 +20116,6 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
       return '<span class="sched-blk' + schedRunCls(e, dayRuns) + '" style="background:' + col + '"' +
              ' title="' + escapeHtml(label + (e.trip && e.trip.indexOf('__grp_') !== 0
                                               ? ' \u2014 trip ' + e.trip : '')) + '">' +
-             schedRunLabel(e, dayRuns) + '</span>';
-    }
-    if(e.kind === 'flight_pencil'){
-      // A pencil run keeps its outline, so the inset shadow is drawn only on the
-      // edges the run actually has -- an internal edge would draw a rule THROUGH
-      // a continuous bar and break exactly the continuity we are building.
-      return '<span class="sched-blk sched-blk-pencil' + schedRunCls(e, dayRuns) + '"' +
-             ' style="' + schedPencilShadow(col, e, dayRuns) + '"' +
-             ' title="' + escapeHtml(title + ' \u2014 provisional, not a confirmed trip') + '">' +
              schedRunLabel(e, dayRuns) + '</span>';
     }
     // The qualifier -- the spreadsheet's "M" for a medical appointment -- is
@@ -20227,12 +20153,18 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
 // spreadsheet is ADJACENCY -- you decide against the surrounding picture, so
 // the picture must stay on screen while you decide.
 
-// *** 'flight_pencil' IS FIRST BECAUSE IT IS THE THING A NEW ADMIN LOOKS FOR
-// FIRST. *** Before it existed, the panel offered training, PTO, quarterly call,
-// soft day and other -- and a first-time user reasonably concluded the schedule
-// could not record the main thing a flight department schedules. The absence of
-// an option is invisible; you cannot explain it in a place nobody looks.
-const SCHED_CREW_CATS = ['flight_pencil','training','pto','quarterly_call','soft_day','other'];
+// *** THE PENCIL WAS REMOVED ON 1 SEP 2026. ***
+// 'flight_pencil' used to sit first in this list. It existed for one reason: to
+// record an upcoming trip before the trip sheet arrived, back when the schedule
+// had nowhere else to put one. The workbench is that place now, and it is
+// strictly better -- a pencil was a coloured block with a note, where a workbench
+// trip carries crew, a tail and dates. Keeping both would have meant entering the
+// same trip twice, the second time worse.
+//
+// Kyle: "it really just doesn't have any place to live... something that we'll
+// never build upon in the future." 'other' already covers anything flying-shaped
+// that is not a trip, and its reason field is mandatory, so nothing is lost.
+const SCHED_CREW_CATS = ['training','pto','quarterly_call','soft_day','other'];
 const SCHED_AC_CATS   = ['maintenance','away_from_base','other'];
 
 let schedEntry = null;   // { ownerId, ownerKind, ownerLabel, category, start, end, reason }
@@ -20924,10 +20856,6 @@ function schedExistingHTML(e){
   }
   if(!e.existing || !e.existing.length) return '<div class="sched-existing-note">Nothing on this day.</div>';
   let h = '<div class="sched-existing">';
-  // A pencil on a day that also holds a real flight is SUPPRESSED ON THE GRID,
-  // so the panel is the only place it still appears. It must therefore say WHY
-  // it is not drawn, or the record and the picture disagree with no explanation.
-  const dayHasRealFlight = e.existing.some(function(r){ return r.kind === 'flight'; });
   // The CURRENT SELECTION, which is what a trim would remove. A single tap is a
   // one-day span, so tapping the last day of a block and dragging across three
   // are the same gesture at different lengths -- one rule, not two.
@@ -20936,22 +20864,17 @@ function schedExistingHTML(e){
   e.existing.forEach(function(r){
     const col = schedKindColor(r.kind, e.ownerKind);
     const label = schedKindLabel(r.kind, e.ownerKind);
-    const isPencilRow  = r.kind === 'flight_pencil';
     const isAwayRow    = r.kind === 'away_on_trip';
-    const superseded   = isPencilRow && dayHasRealFlight;
     // A flight row opens the trip it came from -- but ONLY if that trip is in
     // the live set. An unreachable row must not look like a link, because a
     // control must do what its label says.
     const goTrip = (r.kind === 'flight' && schedFlightRefInfo(r.id)) ? r.id : '';
     h += '<div class="sched-existing-row' + (goTrip ? ' sched-existing-go' : '') + '"' +
            (goTrip ? ' data-sched-goleg="' + escapeHtml(goTrip) + '" role="button" tabindex="0"' : '') + '>' +
-           (isPencilRow
-             ? '<span class="sched-key-dot sched-key-dot-pencil" style="box-shadow:inset 0 0 0 2px ' + col + '"></span>'
-             : '<span class="sched-key-dot" style="background:' + col + '"></span>') +
+           '<span class="sched-key-dot" style="background:' + col + '"></span>' +
            '<div class="sched-existing-txt">' +
-             '<div class="sched-existing-lbl' + (superseded ? ' sched-existing-lbl-done' : '') + '">' +
+             '<div class="sched-existing-lbl">' +
                escapeHtml(label) +
-               (superseded ? ' <span class="sched-superseded">superseded by the trip</span>' : '') +
              '</div>' +
              '<div class="sched-existing-sub">' +
                escapeHtml(schedExistingSubText(r, isAwayRow)) +
@@ -21019,11 +20942,6 @@ function renderSchedEntry(){
   // form says so out loud rather than letting the database refuse a save the
   // person thought was fine -- but the trigger remains the rule, not this note.
   const needsReason = e.category === 'other';
-  // *** THE SCHEDULE MUST BE USABLE WITHOUT A MANUAL. *** A penciled flight is
-  // the one category whose BEHAVIOUR is not obvious from its name, so the panel
-  // says what it does at the moment you choose it -- the only moment the answer
-  // is wanted. A rule explained where nobody is looking is not explained.
-  const isPencil = e.category === 'flight_pencil';
   let h = '<div class="sched-entry-who">' + escapeHtml(e.ownerLabel) + '</div>';
   h += '<div class="sched-entry-day">' + escapeHtml(schedPrettyDay(e.day)) + '</div>';
   h += schedExistingHTML(e);
@@ -21042,20 +20960,13 @@ function renderSchedEntry(){
   cats.forEach(function(c){
     const on = c === e.category;
     h += '<button type="button" class="sched-cat' + (on ? ' sched-cat-on' : '') + '" data-sched-cat="' + c + '">' +
-           (c === 'flight_pencil'
-              ? '<span class="sched-key-dot sched-key-dot-pencil" style="box-shadow:inset 0 0 0 2px ' + SCHED_COLORS[c] + '"></span>'
-              : '<span class="sched-key-dot" style="background:' + SCHED_COLORS[c] + '"></span>') +
+           '<span class="sched-key-dot" style="background:' + SCHED_COLORS[c] + '"></span>' +
            escapeHtml(SCHED_LABELS[c]) +
          '</button>';
   });
   h += '</div>';
   if(!e.category){
     h += '<div class="sched-cat-note">Pick a category to add an entry for these dates.</div>';
-  }
-  if(isPencil){
-    h += '<div class="sched-cat-note">Provisional. Shows hollow on the grid so nobody reads it ' +
-         'as a booked trip. When the real trip sheet arrives it takes over \u2014 the pencil stays ' +
-         'so you can see how the plan moved. No trip number needed.</div>';
   }
   h += '<div class="field-row-inline sched-entry-dates">' +
          '<div class="field"><label>Start</label>' +
@@ -21359,7 +21270,7 @@ function renderScheduleView(){
   // dropped at the load; away_on_trip is MADE here, so it is skipped here.
   //
   // Nothing else in the render needs a gate, which is smaller than it looks:
-  // schedSuppressEntries only hides a pencil or a backfill when a real `flight`
+  // schedSuppressEntries only hides a backfill when a real `flight`
   // sits on the same day, and schedRealTripSpans only keys on flight and
   // away_on_trip. With both gone, the suppression and span machinery goes quiet
   // on its own. What is left of schedSuppressEntries is same-run-key dedupe,
