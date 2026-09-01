@@ -3351,7 +3351,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T01:05:00Z';
+const BUILD_VERSION = '2026-09-01T01:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5447,6 +5447,11 @@ const CHANGELOG_LABELS = {
   'status':'Status', 'tripNumber':'Trip number', 'legNumber':'Leg number',
   'date':'Departure date', 'arr.date':'Arrival date', 'cityPair':'City pair',
   'dep.city':'Departure city', 'arr.city':'Arrival city', 'paxCount':'Passenger count',
+  // The stored key is still minBRF, so without an entry here changelogLabel()
+  // prettifies the raw path and the change log reads 'Min B R F' -- which no
+  // longer matches what the screen says. The key is deliberately unchanged:
+  // renaming it would orphan every value already saved under it.
+  'minBRF':'Min required fuel',
   'compliance.eapisReqd':'eAPIS required', 'compliance.eapisNotes':'eAPIS details',
   'compliance.overflightReqd':'Overflight required', 'compliance.customsReqd':'Customs required',
   'compliance.customsNotes':'Customs details', 'compliance.overflightPermits':'Overflight permits',
@@ -13491,7 +13496,7 @@ function archivedLegDetailHTML(trip, leg){
   const perfBody =
     archField('Trim', leg.trim) +
     archField('Level off altitude', leg.levelOff) +
-    archField('Min BRF', leg.minBRF);
+    archField('Min required fuel', leg.minBRF);
 
   const enrBody =
     archField('Max shear', leg.maxShear) +
@@ -14636,7 +14641,7 @@ function renderMain(){
       '<div class="grid">' +
         field('Trim', 'trim', leg.trim) +
         field('Level off altitude', 'levelOff', leg.levelOff) +
-        field('Min BRF', 'minBRF', leg.minBRF) +
+        field('Min required fuel', 'minBRF', leg.minBRF) +
       '</div>' +
     '</div>' +
 
