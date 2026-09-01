@@ -1784,8 +1784,12 @@
     font-weight:600; color:var(--fog-500); padding:8px 10px; cursor:pointer;
     text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .notes-tab:hover{ color:var(--fog-300); }
+  /* Amber on the BORDER only, never the fill. The subject sub-pills below are
+     amber-FILLED, so keeping fill and outline distinct is what stops the two
+     levels reading as the same kind of choice. Panel fill said "selected" too
+     quietly on its own; the outline carries it. */
   .notes-tab.is-on{ color:var(--paper-050); background:var(--panel-700);
-    border-color:var(--hairline); }
+    border-color:var(--amber-500); }
   /* The identifier field. Sized to four characters and no wider -- a full-width
      box invites a sentence, and this takes an ICAO code. */
   /* Sub-tabs INSIDE the airport face. Deliberately a different shape from the
@@ -3528,7 +3532,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T13:30:00Z';
+const BUILD_VERSION = '2026-09-01T14:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
