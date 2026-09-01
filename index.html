@@ -3532,7 +3532,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T16:00:00Z';
+const BUILD_VERSION = '2026-09-01T16:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7387,7 +7387,19 @@ function showConfirm(message, opts){
       overlay.removeEventListener('click', onBackdrop);
       resolve(result);
     }
-    function onOk(){ cleanup(true); }
+    // onConfirmSync runs INSIDE the click, before the promise resolves. That
+    // matters on iOS/iPadOS Safari: a file picker only opens when the call is
+    // a direct result of a user gesture, and awaiting this promise defers the
+    // caller to a microtask, by which point the gesture is spent and
+    // fileInput.click() silently does nothing. Anything that must inherit the
+    // tap goes here; everything else can await the promise as before.
+    function onOk(){
+      if(typeof opts.onConfirmSync === 'function'){
+        try { opts.onConfirmSync(); }
+        catch(err){ console.error('onConfirmSync failed', err); }
+      }
+      cleanup(true);
+    }
     function onCancel(){ cleanup(false); }
     function onBackdrop(e){ if(e.target === overlay) cleanup(false); }
 
@@ -15520,7 +15532,11 @@ function airportBriefBlockHTML(){
           '<button type="button" class="doc-add-btn" id="abDocAddBtn"' + dis + '>+ Add document</button>' +
           '<input type="file" id="abDocFileInput" accept="application/pdf,image/*" style="display:none" />' +
         '</div>' +
-        uploadCautionHTML('attach') +
+        // NO always-visible caution here, unlike the trip shelves. It moved
+        // into the Add document sheet so it lands at the moment of the
+        // decision instead of becoming wallpaper. The trip shelves keep
+        // theirs -- this was not a change to the rule, only to where the
+        // destination shelf states it.
         '<div class="doc-list" id="abDocList"></div>' +
       '</div>' +
     '</div>';
@@ -15611,7 +15627,20 @@ function wireAirportBriefDocs(){
         { alertOnly: true, title: 'Files', okLabel: 'Got it' });
       return;
     }
-    fileInput.click();
+    // The picker opens from onConfirmSync, NOT from an await on this promise.
+    // See the note in showConfirm: an await would cost the user gesture and
+    // the picker would never open on iPad. danger:false because this is a
+    // caution, not a destructive act -- no red button.
+    showConfirm(
+      'Only upload paperwork belonging to the department you\u2019re uploading into.',
+      {
+        title: 'Before you upload',
+        okLabel: 'Choose file',
+        cancelLabel: 'Cancel',
+        danger: false,
+        onConfirmSync: function(){ fileInput.click(); }
+      }
+    );
   });
 
   fileInput.addEventListener('change', async function(){
