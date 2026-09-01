@@ -3380,7 +3380,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T02:50:00Z';
+const BUILD_VERSION = '2026-09-01T03:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15538,6 +15538,34 @@ function renderMain(){
           showConfirm('This section has an unresolved item flagged in red. Resolve before proceeding.', {alertOnly:true});
           return;
         }
+      }
+      // Second rail: Departure and Arrival cannot be signed off until the
+      // person doing the signing has ticked their own weather/NOTAM/ARP box.
+      //
+      // THIS GATES THE ACTING USER, NOT THE SECTION. The attestation is
+      // personal -- Chris ticking his box does nothing for Kyle -- so the
+      // question asked here is "have YOU reviewed this", read from the
+      // checkbox in front of this user. Section verification itself is still
+      // shared state on the leg blob; that is the next piece of work, and
+      // until it lands the two live at different scopes on purpose.
+      if(nowVerified){
+        const gateEnd = (key === 'departure') ? 'dep' : (key === 'arrival' ? 'arr' : '');
+        const attest = gateEnd ? document.getElementById(gateEnd + 'WxReviewed') : null;
+        // Disabled means hydrateWxAttest has not resolved. Unchecked in that
+        // window is "not known yet", never "not reviewed", so this must not
+        // accuse the user of skipping something they may well have done.
+        if(attest && attest.disabled){
+          showConfirm('Still loading your weather and NOTAM check for this leg. Give it a moment and try again.', {alertOnly:true});
+          return;
+        }
+        if(attest && !attest.checked){
+          showConfirm('Confirm you have reviewed weather, NOTAMs and the Airport Reference Pages for this ' +
+                      (gateEnd === 'dep' ? 'departure' : 'arrival') + ' before checking off the section.', {alertOnly:true});
+          return;
+        }
+        // A MISSING box deliberately does not block. Its absence would be a
+        // rendering fault the user has no way to clear, and locking every
+        // sign-off behind a bug is worse than the gate being skipped.
       }
       leg.sectionVerified[key] = nowVerified;
       const who = currentUserName();
