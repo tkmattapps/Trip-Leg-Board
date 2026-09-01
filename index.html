@@ -1780,6 +1780,9 @@
      this gets tapped on a ramp, often one-handed. */
   /* Sits on the baseline with the identifier beside it. flex:0 0 auto for the
      same reason .tb-apt is: nothing on this row may squeeze the airport. */
+  /* Separated from the feed by a rule, because a file shelf and a log of
+     entries are two different things sharing one screen. */
+  .ab-shelf{ margin-top:22px; padding-top:18px; border-top:1px solid var(--hairline); }
   .ab-mark-slot{ display:inline-flex; align-items:center; flex:0 0 auto; }
   /* HOVERING THE MARK LIGHTS THE PILL. The mark says there is something to
      read; the pill is where you go to read it, and it sits in a different row
@@ -3500,7 +3503,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T08:45:00Z';
+const BUILD_VERSION = '2026-09-01T09:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -3855,6 +3858,14 @@ async function fetchAttachments(scope, opts){
   try {
     let q = sb.from('trip_attachments').select('*').eq('scope', scope);
     if(scope === 'leg'){ q = q.eq('leg_id', opts.legId); }
+    // AIRPORT SHELF. Keyed on identifier AND subject: ops, city and cabin each
+    // hold their own files under the same code, because a catering menu is not
+    // an airport diagram. trip_id carries a synthetic key so the column's own
+    // meaning stays "which folder is this in".
+    else if(scope === 'airport'){
+      q = q.eq('icao', String(opts.icao || '').trim().toUpperCase())
+           .eq('kind', abKind(opts.kind));
+    }
     else { q = q.eq('trip_id', opts.tripId); }
     const { data, error } = await q.order('created_at', { ascending: true });
     if(error) throw error;
@@ -3868,7 +3879,13 @@ async function uploadAttachment(file, scope, opts){
   const deptId = await getFlightDepartmentId();
   const { data: { user } } = await sb.auth.getUser();
   if(!user) throw new Error('not signed in');
-  const tripId = opts.tripId || (opts.legId ? ('leg-' + opts.legId) : 'misc');
+  // The storage FOLDER, not a trip reference. For an airport shelf it is
+  // apt-<ICAO>-<kind>, which keeps every subject's files in their own place in
+  // the bucket and makes an orphaned object identifiable by path alone.
+  const icaoUp = String(opts.icao || '').trim().toUpperCase();
+  const tripId = (scope === 'airport')
+    ? ('apt-' + icaoUp + '-' + abKind(opts.kind))
+    : (opts.tripId || (opts.legId ? ('leg-' + opts.legId) : 'misc'));
   const uid = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ('a' + Date.now() + Math.random().toString(36).slice(2));
   const path = deptId + '/' + tripId + '/' + uid + '_' + attachSafeName(file.name);
   const up = await sb.storage.from(ATTACH_BUCKET).upload(path, file, {
@@ -3879,6 +3896,11 @@ async function uploadAttachment(file, scope, opts){
     scope: scope,
     trip_id: tripId,
     leg_id: scope === 'leg' ? opts.legId : null,
+    // The table's CHECK requires these to be present for 'airport' and ABSENT
+    // for the other two scopes. Null, not empty string -- the constraint tests
+    // IS NULL.
+    icao: scope === 'airport' ? icaoUp : null,
+    kind: scope === 'airport' ? abKind(opts.kind) : null,
     flight_department_id: deptId,
     storage_path: path,
     file_name: file.name || 'document',
@@ -15228,6 +15250,22 @@ function airportBriefBlockHTML(){
         '</div>' +
         '<div class="trip-log-list" id="abList"></div>' +
       '</div>' +
+      // THE SHELF. Files for this identifier and this subject -- an airport
+      // diagram, a handler's price list, a catering menu. They outlive any one
+      // entry, which is why they sit outside the feed rather than inside an
+      // entry, and why withdrawing a brief leaves them alone.
+      //
+      // Add is disabled until there is a code, for the same reason the
+      // composer is: there is nowhere to put a file yet.
+      '<div class="ab-shelf" id="abShelfSection">' +
+        '<div class="doc-section-head">' +
+          '<h3 class="section-title">Files</h3>' +
+          '<button type="button" class="doc-add-btn" id="abDocAddBtn"' + dis + '>+ Add document</button>' +
+          '<input type="file" id="abDocFileInput" accept="application/pdf,image/*" style="display:none" />' +
+        '</div>' +
+        uploadCautionHTML('attach') +
+        '<div class="doc-list" id="abDocList"></div>' +
+      '</div>' +
     '</div>';
 }
 
@@ -15274,6 +15312,113 @@ function abEntryHTML(r, o){
     '<div class="note-other-body">' + escapeHtml(r.body || '') + '</div>' +
     adv +
   '</div>';
+}
+
+// Rows currently on the shelf, so the action buttons can find a storage path
+// without a second read. Cleared and rebuilt on every hydrate.
+let _abDocRowCache = {};
+
+async function hydrateAirportBriefDocs(){
+  const list = document.getElementById('abDocList');
+  if(!list) return;
+  const code = notesIcao();
+  const kind = notesKind();
+  if(!notesIcaoValid()){
+    list.innerHTML = '<div class="doc-empty">Enter an identifier to see its files.</div>';
+    return;
+  }
+  list.innerHTML = '<div class="doc-empty">Loading\u2026</div>';
+  const rows = await fetchAttachments('airport', { icao: code, kind: kind });
+  const l2 = document.getElementById('abDocList');
+  if(!l2) return;                                          // navigated away
+  if(notesIcao() !== code || notesKind() !== kind) return;  // pins moved mid-read
+  _abDocRowCache = {};
+  rows.forEach(function(r){ _abDocRowCache[r.id] = r; });
+  // Deletion is department-wide by decision: these files go stale and get
+  // replaced, and curating the shelf is work any crew member should be able to
+  // do. That matches the DELETE policy, which tests department only.
+  list.innerHTML = rows.length
+    ? rows.map(function(r){ return docRowHTML(r, { canDelete: true }); }).join('')
+    : '<div class="doc-empty">No files for ' + escHtml(code) + ' yet.</div>';
+}
+
+function wireAirportBriefDocs(){
+  const addBtn = document.getElementById('abDocAddBtn');
+  const fileInput = document.getElementById('abDocFileInput');
+  const section = document.getElementById('abShelfSection');
+  if(!addBtn || !fileInput || !section) return;
+
+  addBtn.addEventListener('click', function(){
+    if(!notesIcaoValid()){
+      showConfirm('Enter a four-letter identifier before adding a file.',
+        { alertOnly: true, title: 'Files', okLabel: 'Got it' });
+      return;
+    }
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', async function(){
+    const file = fileInput.files && fileInput.files[0];
+    if(!file) return;
+    // Captured BEFORE the upload. An await is a window in which the person can
+    // change subject or identifier, and the file must land where they asked
+    // for it, not where they ended up.
+    const code = notesIcao();
+    const kind = notesKind();
+    addBtn.disabled = true;
+    const original = addBtn.textContent;
+    addBtn.textContent = 'Uploading\u2026';
+    try {
+      await uploadAttachment(file, 'airport', { icao: code, kind: kind });
+      await hydrateAirportBriefDocs();
+      showToast('File added');
+    } catch(e){
+      console.error('airport doc upload failed', e);
+      showConfirm('That upload didn\u2019t go through. ' +
+        (e && e.message ? e.message : 'Please try again.'), { alertOnly: true });
+    } finally {
+      addBtn.disabled = false;
+      addBtn.textContent = original;
+      fileInput.value = '';
+    }
+  });
+
+  section.addEventListener('click', async function(ev){
+    const viewEl = ev.target.closest('[data-doc-view]');
+    const dlEl   = ev.target.closest('[data-doc-dl]');
+    const delEl  = ev.target.closest('[data-doc-del]');
+    if(viewEl){
+      const row = _abDocRowCache[viewEl.getAttribute('data-doc-view')];
+      if(!row) return;
+      try { const url = await signedAttachmentUrl(row.storage_path); window.open(url, '_blank'); }
+      catch(e){ console.error(e); }
+      return;
+    }
+    if(dlEl){
+      const row = _abDocRowCache[dlEl.getAttribute('data-doc-dl')];
+      if(!row) return;
+      try {
+        const url = await signedAttachmentUrl(row.storage_path, row.file_name || 'document');
+        const a = document.createElement('a'); a.href = url; a.download = row.file_name || 'document';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      } catch(e){ console.error(e); }
+      return;
+    }
+    if(delEl){
+      const row = _abDocRowCache[delEl.getAttribute('data-doc-del')];
+      if(!row) return;
+      // Names the department, because that is who loses it. This one really is
+      // gone -- unlike a withdrawn brief, deleteAttachment removes the stored
+      // object as well as the row.
+      const ok = await showConfirm(
+        'Remove \u201c' + (row.file_name || 'this file') + '\u201d for the whole ' +
+        'department? This cannot be undone.', { okLabel: 'Remove' });
+      if(!ok) return;
+      try { await deleteAttachment(row); await hydrateAirportBriefDocs(); }
+      catch(e){ console.error('airport doc delete failed', e); showToast('Could not remove that file.'); }
+      return;
+    }
+  });
 }
 
 async function hydrateAirportBriefs(){
@@ -15383,8 +15528,11 @@ function wireAirportBriefs(){
       const a = document.getElementById('abAdviceTextarea');
       if(b) b.disabled = !ok;
       if(a) a.disabled = !ok;
+      // The shelf follows the identifier exactly as the feed does.
+      const ad = document.getElementById('abDocAddBtn');
+      if(ad) ad.disabled = !ok;
       syncAbCompose();
-      if(after !== before) hydrateAirportBriefs();
+      if(after !== before){ hydrateAirportBriefs(); hydrateAirportBriefDocs(); }
       const hintHost = code.parentNode;
       const oldHint = hintHost ? hintHost.querySelector('.ab-code-hint, .ab-code-unknown') : null;
       if(oldHint) oldHint.remove();
@@ -15482,7 +15630,9 @@ function renderNotesView(){
       airportBriefBlockHTML();
     wireNotesTabs();
     wireAirportBriefs();
+    wireAirportBriefDocs();
     hydrateAirportBriefs();
+    hydrateAirportBriefDocs();
     return;
   }
 
