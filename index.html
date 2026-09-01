@@ -1776,6 +1776,24 @@
      top-level tabs -- pills, not an underlined row -- so at a glance you can
      see which level of the page you are switching. Four tabs across the top
      would not fit a phone, which is why the subject lives down here. */
+  /* One row per airport in the chooser. The whole row is the hit target --
+     this gets tapped on a ramp, often one-handed. */
+  .ab-pick-row{ display:flex; align-items:center; gap:12px; width:100%;
+    background:none; border:none; border-bottom:1px solid var(--hairline);
+    padding:14px 2px; cursor:pointer; text-align:left; }
+  .ab-pick-row:last-child{ border-bottom:none; }
+  .ab-pick-row:hover{ background:var(--panel-700); }
+  .ab-pick-code{ font-family:system-ui,'Inter',sans-serif; font-size:16px;
+    font-weight:600; color:var(--paper-050); letter-spacing:0.04em; flex:0 0 auto; }
+  .ab-pick-end{ font-size:11px; font-weight:600; letter-spacing:0.06em;
+    text-transform:uppercase; color:var(--fog-500); flex:0 0 auto; }
+  .ab-pick-what{ font-size:12px; color:var(--fog-500); margin-left:auto; text-align:right; }
+  /* The mark that says there is something to read. Amber because it is an
+     invitation, not a warning -- and the same pen used at every other notes
+     doorway, so it is recognised rather than learned. */
+  .ab-mark{ display:inline-flex; align-items:center; justify-content:center;
+    width:15px; height:15px; color:var(--amber-500); flex:0 0 auto; }
+  .ab-mark svg{ width:100%; height:100%; }
   .ab-subtabs{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
   .ab-subtab{ background:none; border:1px solid var(--hairline); border-radius:14px;
     font-family:system-ui,'Inter',sans-serif; font-size:12px; font-weight:600;
@@ -3233,6 +3251,20 @@ a.chat-open{ text-decoration:none; display:inline-block; }
      Raised by the year pill in the Schedule header. Replaced a pair of year
      arrows that did not fit the iPhone header and read as clutter on the Mac.
      A list rather than a stepper because a year is somewhere you JUMP to. -->
+<!-- WHICH AIRPORT. A leg has two, and the Airport brief button is one button,
+     so it asks rather than guessing. Both are always listed: the one with
+     nothing written is still the one you may want to write about. -->
+<div class="sheet-backdrop" id="abPickBackdrop"></div>
+<div class="sheet" id="abPickSheet" role="dialog" aria-label="Airport briefs" aria-hidden="true">
+  <div class="sheet-head">
+    <div>
+      <div class="sheet-title">Airport briefs</div>
+      <div class="sheet-sub" id="abPickSub"></div>
+    </div>
+    <button type="button" class="sheet-close" id="abPickCloseBtn" aria-label="Close">&times;</button>
+  </div>
+  <div class="sheet-body" id="abPickBody"></div>
+</div>
 <div class="sheet-backdrop" id="schedYearBackdrop"></div>
 <div class="sheet" id="schedYearSheet" role="dialog" aria-label="Choose year" aria-hidden="true">
   <div class="sheet-head">
@@ -3454,7 +3486,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T07:40:00Z';
+const BUILD_VERSION = '2026-09-01T08:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5225,6 +5257,71 @@ async function clearLegVerification(legId, item){
    `deleted_at is null` HERE, in fetchAirportBriefs, so no call site has to
    remember to.
    ============================================================ */
+
+/* ============================================================
+   IS THERE ANYTHING WRITTEN ABOUT THIS AIRPORT?
+
+   A count, held per code, so every glyph in the app can be painted
+   SYNCHRONOUSLY from one shared cache instead of each doorway firing its own
+   query.
+
+   *** UNKNOWN IS NOT ZERO. *** A code absent from this cache means nobody has
+   asked yet, NOT that the archive is empty. The glyph renders only where the
+   answer is known and positive; where it is unknown, nothing is drawn and
+   nothing is claimed. A mark that says "no briefs here" on the strength of a
+   failed read would send a crew to an airport telling them there was nothing
+   to know.
+   ============================================================ */
+const abPresence = Object.create(null);
+
+// Returns true only where the count is KNOWN and above zero.
+function abHasBriefs(code){
+  const c = String(code || '').trim().toUpperCase();
+  return (abPresence[c] || 0) > 0;
+}
+
+// One query for however many codes are on screen. Counts every subject
+// together: the mark says "there is something here", and which of the three
+// tabs it is under is the airport page's business, not the glyph's.
+//
+// Failure leaves the cache UNTOUCHED rather than writing zeros, so a dead
+// connection degrades to "no marks" and never to "definitely nothing".
+async function loadAirportBriefPresence(codes){
+  const want = [];
+  (codes || []).forEach(function(c){
+    const up = String(c || '').trim().toUpperCase();
+    if(up.length === 4 && want.indexOf(up) === -1) want.push(up);
+  });
+  if(!want.length) return;
+  let rows;
+  try {
+    const { data, error } = await sb.from('airport_briefs')
+      .select('icao')
+      .in('icao', want)
+      .is('deleted_at', null);
+    if(error) throw error;
+    rows = data || [];
+  } catch(e){
+    console.error('airport_briefs presence', e);
+    return;
+  }
+  // Zeros are written ONLY for codes this query actually asked about. A
+  // successful read that returned no row for KLAX is real evidence that KLAX
+  // has nothing; it is not evidence about any other airport.
+  want.forEach(function(c){ abPresence[c] = 0; });
+  rows.forEach(function(r){
+    const c = String(r.icao || '').trim().toUpperCase();
+    if(c in abPresence) abPresence[c] += 1;
+  });
+}
+
+// The mark itself. Empty string where there is nothing to say, so callers can
+// concatenate it unconditionally.
+function abMarkHTML(code){
+  if(!abHasBriefs(code)) return '';
+  return '<span class="ab-mark" title="Crew have written about this airport" ' +
+    'aria-label="Crew have written about this airport">' + NOTES_DOOR_ICON + '</span>';
+}
 
 // THE THREE SUBJECTS, normalised in one place. Anything unrecognised becomes
 // 'ops' rather than throwing: a brief with a corrupt subject should still be
@@ -14196,33 +14293,10 @@ function renderTripDetailView(){
   document.querySelectorAll('[data-airport-notes]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // A PLACEHOLDER THAT EXPLAINS, not a toast that dismisses itself. The
-      // button is unwired, but a control that flashes "coming soon" reads as a
-      // dead end; one that describes what will be behind it reads as a
-      // promise. It also lets Kyle show the idea to the crew before any of it
-      // is built.
-      //
-      // Names THIS leg's two airports rather than talking in general terms, so
-      // the placeholder belongs to the leg you are looking at. Design is in
-      // beacon-airport-brief-design.md.
-      const leg = state.legs.find(function(l){
-        return l.id === btn.getAttribute('data-airport-notes');
-      });
-      const dep = (((leg || {}).dep || {}).airportId || '').trim().toUpperCase();
-      const arr = (((leg || {}).arr || {}).airportId || '').trim().toUpperCase();
-      // Falls back to plain wording when a leg has no airports entered yet --
-      // "what the crew has learned about  and " would be worse than generic.
-      const where = (dep && arr) ? (dep + ' and ' + arr) : (dep || arr || 'this leg\u2019s airports');
-      showConfirm(
-        'What the crew has learned about ' + where + ' \u2014 how long fuel really ' +
-        'takes, what the handler is like, where the customs desk is, which gate ' +
-        'wants a passport rather than a badge.\n\n' +
-        'These carry forward from trip to trip, so the next crew to fly here ' +
-        'reads what you found out. You will be able to add one for the whole ' +
-        'department, or keep one just for yourself.\n\n' +
-        'Not switched on yet.',
-        { alertOnly: true, title: 'Airport brief', okLabel: 'Got it' }
-      );
+      // [WAS A PLACEHOLDER until 2026-09-01] This described the feature and
+      // said it was not switched on. It is now, and it opens the chooser:
+      // a leg has two airports and this is one button.
+      openAirportBriefChooser(btn.getAttribute('data-airport-notes'));
     });
   });
   // Bound BEFORE the card handler and stops propagation, or the tap would also
@@ -14852,6 +14926,69 @@ function notesPinControlsHTML(){
 // SOURCE OF TRUTH for the mode is state.notes.mode. Only two values, and
 // anything else is treated as 'trip' so a malformed state cannot render a
 // blank page.
+
+// THE CHOOSER. A leg has two airports and the doorway is one button, so it
+// asks. Both ends are always offered: an airport with nothing written is
+// exactly the one you may be about to write about, and hiding it would make
+// the empty archive self-perpetuating.
+function openAirportBriefChooser(legId){
+  const leg = state.legs.find(function(l){ return l.id === legId; });
+  if(!leg){ showToast('Could not find that leg.'); return; }
+  const dep = (((leg.dep || {}).airportId) || '').trim().toUpperCase();
+  const arr = (((leg.arr || {}).airportId) || '').trim().toUpperCase();
+  if(!dep && !arr){
+    showConfirm('This leg has no airports entered yet, so there is nothing to ' +
+      'look up. Add a departure or arrival first.',
+      { alertOnly: true, title: 'Airport briefs', okLabel: 'Got it' });
+    return;
+  }
+  abPickState = { legId: legId, dep: dep, arr: arr };
+  const sub = document.getElementById('abPickSub');
+  if(sub) sub.textContent = 'Leg ' + (leg.legNumber || '?') +
+    (dep && arr ? '  \u00b7  ' + dep + ' \u2192 ' + arr : '');
+  renderAirportBriefChooser();
+  const sh = document.getElementById('abPickSheet');
+  const bd = document.getElementById('abPickBackdrop');
+  if(sh){ sh.classList.add('open'); sh.setAttribute('aria-hidden','false'); }
+  if(bd) bd.classList.add('open');
+  // Painted first from whatever the cache already knows, then repainted once
+  // the read lands. Never blocks the sheet on the network.
+  loadAirportBriefPresence([dep, arr]).then(function(){
+    const sh2 = document.getElementById('abPickSheet');
+    if(sh2 && sh2.classList.contains('open')) renderAirportBriefChooser();
+  });
+}
+
+let abPickState = { legId: null, dep: '', arr: '' };
+
+function abPickRowHTML(code, end){
+  if(!code) return '';
+  const has = abHasBriefs(code);
+  const known = (code in abPresence);
+  return '<button type="button" class="ab-pick-row" data-ab-pick="' + escapeHtml(code) + '">' +
+    '<span class="ab-pick-end">' + end + '</span>' +
+    '<span class="ab-pick-code">' + escapeHtml(code) + '</span>' +
+    abMarkHTML(code) +
+    '<span class="ab-pick-what">' +
+      (has ? 'Briefs to read' : (known ? 'Nothing written yet' : '\u2026')) +
+    '</span>' +
+  '</button>';
+}
+
+function renderAirportBriefChooser(){
+  const body = document.getElementById('abPickBody');
+  if(!body) return;
+  const st = abPickState;
+  body.innerHTML = abPickRowHTML(st.dep, 'From') + abPickRowHTML(st.arr, 'To');
+}
+
+function closeAirportBriefChooser(){
+  const sh = document.getElementById('abPickSheet');
+  const bd = document.getElementById('abPickBackdrop');
+  if(sh){ sh.classList.remove('open'); sh.setAttribute('aria-hidden','true'); }
+  if(bd) bd.classList.remove('open');
+  abPickState = { legId: null, dep: '', arr: '' };
+}
 
 function notesModeIsAirport(){ return ((state.notes || {}).mode === 'airport'); }
 
@@ -21681,6 +21818,28 @@ function openInstallOverlay(){
 }
 // Sheet chrome is wired once at load; the BODY re-renders per open because its
 // choices depend on the roster and on what is already selected.
+// Same pattern as the trip quick sheet: chrome wired once at load, body
+// re-rendered per open because it depends on which leg you came from.
+(function wireAirportBriefChooser(){
+  const cb = document.getElementById('abPickCloseBtn');
+  if(cb) cb.addEventListener('click', closeAirportBriefChooser);
+  const bd = document.getElementById('abPickBackdrop');
+  if(bd) bd.addEventListener('click', closeAirportBriefChooser);
+  const body = document.getElementById('abPickBody');
+  if(body){
+    body.addEventListener('click', function(e){
+      const row = e.target.closest('[data-ab-pick]');
+      if(!row) return;
+      const code = row.getAttribute('data-ab-pick');
+      // Closed BEFORE navigating. openNotesPage replaces the view underneath,
+      // and a sheet left open over a page it no longer belongs to is a dead
+      // panel the person has to dismiss to reach what they asked for.
+      closeAirportBriefChooser();
+      openNotesPage({ icao: code });
+    });
+  }
+})();
+
 (function wireTripQuickSheet(){
   const cb = document.getElementById('tripQuickCloseBtn');
   if(cb) cb.addEventListener('click', closeTripQuickSheet);
