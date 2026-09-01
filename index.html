@@ -1764,12 +1764,28 @@
      different target, so they share a page rather than competing for a slot in
      the bottom bar.
      Palette untouched: every colour here is an existing variable. */
-  .notes-tabs{ display:flex; gap:0; border-bottom:1px solid var(--hairline); margin-bottom:16px; }
-  .notes-tab{ background:none; border:none; border-bottom:2px solid transparent;
-    font-family:system-ui,'Inter',sans-serif; font-size:14px; font-weight:600;
-    color:var(--fog-500); padding:8px 14px; margin-bottom:-1px; cursor:pointer; }
+  /* A SEGMENTED CONTROL, not an underlined tab row. Two reasons it changed:
+     an enclosed, filled shape reads as a switch you can operate, where an
+     underlined word at the top of a page reads as a heading -- and the page
+     header already says "Notes", so there was nothing to say these were
+     controls at all.
+     The fill is PANEL, not amber, and that is deliberate. The subject
+     sub-pills below are amber-filled, and if both levels were amber the
+     major choice and the minor one would look like the same kind of
+     decision. Panel above, amber below: two levels, two weights.
+     Palette untouched -- every colour here is an existing variable. */
+  .notes-tabs{ display:flex; gap:4px; padding:3px; margin-bottom:16px;
+    background:var(--panel-800); border:1px solid var(--hairline); border-radius:10px; }
+  /* flex:1 1 0 with an equal basis, so the two halves are the same width
+     whatever their labels say. min-width:0 because they are flex items and
+     must be allowed to shrink below their text on a narrow phone. */
+  .notes-tab{ flex:1 1 0; min-width:0; background:none; border:1px solid transparent;
+    border-radius:7px; font-family:system-ui,'Inter',sans-serif; font-size:14px;
+    font-weight:600; color:var(--fog-500); padding:8px 10px; cursor:pointer;
+    text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .notes-tab:hover{ color:var(--fog-300); }
-  .notes-tab.is-on{ color:var(--paper-050); border-bottom-color:var(--amber-500); }
+  .notes-tab.is-on{ color:var(--paper-050); background:var(--panel-700);
+    border-color:var(--hairline); }
   /* The identifier field. Sized to four characters and no wider -- a full-width
      box invites a sentence, and this takes an ICAO code. */
   /* Sub-tabs INSIDE the airport face. Deliberately a different shape from the
@@ -3512,7 +3528,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T12:55:00Z';
+const BUILD_VERSION = '2026-09-01T13:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
