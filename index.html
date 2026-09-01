@@ -3351,7 +3351,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T01:20:00Z';
+const BUILD_VERSION = '2026-09-01T02:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5022,6 +5022,82 @@ async function saveLegNote(legId, field, content){
     updated_at: new Date().toISOString()
   };
   const { error } = await sb.from('leg_notes').upsert(row, { onConflict: 'leg_id,user_id,field' });
+  if(error) throw error;
+}
+
+/* ============================================================
+   Per-user leg verification  (section sign-offs + attestations)
+
+   SHARED DATA, INDIVIDUAL VERIFICATION. The trip is built collectively --
+   one person types a fuel figure and everyone sees it, and that is the
+   point of the app. Verifying is a different kind of act: it is a person
+   saying I HAVE LOOKED AT THIS AND I AM SATISFIED, and that statement
+   belongs to whoever made it. It cannot be made on anyone else's behalf,
+   and one person's sign-off never discharges another's.
+
+   So verification does NOT live on the leg blob. One row per user, per
+   leg, per item, in leg_verifications -- the same shape as leg_notes.
+   THE ROW'S EXISTENCE IS THE SIGNATURE: there is no boolean column.
+   Verifying inserts, un-verifying deletes.
+
+   'item' is a section key (departure, arrival, ... nextLeg) or an
+   attestation key (dep.wxReviewed, arr.wxReviewed). Untyped on purpose:
+   a new attestation must not need a migration.
+
+   UNLIKE leg_notes, READS ARE DEPARTMENT-WIDE. Scratch is private by
+   definition; a signature is the opposite -- the department has to see
+   who signed off what. Writes stay personal: RLS permits creating and
+   deleting only your own row.
+
+   *** AN EMPTY BOX IS NOT AN EMPTIED BOX. *** These rows arrive AFTER
+   the leg renders, exactly like leg_notes. Between render and the fetch
+   landing, every control legitimately looks unverified -- and stays that
+   way forever if the fetch fails or the user is offline. A write firing
+   in that window reads "unchecked" and DELETES a real signature.
+   Hydrate before wiring any handler, or gate writes on a hydrated flag.
+   Never paint a guess into a checkbox.
+   ============================================================ */
+
+// Every verification row for a leg, for every user in the department.
+// Throws on a real error; callers treat failure as "unknown", never as
+// "nobody verified", so a dead connection cannot silently blank signatures.
+async function fetchLegVerifications(legId){
+  const { data, error } = await sb.from('leg_verifications')
+    .select('item, user_id, author_name, author_role, verified_at')
+    .eq('leg_id', legId);
+  if(error) throw error;
+  return data || [];
+}
+
+// Record MY sign-off on one item. Upsert rather than insert so re-verifying
+// re-stamps the time instead of colliding with the unique constraint.
+async function setLegVerification(legId, item){
+  const prof = currentUserProfile || await loadCurrentUserProfile();
+  if(!prof) return;
+  const deptId = await getFlightDepartmentId();
+  const row = {
+    leg_id: legId,
+    flight_department_id: deptId,
+    user_id: prof.id,
+    item: item,
+    verified_at: new Date().toISOString(),
+    author_name: prof.displayName || '',
+    author_role: prof.role || ''
+  };
+  const { error } = await sb.from('leg_verifications')
+    .upsert(row, { onConflict: 'leg_id,user_id,item' });
+  if(error) throw error;
+}
+
+// Withdraw MY sign-off. The delete policy is user_id = auth.uid(), so this
+// physically cannot remove anyone else's -- but the explicit user_id filter
+// stays so the intent is readable without going and reading the policy.
+async function clearLegVerification(legId, item){
+  const prof = currentUserProfile || await loadCurrentUserProfile();
+  if(!prof) return;
+  const { error } = await sb.from('leg_verifications')
+    .delete()
+    .eq('leg_id', legId).eq('user_id', prof.id).eq('item', item);
   if(error) throw error;
 }
 
