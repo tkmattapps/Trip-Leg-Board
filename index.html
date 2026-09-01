@@ -3506,7 +3506,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T10:40:00Z';
+const BUILD_VERSION = '2026-09-01T11:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5560,6 +5560,31 @@ async function withdrawAirportBrief(id){
    ============================================================ */
 const legVerif = { legId: null, ready: false, rows: [] };
 
+/* Signatures already read this session, keyed by leg id. Leg switching is the
+   most common navigation in the app, and re-reading from empty made every
+   return trip flash "nothing signed" before settling -- a big visible snap on
+   the Permits section in particular, where the attestation boxes live.
+
+   *** WHY THIS IS SAFE, AND WHY THE SCRATCHPAD CACHE WAS NOT. ***
+   Trip 415129 was caused by painting cached TEXT into a textarea that
+   autosaves: text nobody typed became text saved. A checkbox is different in
+   kind. It stays DISABLED until the live read resolves, so no click can act on
+   cached state, and nothing writes from it in the meantime. The cache decides
+   what is DRAWN; `ready` still decides what can be DONE, and `ready` is never
+   set from here.
+
+   Revalidation is unconditional -- the cache shortens the blank window, it
+   never replaces the read. */
+const legVerifCache = Object.create(null);
+
+function legVerifCacheGet(legId){
+  const r = legVerifCache[legId];
+  return Array.isArray(r) ? r : null;
+}
+function legVerifCachePut(legId, rows){
+  if(legId) legVerifCache[legId] = rows.slice();
+}
+
 function myUserId(){ return currentUserProfile ? currentUserProfile.id : null; }
 
 // Have I signed this item? Items are section keys ('departure') or attestation
@@ -5593,6 +5618,11 @@ function legVerifSetLocal(item, on){
     item: item, user_id: me, author_name: currentUserName(),
     author_role: '', verified_at: new Date().toISOString()
   });
+  // Keep the per-leg cache in step. Without this, ticking a box and switching
+  // legs and back would preview the state from BEFORE the tick -- briefly
+  // showing a signature you just withdrew, or missing one you just made. The
+  // caller reverts legVerif.rows on a failed write, and this runs again then.
+  if(legVerif.legId) legVerifCachePut(legVerif.legId, legVerif.rows);
 }
 
 // Read one field's textarea + toggle out of the DOM and persist it.
@@ -5683,11 +5713,18 @@ function wireWxAttest(legId){
       // already repainted itself. If the write fails we put input.checked back
       // and the colour follows on its own.
       input.disabled = true;
+      // Record it in memory as well as in the database. This was writing only
+      // to the server: legVerif.rows never learned about an attestation tick,
+      // so anything reading the cache -- now including the leg-switch preview
+      // -- would show the state from before the click. Reverted below if the
+      // write fails, exactly as the section buttons do.
+      legVerifSetLocal(item, on);
       try{
         if(on) await setLegVerification(legId, item);
         else await clearLegVerification(legId, item);
       } catch(e){
         console.error('leg_verifications write', e);
+        legVerifSetLocal(item, !on);
         input.checked = !on;
         showToast('Could not record that. Check your connection and try again.');
       } finally {
@@ -5707,22 +5744,38 @@ function wireWxAttest(legId){
 // it must not let a click delete one it never managed to display.
 // Paint the attestation boxes from the hydrated rows. No fetch of its own --
 // one read serves the checkboxes and the section buttons alike.
-function applyWxAttestBoxes(){
+/* opts.preview is a rows array to DRAW from before the live read lands, used on
+   re-entry to a leg whose signatures were read earlier this session. It changes
+   the tick only. `disabled` still follows legVerif.ready alone, so a previewed
+   box cannot be clicked and cannot write. */
+function applyWxAttestBoxes(opts){
+  const preview = (opts && opts.preview) || null;
+  const me = myUserId();
   document.querySelectorAll('.wx-attest').forEach(function(box){
     const input = box.querySelector('.wx-attest-box');
     if(!input) return;
     const item = box.getAttribute('data-attest-item');
-    input.checked = iVerified(item);
+    input.checked = preview
+      ? (!!me && preview.some(function(r){ return r.item === item && r.user_id === me; }))
+      : iVerified(item);
     box.classList.remove('is-pending');
     input.disabled = !legVerif.ready;
   });
 }
 
 // Paint one section's "who else signed this" line.
-function renderSignoffLine(key){
+function renderSignoffLine(key, preview){
   const el = document.querySelector('.section-signoffs[data-signoffs="' + key + '"]');
   if(!el) return;
-  const names = othersWhoVerified(key);
+  // Preview keeps other people's names on screen across a leg switch too --
+  // without it the line blinks out and back, which reads as a signature being
+  // withdrawn and reinstated.
+  const me = myUserId();
+  const names = preview
+    ? preview.filter(function(r){ return r.item === key && r.user_id !== me; })
+             .map(function(r){ return (r.author_name || '').trim(); })
+             .filter(Boolean)
+    : othersWhoVerified(key);
   if(!names.length){ el.textContent = ''; el.classList.remove('has-signoffs'); return; }
   el.textContent = 'Verified by ' + names.join(', ');
   el.classList.add('has-signoffs');
@@ -5731,11 +5784,17 @@ function renderSignoffLine(key){
 // Paint every section button, ring and names line from the hydrated rows.
 // The button shows MY signature. The names line shows everyone else's. Two
 // different questions, two different places on screen, never merged.
-function applySectionVerifyUI(){
+function applySectionVerifyUI(opts){
+  const preview = (opts && opts.preview) || null;
+  const me = myUserId();
   document.querySelectorAll('.section[data-section-body]').forEach(function(sec){
     const key = sec.getAttribute('data-section-body');
     const btn = sec.querySelector('.section-verify-btn');
-    const mine = iVerified(key);
+    // Same rule as the checkboxes: preview decides the tick, ready decides the
+    // disabled state.
+    const mine = preview
+      ? (!!me && preview.some(function(r){ return r.item === key && r.user_id === me; }))
+      : iVerified(key);
     if(btn){
       btn.disabled = !legVerif.ready;
       btn.classList.toggle('is-verified', mine);
@@ -5745,7 +5804,7 @@ function applySectionVerifyUI(){
       if(t) t.classList.toggle('is-checked', mine);
     }
     paintSectionRing(sec, mine, false);
-    renderSignoffLine(key);
+    renderSignoffLine(key, preview);
   });
 }
 
@@ -5753,14 +5812,25 @@ function applySectionVerifyUI(){
 // on it. On failure legVerif.ready stays false and every control stays
 // disabled -- see the comment on legVerif for why that is the safe direction.
 async function hydrateLegVerifications(legId){
-  legVerif.legId = legId; legVerif.ready = false; legVerif.rows = [];
-  applyWxAttestBoxes();
-  applySectionVerifyUI();
+  // Seed from whatever this leg showed last time. `ready` stays FALSE, so the
+  // controls are still disabled and every accessor still answers "unknown" --
+  // this only stops the paint below from drawing a blank slate over signatures
+  // we already know about.
+  const seed = legVerifCacheGet(legId);
+  legVerif.legId = legId;
+  legVerif.ready = false;
+  legVerif.rows = seed ? seed.slice() : [];
+  // Painted from the seed rather than from empty. iVerified() returns false
+  // while !ready, so read the cache directly for the initial checkbox state.
+  applyWxAttestBoxes({ preview: seed ? legVerif.rows : null });
+  applySectionVerifyUI({ preview: seed ? legVerif.rows : null });
+
   let rows;
   try { rows = await fetchLegVerifications(legId); }
   catch(e){ console.error('leg_verifications load', e); return; } // controls stay disabled
   if(state.activeId !== legId) return; // navigated away while loading
   legVerif.legId = legId; legVerif.rows = rows; legVerif.ready = true;
+  legVerifCachePut(legId, rows);
   applyWxAttestBoxes();
   applySectionVerifyUI();
 }
