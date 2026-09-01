@@ -3532,7 +3532,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T17:35:00Z';
+const BUILD_VERSION = '2026-09-01T18:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -4385,7 +4385,8 @@ function legAttachmentsBlockHTML(leg){
         '<button type="button" class="doc-add-btn" id="docAddBtn">+ Add document</button>' +
         '<input type="file" id="docFileInput" accept="application/pdf,image/*" style="display:none" />' +
       '</div>' +
-      uploadCautionHTML('attach') +
+      // The caution moved into the Add document sheet -- see wireLegAttachments.
+      // It lands at the moment of the decision instead of becoming wallpaper.
       // RESERVES THE HEIGHT THE LIST IS ABOUT TO TAKE. A single "Loading..."
       // line renders the section one row tall, so the page is short on first
       // paint; when the documents land the page grows and everything below --
@@ -4550,7 +4551,33 @@ function wireLegAttachments(leg){
   const section = document.getElementById('docSection');
   if(!addBtn || !fileInput || !section) return;
 
-  addBtn.addEventListener('click', function(){ fileInput.click(); });
+  // The picker opens from onConfirmSync, NOT from an await on this promise.
+  // See the note in showConfirm: awaiting would spend the user gesture and the
+  // picker would never open on iPad. danger:false -- this is a caution, not a
+  // destructive act.
+  //
+  // Wording differs from the destination shelf on purpose. THIS shelf is where
+  // a trip sheet or handler confirmation is SUPPOSED to go, so it must not read
+  // as "keep operational paperwork out"; it names the category rather than any
+  // one document, because the shelf takes anything the crew needs to hand.
+  // "Stays with the trip" and not "with the leg": a leg file is archived under
+  // its trip. The archive holds the storage PATH, not a copy, so the sentence
+  // deliberately stops at "stays with the trip in the archive" -- claiming
+  // permanence would be a promise a later delete could break.
+  addBtn.addEventListener('click', function(){
+    showConfirm(
+      'Documents that support this leg belong here, as long as the file is '
+        + 'yours to upload. Anyone in your department can open it, and it stays '
+        + 'with the trip in the archive after the trip is closed.',
+      {
+        title: 'Before you upload',
+        okLabel: 'Choose file',
+        cancelLabel: 'Cancel',
+        danger: false,
+        onConfirmSync: function(){ fileInput.click(); }
+      }
+    );
+  });
 
   const jumpBtn = document.getElementById('docJumpBtn');
   if(jumpBtn){
@@ -4684,7 +4711,8 @@ function tripDocsBlockHTML(trip){
         '<button type="button" class="doc-add-btn" id="tripDocAddBtn">+ Add document</button>' +
         '<input type="file" id="tripDocFileInput" accept="application/pdf,image/*" style="display:none" />' +
       '</div>' +
-      uploadCautionHTML('attach') +
+      // Caution moved into the Add document sheet -- see wireTripDocs.
+
       '<div class="doc-list" id="tripDocList"><div class="doc-empty">Loading\u2026</div></div>' +
       '<div id="tripDocRollup"></div>' +
     '</div>';
@@ -4740,7 +4768,21 @@ function wireTripDocs(trip){
       if(typeof showConfirm === 'function') showConfirm('Give this trip a trip number before adding trip-wide documents.', {alertOnly:true});
       return;
     }
-    fileInput.click();
+    // Same treatment as the leg shelf, "this trip" instead of "this leg".
+    // The picker opens from onConfirmSync so the tap survives -- awaiting the
+    // promise would spend the gesture and the picker would never open on iPad.
+    showConfirm(
+      'Documents that support this trip belong here, as long as the file is '
+        + 'yours to upload. Anyone in your department can open it, and it stays '
+        + 'with the trip in the archive after the trip is closed.',
+      {
+        title: 'Before you upload',
+        okLabel: 'Choose file',
+        cancelLabel: 'Cancel',
+        danger: false,
+        onConfirmSync: function(){ fileInput.click(); }
+      }
+    );
   });
 
   fileInput.addEventListener('change', async function(){
