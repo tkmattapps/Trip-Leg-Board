@@ -1823,6 +1823,9 @@
      worse than a warning that arrives late. */
   .ab-code-unknown{ font-size:12px; color:var(--amber-500); margin-top:6px; }
   .ab-code-hint{ font-size:12px; color:var(--fog-500); margin-top:6px; }
+  /* The airport's own name. Paper rather than fog: this is an answer, not an
+     instruction, and it should read as confirmation that the code is right. */
+  .ab-code-place{ font-size:12px; color:var(--paper-050); margin-top:6px; }
   /* Advice sits UNDER what happened, visually subordinate but always present.
      It is optional, and an optional field that only appears once you have
      typed enough never gets filled in -- the point of the box is that it asks
@@ -3503,7 +3506,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T10:05:00Z';
+const BUILD_VERSION = '2026-09-01T10:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15167,29 +15170,52 @@ function notesIcao(){
 }
 function notesIcaoValid(){ return notesIcao().length === 4; }
 
-function airportBriefPinHTML(){
+/* What sits under the identifier field. ONE function, used by the first render
+   and by every repaint, so the two can never drift apart -- they did before,
+   as two copies of the same conditions.
+
+   Order of preference: the place name if we have it, the unknown-code warning
+   if the coordinates database says it has never heard of the code, otherwise
+   nothing. The two files are independent, so a code can be named without being
+   in the coordinates database or the reverse; naming wins because it is the
+   more useful thing to show. */
+function abCodeNoteHTML(){
   const code = notesIcao();
+  if(!notesIcaoValid()) return '<div class="ab-code-hint">Four-letter ICAO identifier.</div>';
+
+  const place = airportPlaceName(code);   // '' while the names file loads
+  if(place) return '<div class="ab-code-place">' + escapeHtml(place) + '</div>';
+
   // The unknown-code warning is only honest once the database has loaded.
   // AIRPORT_DB_STATE !== 'ready' means airportRecord() returns null for
   // EVERYTHING, so warning then would flag every code as unknown and retract
   // it a second later.
-  let hint = '<div class="ab-code-hint">Four-letter ICAO identifier.</div>';
-  if(notesIcaoValid() && typeof AIRPORT_DB_STATE !== 'undefined' && AIRPORT_DB_STATE === 'ready'){
-    if(!airportRecord(code)){
-      // NOT a block. The bundled database is large but not complete, and a
-      // brief about an airport Beacon has never heard of is still a brief.
-      hint = '<div class="ab-code-unknown">Not in the airport database \u2014 you can still write about it.</div>';
-    } else {
-      hint = '';
-    }
+  if(typeof AIRPORT_DB_STATE !== 'undefined' && AIRPORT_DB_STATE === 'ready' && !airportRecord(code)){
+    // NOT a block. The bundled database is large but not complete, and a
+    // brief about an airport Beacon has never heard of is still a brief.
+    return '<div class="ab-code-unknown">Not in the airport database \u2014 you can still write about it.</div>';
   }
+  return '';
+}
+
+// Repaint that line alone. Called on every keystroke and again when the names
+// file lands -- a full re-render would take focus out of the input.
+function paintAirportCodeNote(){
+  const host = document.getElementById('abCodeNote');
+  if(host) host.innerHTML = abCodeNoteHTML();
+}
+
+function airportBriefPinHTML(){
+  const code = notesIcao();
   return '<div class="notes-pins">' +
       '<div class="notes-pin">' +
         '<label for="abCodeInput">Airport</label>' +
         '<input id="abCodeInput" class="ab-code-input" type="text" maxlength="4" ' +
           'autocomplete="off" autocapitalize="characters" spellcheck="false" ' +
           'placeholder="ICAO" value="' + escapeHtml(code) + '">' +
-        hint +
+        // Stable host, emptied and refilled rather than removed and rebuilt, so
+        // the async loader always has something to paint into.
+        '<div id="abCodeNote">' + abCodeNoteHTML() + '</div>' +
       '</div>' +
     '</div>';
 }
@@ -15604,20 +15630,7 @@ function wireAirportBriefs(){
       if(ad) ad.disabled = !ok;
       syncAbCompose();
       if(after !== before){ hydrateAirportBriefs(); hydrateAirportBriefDocs(); }
-      const hintHost = code.parentNode;
-      const oldHint = hintHost ? hintHost.querySelector('.ab-code-hint, .ab-code-unknown') : null;
-      if(oldHint) oldHint.remove();
-      if(ok && typeof AIRPORT_DB_STATE !== 'undefined' && AIRPORT_DB_STATE === 'ready' && !airportRecord(after)){
-        const d = document.createElement('div');
-        d.className = 'ab-code-unknown';
-        d.textContent = 'Not in the airport database \u2014 you can still write about it.';
-        if(hintHost) hintHost.appendChild(d);
-      } else if(!ok){
-        const d = document.createElement('div');
-        d.className = 'ab-code-hint';
-        d.textContent = 'Four-letter ICAO identifier.';
-        if(hintHost) hintHost.appendChild(d);
-      }
+      paintAirportCodeNote();
       setPageHeaderSubForNotes();
     });
   }
@@ -17151,6 +17164,75 @@ function loadRemoteAirportTZ(){
 
 function refreshOpenTZFields(){
   if(typeof renderMain === 'function') renderMain();
+}
+
+/* ============================================================
+   AIRPORT PLACE NAMES  (beacon-airport-names.txt)
+
+   A SEPARATE FILE ON PURPOSE. The coordinates database is on the boot path --
+   trip-brief distances and the UTC offset on a leg both need it, so every crew
+   member downloads it whether or not they ever open an airport brief. Names
+   are wanted in exactly one place, under the identifier field on the notes
+   page, and they must not be allowed to make startup slower for anyone who
+   never goes there.
+
+   So this file is fetched LAZILY, the first time a name is actually asked for,
+   and never at boot. Around 200KB over the wire, cached thereafter.
+
+   Format matches the coordinates file so the parser reads the same way: a
+   header block, a '---' fence, then one record per line --
+
+       ICAO <TAB> city <TAB> country
+
+   FAILURE IS SILENT AND HARMLESS. No name is shown; the identifier stands on
+   its own exactly as it did before this existed. Nothing else on the page
+   depends on this file.
+
+   2,187 of the 29,305 records have no city in the source data. Those show the
+   country alone. That is the source's gap, not a parsing fault.
+   ============================================================ */
+const AIRPORT_NAMES_URL = 'beacon-airport-names.txt';
+let AIRPORT_NAMES = null;
+let AIRPORT_NAMES_STATE = 'idle';    // idle | loading | ready | failed
+
+function loadAirportNames(){
+  if(AIRPORT_NAMES_STATE === 'loading' || AIRPORT_NAMES_STATE === 'ready') return;
+  AIRPORT_NAMES_STATE = 'loading';
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  fetch(AIRPORT_NAMES_URL, { signal: controller.signal })
+    .then(r => { clearTimeout(timeoutId); return r.ok ? r.text() : Promise.reject(new Error('bad response')); })
+    .then(text => {
+      const parts = text.split('---\n');
+      if(parts.length < 2) throw new Error('unrecognised airport names format');
+      const map = Object.create(null);
+      parts.slice(1).join('---\n').split('\n').forEach(function(line){
+        if(!line) return;
+        const f = line.split('\t');
+        if(!f[0]) return;
+        map[f[0]] = { city: f[1] || '', country: f[2] || '' };
+      });
+      AIRPORT_NAMES = map;
+      AIRPORT_NAMES_STATE = 'ready';
+      // The field is almost certainly already on screen and already has a code
+      // typed into it -- that is what triggered the fetch. Repaint just the
+      // line under the input; a full re-render would take focus out of it.
+      if(typeof paintAirportCodeNote === 'function') paintAirportCodeNote();
+    })
+    .catch(() => { clearTimeout(timeoutId); AIRPORT_NAMES_STATE = 'failed'; });
+}
+
+// 'Aspen, US'. Empty string where the answer is not known YET as well as where
+// it is genuinely absent -- callers draw nothing in both cases, so a slow fetch
+// looks like silence rather than like a wrong answer. Kicks off the load on
+// first ask.
+function airportPlaceName(code){
+  const c = String(code || '').trim().toUpperCase();
+  if(c.length !== 4) return '';
+  if(AIRPORT_NAMES_STATE !== 'ready'){ loadAirportNames(); return ''; }
+  const r = AIRPORT_NAMES[c];
+  if(!r) return '';
+  return [r.city, r.country].filter(Boolean).join(', ');
 }
 
 /* ============================================================
