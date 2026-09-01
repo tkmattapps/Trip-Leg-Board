@@ -3380,7 +3380,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T03:05:00Z';
+const BUILD_VERSION = '2026-09-01T03:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5330,6 +5330,17 @@ function legNotesBlockHTML(field, labelHtml, labelId, placeholder){
       '</div>' +
     '</div>';
 }
+
+// Auto-scroll to the next unverified section after checking one off.
+// OFF: the page moving under you while you are still looking at the section
+// you just signed is distracting.
+//
+// KEPT BEHIND A FLAG RATHER THAN DELETED. It is a reasonable thing to want on
+// a long checklist, and it is destined for Settings. `let`, not `const`, so a
+// settings control can flip it at runtime without touching this line.
+// NOTE: this does NOT affect the "x of 9 checked" pill -- tapping that is an
+// explicit request to be taken somewhere, and it still jumps.
+let AUTO_JUMP_ON_VERIFY = false;
 
 const state = { legs: [], activeId: null, filter: '', view: 'home', historyFilter: '', dashboardFilter: '', activeTripKey: null, tripDetailOrigin: 'dashboard', previousView: null, previousTripKey: null, previousTripOrigin: null, archivedTrip: null };
 
@@ -15630,7 +15641,7 @@ function renderMain(){
       // IN -- un-checking a section leaves you where you are so you can fix it.
       // Deferred a frame so the ring/label repaint above has settled before we
       // measure section positions.
-      if(nowVerified){
+      if(nowVerified && AUTO_JUMP_ON_VERIFY){
         requestAnimationFrame(function(){
           if(!checkAllSectionsComplete()) jumpToNextUnverified();
         });
