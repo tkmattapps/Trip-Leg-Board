@@ -1778,6 +1778,20 @@
      would not fit a phone, which is why the subject lives down here. */
   /* One row per airport in the chooser. The whole row is the hit target --
      this gets tapped on a ramp, often one-handed. */
+  /* Sits on the baseline with the identifier beside it. flex:0 0 auto for the
+     same reason .tb-apt is: nothing on this row may squeeze the airport. */
+  .ab-mark-slot{ display:inline-flex; align-items:center; flex:0 0 auto; }
+  /* HOVERING THE MARK LIGHTS THE PILL. The mark says there is something to
+     read; the pill is where you go to read it, and it sits in a different row
+     of the band, so the connection is not obvious from position alone.
+     :has() reaches BACKWARD, which a sibling combinator cannot -- the pill
+     appears earlier in the DOM than the mark does. */
+  .tb-band:has(.ab-mark:hover) .tb-band-btns .trip-quick-btn{
+    border-color:var(--amber-500); color:var(--amber-500);
+  }
+  /* The mark is a signpost, not a control -- the pill is the control. The
+     cursor says so, and the title attribute names where to go. */
+  .ab-mark{ cursor:default; }
   .ab-pick-row{ display:flex; align-items:center; gap:12px; width:100%;
     background:none; border:none; border-bottom:1px solid var(--hairline);
     padding:14px 2px; cursor:pointer; text-align:left; }
@@ -3486,7 +3500,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T08:15:00Z';
+const BUILD_VERSION = '2026-09-01T08:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5319,8 +5333,29 @@ async function loadAirportBriefPresence(codes){
 // concatenate it unconditionally.
 function abMarkHTML(code){
   if(!abHasBriefs(code)) return '';
-  return '<span class="ab-mark" title="Crew have written about this airport" ' +
-    'aria-label="Crew have written about this airport">' + NOTES_DOOR_ICON + '</span>';
+  const t = 'Crew have written about this airport \u2014 open Airport brief';
+  return '<span class="ab-mark" title="' + t + '" aria-label="' + t + '">' +
+    NOTES_DOOR_ICON + '</span>';
+}
+
+// Fill every mark slot currently in the document. Called after a presence read
+// and safe to call when nothing is on screen.
+function paintAirportBriefMarks(){
+  document.querySelectorAll('[data-ab-mark]').forEach(function(slot){
+    slot.innerHTML = abMarkHTML(slot.getAttribute('data-ab-mark'));
+  });
+}
+
+// One read for the whole trip brief, not one per band. Every airport on the
+// page goes into a single query; the marks are painted when it lands.
+async function hydrateAirportBriefMarks(legs){
+  const codes = [];
+  (legs || []).forEach(function(l){
+    codes.push((((l.dep || {}).airportId) || ''));
+    codes.push((((l.arr || {}).airportId) || ''));
+  });
+  await loadAirportBriefPresence(codes);
+  paintAirportBriefMarks();
 }
 
 // THE THREE SUBJECTS, normalised in one place. Anything unrecognised becomes
@@ -10009,10 +10044,22 @@ function tripBriefHeadDateHTML(leg){
 
 function tripBriefAptCellHTML(label, end){
   const code = ((end && end.airportId) || '').trim().toUpperCase();
+  // A SLOT, always present when there is a code, empty until the presence read
+  // lands. Painting it later means filling this span rather than rebuilding the
+  // band, which would take the card out from under a finger mid-scroll.
+  //
+  // The slot renders whatever abMarkHTML says, and abMarkHTML says nothing
+  // unless the count is KNOWN and positive -- so an unread or failed lookup
+  // shows no mark, never a mark that means "nothing here".
+  const slot = code
+    ? '<span class="ab-mark-slot" data-ab-mark="' + escapeHtml(code) + '">' +
+      abMarkHTML(code) + '</span>'
+    : '';
   return '<div class="tb-cell">' +
       '<span class="tb-end-label">' + label + '</span>' +
       (code ? '<span class="tb-apt">' + escapeHtml(code) + '</span>'
             : '<span class="tb-missing">No airport</span>') +
+      slot +
     '</div>';
 }
 
@@ -14321,6 +14368,7 @@ function renderTripDetailView(){
      no data-id and was never matched by that selector.) */
 
   wireTripBriefScrollSpy(trip, briefLegs);
+  hydrateAirportBriefMarks(briefLegs);
   hydrateTripLegAttachBadges(trip);
   wireTripDocs(trip);
   hydrateTripDocs(trip);
