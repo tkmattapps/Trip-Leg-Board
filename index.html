@@ -2079,9 +2079,11 @@
     transition:background 0.15s ease;
   }
   .tb-status-btn:hover{ background:rgba(255,255,255,0.08); }
+  /* Matches .tb-route -- same face, size and colour as the city pair, so the
+     pill reads as part of the card's own voice rather than a control bolted on. */
   .tb-status-label{
-    font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600;
-    letter-spacing:0.04em; color:var(--paper-050); white-space:nowrap;
+    font-family:system-ui,'Inter',sans-serif; font-size:13px; color:var(--fog-300);
+    line-height:1.35; white-space:nowrap;
   }
   .tb-status-dot{ display:block; width:14px; height:14px; border-radius:50%; }
   /* Same three colours the app defines in its own STATUSES list. */
@@ -3392,7 +3394,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T05:35:00Z';
+const BUILD_VERSION = '2026-09-01T05:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
