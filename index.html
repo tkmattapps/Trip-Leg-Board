@@ -3394,7 +3394,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T05:45:00Z';
+const BUILD_VERSION = '2026-09-01T06:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5141,6 +5141,98 @@ async function clearLegVerification(legId, item){
   const { error } = await sb.from('leg_verifications')
     .delete()
     .eq('leg_id', legId).eq('user_id', prof.id).eq('item', item);
+  if(error) throw error;
+}
+
+/* ============================================================
+   AIRPORT BRIEFS.
+
+   What a crew learned about an airport, written for whoever flies there next.
+   Keyed on the four-letter ICAO, NOT on a leg or a trip: the knowledge arrives
+   on the ramp or two weeks later, long after the trip is archived, and it must
+   be writable about an airport nobody here has flown to yet.
+
+   TWO TEXT FIELDS. `body` is what happened; `advice` is what the next crew
+   should do about it. Advice is optional and defaults to '' -- never null, so
+   no call site null-checks it. The second field exists because one box
+   collects incident narrative and the advice is the part that gets read.
+
+   PUBLIC BY DEFAULT, opposite to leg_notes. Scratch is private by definition;
+   a note written for future crews is pointless if it starts invisible.
+
+   WITHDRAWAL IS A SOFT DELETE. There is no DELETE policy on the table at all.
+   Hiding sets deleted_at, which is an UPDATE. Every read filters
+   `deleted_at is null` HERE, in fetchAirportBriefs, so no call site has to
+   remember to.
+   ============================================================ */
+
+// Every live brief for one airport, newest first. Department-wide public rows
+// plus this user's own private ones -- the RLS policy decides which, not this
+// query. Throws on a real error: an empty list and a failed read must not look
+// the same, or a dead connection reads as "nobody has ever written anything
+// about this airport", which is the most misleading thing this screen could say.
+async function fetchAirportBriefs(icao){
+  const code = String(icao || '').trim().toUpperCase();
+  if(code.length !== 4) return [];
+  const { data, error } = await sb.from('airport_briefs')
+    .select('id, icao, user_id, body, advice, source, is_public, author_name, author_role, created_at, updated_at')
+    .eq('icao', code)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+  if(error) throw error;
+  return data || [];
+}
+
+// File a new brief. Returns the inserted row so the caller can render it
+// without a second round trip.
+async function createAirportBrief(icao, fields){
+  const prof = currentUserProfile || await loadCurrentUserProfile();
+  if(!prof) throw new Error('No signed-in user');
+  const deptId = await getFlightDepartmentId();
+  const row = {
+    icao: String(icao || '').trim().toUpperCase(),
+    flight_department_id: deptId,
+    user_id: prof.id,
+    body: String((fields || {}).body || '').trim(),
+    advice: String((fields || {}).advice || '').trim(),
+    // 'observed' means I saw this, 'heard' means I was told it. Anything else
+    // arriving here is a bug upstream, so it is pinned rather than passed on.
+    source: ((fields || {}).source === 'heard') ? 'heard' : 'observed',
+    is_public: ((fields || {}).isPublic === false) ? false : true,
+    author_name: prof.displayName || '',
+    author_role: prof.role || ''
+  };
+  const { data, error } = await sb.from('airport_briefs')
+    .insert(row).select().single();
+  if(error) throw error;
+  return data;
+}
+
+// Edit one of MY briefs. The update policy is user_id = auth.uid(), so this
+// physically cannot touch anyone else's -- the explicit filter stays so the
+// intent is readable without going and reading the policy.
+async function updateAirportBrief(id, fields){
+  const prof = currentUserProfile || await loadCurrentUserProfile();
+  if(!prof) throw new Error('No signed-in user');
+  const patch = { updated_at: new Date().toISOString() };
+  if('body' in (fields || {}))    patch.body    = String(fields.body || '').trim();
+  if('advice' in (fields || {}))  patch.advice  = String(fields.advice || '').trim();
+  if('source' in (fields || {}))  patch.source  = (fields.source === 'heard') ? 'heard' : 'observed';
+  if('isPublic' in (fields || {})) patch.is_public = (fields.isPublic === false) ? false : true;
+  const { error } = await sb.from('airport_briefs')
+    .update(patch).eq('id', id).eq('user_id', prof.id);
+  if(error) throw error;
+}
+
+// Withdraw one of MY briefs. NOT a delete -- the row stays and is recoverable,
+// because an entry the next crew was relying on should leave a trace when it
+// is taken away.
+async function withdrawAirportBrief(id){
+  const prof = currentUserProfile || await loadCurrentUserProfile();
+  if(!prof) throw new Error('No signed-in user');
+  const { error } = await sb.from('airport_briefs')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id).eq('user_id', prof.id);
   if(error) throw error;
 }
 
