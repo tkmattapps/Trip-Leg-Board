@@ -3506,7 +3506,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T11:50:00Z';
+const BUILD_VERSION = '2026-09-01T12:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5821,6 +5821,22 @@ function applySectionVerifyUI(opts){
   });
 }
 
+/* EVERY repaint of verification state goes through here.
+
+   The bug this exists to prevent: the pieces were painted by three different
+   callers at three different moments -- paintSectionRings during the
+   synchronous render, applySectionVerifyUI after the read, refreshVerifyProgress
+   once and never again. Each was individually correct and they disagreed with
+   each other on screen, which is how "all boxes ticked, 0 of 9 checked"
+   happened. One function, one moment, no gaps.
+
+   Call this instead of the individual painters. */
+function paintAllVerificationUI(opts){
+  applyWxAttestBoxes(opts);
+  applySectionVerifyUI(opts);
+  if(typeof refreshVerifyProgress === 'function') refreshVerifyProgress();
+}
+
 // One read per leg open. Fills legVerif, then paints everything that depends
 // on it. On failure legVerif.ready stays false and every control stays
 // disabled -- see the comment on legVerif for why that is the safe direction.
@@ -5835,8 +5851,7 @@ async function hydrateLegVerifications(legId){
   legVerif.rows = seed ? seed.slice() : [];
   // Painted from the seed rather than from empty. iVerified() returns false
   // while !ready, so read the cache directly for the initial checkbox state.
-  applyWxAttestBoxes({ preview: seed ? legVerif.rows : null });
-  applySectionVerifyUI({ preview: seed ? legVerif.rows : null });
+  paintAllVerificationUI({ preview: seed ? legVerif.rows : null });
 
   let rows;
   try { rows = await fetchLegVerifications(legId); }
@@ -5844,8 +5859,7 @@ async function hydrateLegVerifications(legId){
   if(state.activeId !== legId) return; // navigated away while loading
   legVerif.legId = legId; legVerif.rows = rows; legVerif.ready = true;
   legVerifCachePut(legId, rows);
-  applyWxAttestBoxes();
-  applySectionVerifyUI();
+  paintAllVerificationUI();
 }
 
 async function hydrateLegNotes(legId){
@@ -16248,9 +16262,17 @@ function renderMain(){
     const el = document.getElementById('verifyProgress');
     if(!el) return;
     const total = ALL_SECTION_KEYS.length;
-    // MY count. The pill sits above buttons that show my own signatures, so
-    // counting anyone's sign-off here would contradict what is on screen.
-    const done = ALL_SECTION_KEYS.filter(function(k){ return iVerified(k); }).length;
+    /* MY count. The pill sits above buttons that show my own signatures, so
+       counting anyone's sign-off here would contradict what is on screen.
+
+       drawIVerified, NOT iVerified. This ran only during the synchronous
+       render, before the signatures had been read, so iVerified answered false
+       for everything and the pill drew "0 of 9" and was never recalculated.
+       It agreed with the buttons only because they were blank too. Now that
+       they paint from cache immediately, the pill has to use the same source
+       or it contradicts them on screen. */
+    const legId = (typeof state !== 'undefined') ? state.activeId : null;
+    const done = ALL_SECTION_KEYS.filter(function(k){ return drawIVerified(legId, k); }).length;
     const allDone = done === total;
     const label = allDone ? 'CHECKLIST COMPLETE' : (done + ' of ' + total + ' checked');
     // Tapping still jumps DOWN to the next unverified section; the chevron that
@@ -16752,7 +16774,12 @@ function renderMain(){
 
   // ---- Provenance / verification wiring ----
   tagSectionBodies();
+  // Rings, buttons AND the count pill together, from one source, in one pass.
+  // paintSectionRings alone used to run here while the buttons were painted
+  // later and the pill earlier, so the three could contradict each other on
+  // screen during the gap before the read landed.
   paintSectionRings(leg);
+  paintAllVerificationUI(legVerif.ready ? undefined : { preview: legVerifCacheGet(leg.id) });
   // LIVE demotion: the moment a field's value actually changes, mark it human-entered,
   // strip its green ring, and demote its whole section back to unverified.
   // Done on the DOM directly so the user sees it instantly, not on next save/render.
@@ -16897,7 +16924,7 @@ function renderMain(){
           console.error('leg_verifications section write', e);
           legVerifSetLocal(key, !nowVerified);
           leg.sectionVerified[key] = anyoneVerified(key);
-          applySectionVerifyUI();
+          paintAllVerificationUI();
           showToast('Could not record that. Check your connection and try again.');
         })
         .then(function(){ btn.disabled = false; });
