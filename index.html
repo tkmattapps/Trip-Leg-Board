@@ -3532,7 +3532,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T18:10:00Z';
+const BUILD_VERSION = '2026-09-01T21:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -19488,17 +19488,69 @@ async function schedRpcPaged(fnName, args){
 // aircraft_busy_days share a shape but nothing else; a caller wanting both asks
 // twice. Joining them in the client would quietly recreate the spreadsheet's
 // collision in a place the schema was redesigned to prevent.
+//
+// *** SMART FEATURES ARE SWITCHED OFF HERE, NOT AT THE RENDER. ***
+//
+// A department can turn off everything the schedule derives from the leg chain,
+// leaving a grid that shows only what somebody typed. The gate is at the LOAD,
+// so `flight` rows never enter schedData at all, and every consumer -- the grid,
+// the day panel, the fairness tally -- sees one consistent picture without a
+// conditional of its own. Gating at the render instead would have meant four
+// gates and a day panel that lists flight duty the grid says is not there.
+//
+// ONLY `flight` is dropped. It is the one kind whose existence depends on an
+// extracted leg. flight_pencil, flight_historical and every hand category are
+// stored facts somebody entered, and dumb mode keeps every stored fact -- the
+// dividing line is the leg chain, not "derived-looking". The other derived kind,
+// away_on_trip, is built client-side by schedFillAwayDays and is skipped at the
+// render, where it is made.
 async function loadScheduleData(){
   const w = schedWindow();
   const deptId = await getFlightDepartmentId();
   const args = { p_department_id: deptId, p_start: schedISO(w.start), p_end: schedISO(w.end) };
-  const [crew, aircraft] = await Promise.all([
+  const [crew, aircraft, smart] = await Promise.all([
     schedRpcPaged('crew_busy_days', args),
-    schedRpcPaged('aircraft_busy_days', args)
+    schedRpcPaged('aircraft_busy_days', args),
+    loadSchedSmartFeatures(deptId)
   ]);
   if(!rosterCache || !rosterCache.length) await loadRoster();
   if(!aircraftCache || !aircraftCache.length) await loadAircraft();
-  return { crew: crew, aircraft: aircraft };
+  if(smart) return { crew: crew, aircraft: aircraft, smart: true };
+  return {
+    crew:     (crew || []).filter(function(r){ return r.source !== 'flight'; }),
+    aircraft: (aircraft || []).filter(function(r){ return r.status !== 'flight'; }),
+    smart: false
+  };
+}
+
+// *** A FAILED READ MUST LEAVE SMART FEATURES ON. ***
+//
+// Nothing in the client reads flight_departments today, so this is the first
+// call to it and it can fail for reasons that have nothing to do with the
+// setting. The two failure directions are not symmetrical. Falling back to OFF
+// would strip every extracted trip out of the grid -- indistinguishable, to the
+// person looking at it, from their schedule having been wiped. Falling back to
+// ON shows derived days a department had switched off, which is cosmetic and
+// corrects itself on the next successful load. So the fallback is ON.
+//
+// Read directly rather than through an RPC: the "Users can view own department"
+// SELECT policy already lets any member read their own row, so no new policy
+// was needed for the read path. Only the WRITE goes through an RPC, because the
+// table has no UPDATE policy at all and adding one would have exposed `name`
+// and `company_id` alongside the toggle.
+async function loadSchedSmartFeatures(deptId){
+  try {
+    const { data, error } = await sb.from('flight_departments')
+      .select('schedule_smart_features')
+      .eq('id', deptId)
+      .maybeSingle();
+    if(error) throw error;
+    if(!data) return true;
+    return data.schedule_smart_features !== false;
+  } catch(e){
+    console.warn('[sched] could not read schedule_smart_features, assuming on', e);
+    return true;
+  }
 }
 
 // Index day-rows into { ownerId: { 'YYYY-MM-DD': [entry, ...] } }.
@@ -21303,14 +21355,26 @@ function renderScheduleView(){
   // No fallback to matching on name or email: a wrong match here would put
   // somebody else's schedule under your marker, which is worse than no marker.
   const meId = (currentUserProfile && currentUserProfile.id) || '';
-  const crewIdx = schedFillAwayDays(indexBusyDays(schedData.crew, 'user_id', 'source'));
+  // The second half of the smart-features switch. `flight` rows were already
+  // dropped at the load; away_on_trip is MADE here, so it is skipped here.
+  //
+  // Nothing else in the render needs a gate, which is smaller than it looks:
+  // schedSuppressEntries only hides a pencil or a backfill when a real `flight`
+  // sits on the same day, and schedRealTripSpans only keys on flight and
+  // away_on_trip. With both gone, the suppression and span machinery goes quiet
+  // on its own. What is left of schedSuppressEntries is same-run-key dedupe,
+  // which is NOT a smart feature -- it stops four legs drawing four blocks in
+  // one cell, and dumb mode wants that just as much.
+  const schedSmart = schedData.smart !== false;
+  const fillAway = schedSmart ? schedFillAwayDays : function(idx){ return idx; };
+  const crewIdx = fillAway(indexBusyDays(schedData.crew, 'user_id', 'source'));
   // *** A TRIP IS A CONTINUOUS ABSENCE FOR THE AIRCRAFT TOO. ***
   // schedFillAwayDays is owner-agnostic -- it reads only the index -- so the
   // same rule serves both bands rather than a second copy of it. If anything the
   // aircraft case is the stronger one: a tail sitting in Dubai between legs is
   // unambiguously unavailable, where a crew member could conceivably be
   // repositioned.
-  const acIdx   = schedFillAwayDays(indexBusyDays(schedData.aircraft, 'aircraft_id', 'status'));
+  const acIdx   = fillAway(indexBusyDays(schedData.aircraft, 'aircraft_id', 'status'));
 
   // Column headers: weekday letter over day number, so a week is scannable
   // without counting. The month boundary is drawn rather than trimmed -- the
