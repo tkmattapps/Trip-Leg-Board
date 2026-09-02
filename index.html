@@ -2079,12 +2079,14 @@
   }
   .wb-table tr:last-child td{ border-bottom:none; }
   .wb-c-tail{ font-weight:600; white-space:nowrap; }
+  .wb-c-chev{ width:1%; text-align:right; white-space:nowrap; }
   /* inline-block because a transform does nothing to an inline element. */
   .wb-chev{
-    display:inline-block; width:11px; margin-right:6px;
-    color:var(--fog-500); font-weight:400;
-    transition:transform 0.15s ease;
+    display:inline-block; font-size:18px; line-height:1;
+    color:var(--fog-500); font-weight:400; padding:2px 4px;
+    transition:transform 0.15s ease, color 0.15s ease;
   }
+  .wb-row-clickable:hover .wb-chev{ color:var(--fog-300); }
   .wb-row-open .wb-chev{ transform:rotate(90deg); color:var(--amber-500); }
   .wb-c-routing{ color:var(--fog-300); min-width:180px; }
   .wb-c-date{ color:var(--fog-300); white-space:nowrap; }
@@ -2200,17 +2202,6 @@
     font-size:20px; line-height:1; padding:6px 8px; cursor:pointer;
   }
   .wb-ac-del:hover{ color:var(--alert-600); }
-  /* The row's delete control. Same restraint as .wb-ac-del -- grey until you
-     are on it -- because it sits on every row of the table and a column of red
-     crosses would read as a warning about the trips rather than a control. */
-  .wb-trip-del{
-    background:none; border:none; color:var(--fog-500);
-    font-size:18px; line-height:1; padding:4px 6px; cursor:pointer;
-  }
-  .wb-trip-del:hover{ color:var(--alert-600); }
-  .wb-trip-del:disabled{ opacity:0.35; cursor:default; }
-  .wb-trip-del:disabled:hover{ color:var(--fog-500); }
-  .wb-c-del{ width:1%; text-align:right; }
   /* The editor's version is a named button, not a cross. Inside the editor
      there is room to say what it does, and the trip being acted on is not in
      doubt -- it is the one that is open. */
@@ -3813,7 +3804,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T23:50:00Z';
+const BUILD_VERSION = '2026-09-04T00:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12349,10 +12340,6 @@ function workbenchTableHTML(trips){
     html += '<tr class="wb-row-clickable' + (isOpen ? ' wb-row-open' : '') + '"'
       + ' data-wb-trip="' + escHtml(t.id || '') + '">'
       + '<td class="wb-c-tail">'
-        // The row has always toggled -- tapping an open trip closed it -- but
-        // nothing said so, so there was no reason to try. The chevron is the
-        // whole fix: it marks the row as a control and shows which way it is.
-        + '<span class="wb-chev" aria-hidden="true">&#9656;</span>'
         + (wbTailLabel(t) ? escHtml(wbTailLabel(t)) : WB_BLANK) + '</td>'
       + '<td class="wb-c-routing">' + (t.destinations ? escHtml(t.destinations) : WB_BLANK) + '</td>'
       + '<td class="wb-c-date">'    + (t.start_date ? escHtml(wbShortDate(t.start_date)) : WB_BLANK) + '</td>'
@@ -12363,13 +12350,17 @@ function workbenchTableHTML(trips){
       + '<td class="wb-c-seat">'    + (fa || WB_BLANK) + '</td>'
       + (anyExtra ? '<td>' + (extra || WB_BLANK) + '</td>' : '')
       + '<td class="wb-c-notes">'   + (t.notes ? escHtml(t.notes) : '') + '</td>'
-      // The cross carries data-wb-tripdel, and the click handler checks for it
-      // BEFORE the row lookup -- the whole row is the expand target, so without
-      // that ordering a tap here would open the editor instead of deleting.
-      + '<td class="wb-c-del">'
-        + '<button type="button" class="wb-trip-del" data-wb-tripdel="'
-        + escHtml(t.id || '') + '" aria-label="Delete this trip"'
-        + (wbCanEditTrips() ? '' : ' disabled') + '>&times;</button>'
+      // *** THE CROSS THAT WAS HERE IS GONE. ***
+      // Deleting a trip now lives only in the open editor. A cross at the end of
+      // every row put an unrecoverable action one stray tap from an ordinary
+      // one, on a row whose entire surface opens the trip -- and the editor's
+      // named button is a better place for it anyway, because by the time you
+      // are in there you can see what you are about to delete.
+      //
+      // The column stays: the chevron takes it. Right-justified and on its own
+      // so the row reads as a control from either end.
+      + '<td class="wb-c-chev">'
+        + '<span class="wb-chev" aria-hidden="true">&#9656;</span>'
       + '</td>'
       + '</tr>';
 
@@ -24755,9 +24746,9 @@ document.addEventListener('click', async function(e){
   if(t.closest('[data-wb-accancel]')){ wbPendingAircraft = ''; renderWorkbenchBody(); return; }
   const wbAcDel = t.closest('[data-wb-acdel]');
   if(wbAcDel){ wbRemoveTripAircraft(wbAcDel.getAttribute('data-wb-acdel') || '', wbExpandedId); return; }
-  // BEFORE the row lookup below, and before the editor guard. The cross lives
-  // in a cell of the clickable row, and the editor's button lives inside
-  // [data-wb-editor] -- either one would be swallowed by the checks underneath.
+  // The editor's Delete button lives inside [data-wb-editor], which the guard
+  // below skips, so it has to be tested before that guard. It is the only route
+  // to deleting a trip now -- the per-row cross was removed on 3 Sep 2026.
   const wbTripDel = t.closest('[data-wb-tripdel]');
   if(wbTripDel){ wbDeleteTrip(wbTripDel.getAttribute('data-wb-tripdel') || ''); return; }
   // A click inside the open editor must not collapse it -- the editor row is
