@@ -3715,7 +3715,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T10:35:00Z';
+const BUILD_VERSION = '2026-09-03T11:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -23191,6 +23191,16 @@ function renderScheduleView(){
     key += '<span class="sched-key-item"><span class="sched-key-dot" style="background:' + SCHED_COLORS[k] + '"></span>' +
            escapeHtml(SCHED_LABELS[k]) + '</span>';
   });
+  // "Away on trip" is NOT a stored kind and must not be added to SCHED_LABELS.
+  // It is the AIRCRAFT reading of flight / away_on_trip / flight_assigned, all
+  // three of which schedKindColor paints in this same teal on a tail row. The
+  // key is one strip serving both bands, and SCHED_LABELS is written from the
+  // crew's point of view -- "Flight duty" is a thing a person is rostered for --
+  // so the tail's wording has to be written here or it has nowhere to live.
+  // Label only: nothing about how the day behaves changes, and a tail is still
+  // dragged onto the grid exactly the way a crew flight duty is.
+  key += '<span class="sched-key-item"><span class="sched-key-dot" style="background:' +
+         SCHED_COLORS.away_from_base + '"></span>Away on trip</span>';
   // The clash marker is a STATE, not a category, so it is named apart from the
   // colours rather than listed among them.
   key += '<span class="sched-key-item"><span class="sched-key-clash" aria-hidden="true"></span>' +
