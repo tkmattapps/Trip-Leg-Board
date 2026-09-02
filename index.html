@@ -2185,6 +2185,19 @@
   .wb-trip-withdraw:hover{ color:var(--alert-600); border-color:var(--alert-600); }
   .wb-trip-withdraw:disabled{ opacity:0.35; cursor:default; }
   .wb-trip-withdraw:disabled:hover{ color:var(--fog-500); border-color:var(--hairline); }
+  /* One row per candidate trip in the merge dialog. Full-width taps rather than
+     a select: with two trips on screen the difference between them is the
+     routing and the dates, and both need room to be read before choosing. */
+  .wb-merge-choice{
+    display:block; width:100%; text-align:left; margin-bottom:8px;
+    background:none; border:1px solid var(--hairline); border-radius:6px;
+    padding:10px 12px; cursor:pointer; font-family:inherit;
+    color:var(--paper-050); font-size:13px; line-height:1.4;
+  }
+  .wb-merge-choice:hover{ border-color:var(--amber-500); }
+  .wb-merge-choice-sub{
+    display:block; margin-top:3px; font-size:11px; color:var(--fog-500);
+  }
   .wb-ac-add{
     align-self:flex-start; background:none; border:1px solid var(--hairline);
     color:var(--amber-500); border-radius:6px; padding:6px 12px;
@@ -3699,6 +3712,25 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   </div>
 </div>
 
+<!-- Merging a drag into a trip that is already there.
+     Its own overlay rather than showConfirm() for two reasons: there are THREE
+     ways out, not two, and when a drag overlaps more than one of the owner's
+     trips the middle of the dialog is a list to choose from rather than a
+     sentence. showConfirm can express neither. -->
+<div class="feedback-overlay" id="mergeOverlay">
+  <div class="feedback-modal" style="max-width:380px;">
+    <div class="feedback-modal-head">
+      <span class="feedback-modal-title" id="mergeTitle">Add to this trip?</span>
+    </div>
+    <p id="mergeMessage" style="font-size:13px; color:var(--paper-050); line-height:1.6; margin:0 0 14px; white-space:pre-line;"></p>
+    <div id="mergeChoices"></div>
+    <div style="display:flex; gap:10px; margin-top:16px;">
+      <button class="btn" id="mergeCancelBtn" style="flex:1;">Cancel</button>
+      <button class="btn" id="mergeNewBtn" style="flex:1;">Make a new trip</button>
+    </div>
+  </div>
+</div>
+
 <!-- "What changed since you last looked" -- per-person, advisory only.
      Its own overlay rather than showConfirm() because showConfirm writes with
      textContent and this needs a real list: the whole point is to draw the eye
@@ -3743,7 +3775,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T18:55:00Z';
+const BUILD_VERSION = '2026-09-03T19:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11383,6 +11415,158 @@ async function wbAddTripAircraft(tripId, aircraftId, startDate, endDate, note){
     console.error('wbAddTripAircraft', e);
     showToast('Trip saved, but the aircraft could not be attached.');
     return null;
+  }
+}
+
+// ---- Merging a drag into a trip that already exists -----------------------
+//
+// See beacon-trip-merge-design.md. The short version: a drag whose days land on
+// top of a trip THE DRAGGED OWNER IS ALREADY ON offers to add those days to that
+// trip instead of making a second one.
+
+// Is this pilot, or this aeroplane, already on this trip?
+//
+// For crew, every bucket counts -- including `unassigned`, because a pilot
+// dragged onto a trip and not yet seated is on it as far as the grid and the
+// department are concerned.
+//
+// For an aeroplane it is the ASSIGNMENT that decides, not workbench_trips
+// .tail_number. That column is display text left over from before assignments
+// existed, and matching a tail by string is the bug migration 33 removed.
+function wbOwnerOnTrip(t, ownerKind, ownerId){
+  if(!t || !ownerId) return false;
+  if(ownerKind === 'aircraft'){
+    return wbAircraftFor(t.id).some(function(r){ return r.aircraft_id === ownerId; });
+  }
+  const c = t.crew || {};
+  if(c.pic === ownerId || c.sic === ownerId) return true;
+  return (c.acm || []).indexOf(ownerId) !== -1
+      || (c.fa  || []).indexOf(ownerId) !== -1
+      || (c.unassigned || []).indexOf(ownerId) !== -1;
+}
+
+// *** OVERLAP, NOT ADJACENCY. ***
+// A trip ending Friday and a drag starting Saturday are two different trips and
+// must not prompt -- back-to-back trips are planned regularly, and asking on
+// every one of them puts a dialog in front of a correct action. There has to be
+// at least one day in common.
+//
+// An undated trip is never a candidate: it claims no days, so nothing can land
+// on top of it.
+function wbMergeCandidates(ownerKind, ownerId, start, end){
+  if(!Array.isArray(workbenchCache)) return [];
+  return workbenchCache.filter(function(t){
+    if(!t.start_date || !t.end_date) return false;
+    // ISO dates compare correctly as strings.
+    const s = t.start_date <= t.end_date ? t.start_date : t.end_date;
+    const e = t.start_date <= t.end_date ? t.end_date : t.start_date;
+    if(!(s <= end && e >= start)) return false;
+    return wbOwnerOnTrip(t, ownerKind, ownerId);
+  });
+}
+
+// Three ways out, so this cannot be a confirm. Resolves to one of:
+//   { action: 'merge', trip }   { action: 'new' }   { action: 'cancel' }
+function showTripMergeChoice(candidates, start, end){
+  return new Promise(function(resolve){
+    const overlay  = document.getElementById('mergeOverlay');
+    const titleEl  = document.getElementById('mergeTitle');
+    const msgEl    = document.getElementById('mergeMessage');
+    const choices  = document.getElementById('mergeChoices');
+    const cancelBtn = document.getElementById('mergeCancelBtn');
+    const newBtn    = document.getElementById('mergeNewBtn');
+    const many = candidates.length > 1;
+
+    titleEl.textContent = many ? 'Which trip?' : 'Add to this trip?';
+    msgEl.textContent = many
+      ? 'Those days overlap more than one trip you are already on. Choose the one to add them to.'
+      : 'These days overlap a trip you are already on. Adding them stretches that trip \u2014 for everyone on it.';
+
+    // Built with DOM calls rather than innerHTML: the routing and notes are
+    // typed by people and go in as text, never as markup.
+    choices.textContent = '';
+    candidates.forEach(function(t){
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'wb-merge-choice';
+      b.appendChild(document.createTextNode(wbTripDescribe(t)));
+      const sub = document.createElement('span');
+      sub.className = 'wb-merge-choice-sub';
+      sub.textContent = schedPrettySpan(t.start_date, t.end_date);
+      b.appendChild(sub);
+      b.addEventListener('click', function(){ cleanup({ action: 'merge', trip: t }); });
+      choices.appendChild(b);
+    });
+
+    overlay.classList.add('open');
+
+    function cleanup(result){
+      overlay.classList.remove('open');
+      choices.textContent = '';
+      newBtn.removeEventListener('click', onNew);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onBackdrop);
+      resolve(result);
+    }
+    function onNew(){ cleanup({ action: 'new' }); }
+    function onCancel(){ cleanup({ action: 'cancel' }); }
+    // Tapping the backdrop is a cancel, matching showConfirm. It must NOT fall
+    // through to making a new trip -- a dismissed dialog has to leave the
+    // schedule exactly as it was.
+    function onBackdrop(e){ if(e.target === overlay) cleanup({ action: 'cancel' }); }
+
+    newBtn.addEventListener('click', onNew);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onBackdrop);
+  });
+}
+
+// Stretch a trip to cover new days.
+//
+// A dates-only write, deliberately not routed through saveWorkbenchTrip. That
+// function rebuilds the WHOLE row from the object handed to it -- routing,
+// notes, crew, tail -- so using it here would write a cached copy of all four
+// back over whatever anyone else has changed since this browser last loaded.
+// The only thing this gesture decided was when.
+async function wbExtendTripDates(t, newStart, newEnd){
+  if(!wbCanEditTrips()){ showToast('Only an admin can build trips.'); return false; }
+  try {
+    const { data, error } = await sb.from('workbench_trips')
+      .update({ start_date: newStart, end_date: newEnd,
+                updated_at: new Date().toISOString() })
+      .eq('id', t.id).select().single();
+    if(error) throw error;
+    if(!data){ showToast('Trip not changed.'); return false; }
+
+    // *** AN ASSIGNMENT PINNED TO THE OLD END HAS TO COME WITH IT. ***
+    // Most assignments carry no dates and inherit the trip's, so they follow on
+    // their own. Dates are only written where two aeroplanes split one trip --
+    // and there, a row whose end was the trip's old end would now stop short of
+    // it, drawing the aeroplane going home before the trip finishes. Rule 4:
+    // extending the trip extends it for everybody on it.
+    //
+    // Only the ends that MATCHED are moved. A genuine handover date in the
+    // middle of the trip is a decision somebody made and is left alone.
+    const rows = wbAircraftFor(t.id);
+    for(const r of rows){
+      const patch = {};
+      if(r.start_date && r.start_date === t.start_date && newStart < t.start_date){
+        patch.start_date = newStart;
+      }
+      if(r.end_date && r.end_date === t.end_date && newEnd > t.end_date){
+        patch.end_date = newEnd;
+      }
+      if(!Object.keys(patch).length) continue;
+      patch.updated_at = new Date().toISOString();
+      const res = await sb.from('workbench_trip_aircraft')
+        .update(patch).eq('id', r.id).select('id').single();
+      if(res.error) throw res.error;
+    }
+    return true;
+  } catch(e){
+    console.error('wbExtendTripDates', e);
+    showToast('Could not change the trip dates.');
+    return false;
   }
 }
 
@@ -22976,6 +23160,43 @@ async function schedEntryToWorkbench(){
   const end   = endEl   ? endEl.value   : e.end;
   if(!start || !end){ showToast('A start and an end date are needed'); return; }
   if(end < start){ showToast('The end date is before the start date'); return; }
+
+  // *** ASK BEFORE MAKING A SECOND TRIP. ***
+  // The caches are loaded here rather than assumed: this runs from the SCHEDULE,
+  // and the workbench panel may never have been opened in this session. Without
+  // them wbMergeCandidates finds nothing and the dialog never appears, which
+  // fails silently in exactly the case it exists for.
+  if(!Array.isArray(workbenchCache)) await loadWorkbenchTrips();
+  if(!wbAircraftCache) await loadWorkbenchTripAircraft();
+  const cands = wbMergeCandidates(e.ownerKind, e.ownerId, start, end);
+  if(cands.length){
+    const choice = await showTripMergeChoice(cands, start, end);
+    if(choice.action === 'cancel') return;
+    if(choice.action === 'merge'){
+      const mt = choice.trip;
+      const oldS = mt.start_date <= mt.end_date ? mt.start_date : mt.end_date;
+      const oldE = mt.start_date <= mt.end_date ? mt.end_date : mt.start_date;
+      const newStart = start < oldS ? start : oldS;
+      const newEnd   = end   > oldE ? end   : oldE;
+      // A drag wholly inside the trip adds no days. Saying so is better than a
+      // write that changes nothing and a panel that opens as if it did.
+      if(newStart === oldS && newEnd === oldE){
+        showToast('Those days are already on this trip');
+        return;
+      }
+      const ok = await wbExtendTripDates(mt, newStart, newEnd);
+      if(!ok) return;
+      closeSchedEntry();
+      workbenchCache = null;
+      wbAircraftCache = null;
+      schedData = null;
+      await openScheduleView();
+      openWorkbenchAtTrip(mt.id);
+      return;
+    }
+    // 'new' falls through to the create below -- today's behaviour, but chosen
+    // rather than arrived at by default.
+  }
 
   const seed = { start_date: start, end_date: end, crew: {} };
   if(e.ownerKind === 'aircraft'){
