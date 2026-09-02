@@ -3725,8 +3725,9 @@ a.chat-open{ text-decoration:none; display:inline-block; }
     <p id="mergeMessage" style="font-size:13px; color:var(--paper-050); line-height:1.6; margin:0 0 14px; white-space:pre-line;"></p>
     <div id="mergeChoices"></div>
     <div style="display:flex; gap:10px; margin-top:16px;">
+      <button class="btn btn-primary" id="mergeMergeBtn" style="flex:1;">Merge</button>
+      <button class="btn" id="mergeNewBtn" style="flex:1;">Create Trip</button>
       <button class="btn" id="mergeCancelBtn" style="flex:1;">Cancel</button>
-      <button class="btn" id="mergeNewBtn" style="flex:1;">Make a new trip</button>
     </div>
   </div>
 </div>
@@ -3775,7 +3776,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T19:45:00Z';
+const BUILD_VERSION = '2026-09-03T20:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11475,39 +11476,59 @@ function showTripMergeChoice(candidates, start, end){
     const choices  = document.getElementById('mergeChoices');
     const cancelBtn = document.getElementById('mergeCancelBtn');
     const newBtn    = document.getElementById('mergeNewBtn');
+    const mergeBtn  = document.getElementById('mergeMergeBtn');
     const many = candidates.length > 1;
 
-    titleEl.textContent = many ? 'Which trip?' : 'Add to this trip?';
-    msgEl.textContent = many
-      ? 'Those days overlap more than one trip you are already on. Choose the one to add them to.'
-      : 'These days overlap a trip you are already on. Adding them stretches that trip \u2014 for everyone on it.';
+    // *** ONE TRIP: A NAMED ACTION, NOT A ROW TO TAP. ***
+    // The first version listed the single candidate as a tappable row showing
+    // the tail and the dates. It read as information rather than as a control --
+    // nothing on it said what tapping would do -- so the only buttons that
+    // looked like buttons were the two that declined. The trip's identity is now
+    // in the sentence, and the thing you press says "Merge trip".
+    titleEl.textContent = many ? 'Which trip?' : 'Merge trip?';
+    if(many){
+      msgEl.textContent = 'Those days overlap more than one trip you are already on. Pick the one to merge with.';
+      mergeBtn.style.display = 'none';
+    } else {
+      const t = candidates[0];
+      msgEl.textContent = wbTripDescribe(t) + '\n' + schedPrettySpan(t.start_date, t.end_date) +
+        '\n\nMerging stretches that trip to cover these days \u2014 for everyone on it.';
+      mergeBtn.style.display = '';
+    }
 
     // Built with DOM calls rather than innerHTML: the routing and notes are
     // typed by people and go in as text, never as markup.
     choices.textContent = '';
-    candidates.forEach(function(t){
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'wb-merge-choice';
-      b.appendChild(document.createTextNode(wbTripDescribe(t)));
-      const sub = document.createElement('span');
-      sub.className = 'wb-merge-choice-sub';
-      sub.textContent = schedPrettySpan(t.start_date, t.end_date);
-      b.appendChild(sub);
-      b.addEventListener('click', function(){ cleanup({ action: 'merge', trip: t }); });
-      choices.appendChild(b);
-    });
+    if(many){
+      candidates.forEach(function(t){
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'wb-merge-choice';
+        // Each row says what pressing it does, for the same reason the single
+        // case has a named button.
+        b.appendChild(document.createTextNode('Merge with ' + wbTripDescribe(t)));
+        const sub = document.createElement('span');
+        sub.className = 'wb-merge-choice-sub';
+        sub.textContent = schedPrettySpan(t.start_date, t.end_date);
+        b.appendChild(sub);
+        b.addEventListener('click', function(){ cleanup({ action: 'merge', trip: t }); });
+        choices.appendChild(b);
+      });
+    }
 
     overlay.classList.add('open');
 
     function cleanup(result){
       overlay.classList.remove('open');
       choices.textContent = '';
+      mergeBtn.style.display = '';
+      mergeBtn.removeEventListener('click', onMerge);
       newBtn.removeEventListener('click', onNew);
       cancelBtn.removeEventListener('click', onCancel);
       overlay.removeEventListener('click', onBackdrop);
       resolve(result);
     }
+    function onMerge(){ cleanup({ action: 'merge', trip: candidates[0] }); }
     function onNew(){ cleanup({ action: 'new' }); }
     function onCancel(){ cleanup({ action: 'cancel' }); }
     // Tapping the backdrop is a cancel, matching showConfirm. It must NOT fall
@@ -11515,6 +11536,7 @@ function showTripMergeChoice(candidates, start, end){
     // schedule exactly as it was.
     function onBackdrop(e){ if(e.target === overlay) cleanup({ action: 'cancel' }); }
 
+    mergeBtn.addEventListener('click', onMerge);
     newBtn.addEventListener('click', onNew);
     cancelBtn.addEventListener('click', onCancel);
     overlay.addEventListener('click', onBackdrop);
@@ -23190,8 +23212,14 @@ async function schedEntryToWorkbench(){
       workbenchCache = null;
       wbAircraftCache = null;
       schedData = null;
+      // *** STAYS ON THE GRID. ***
+      // A merge changes days, and the days are what you are looking at -- the
+      // whole point is to watch the trip stretch. Opening the workbench would
+      // cover the one thing the gesture was about. A NEW trip still opens the
+      // panel, because a new trip has nothing filled in and the panel is where
+      // that happens.
       await openScheduleView();
-      openWorkbenchAtTrip(mt.id);
+      showToast('Trip now ' + schedPrettySpan(newStart, newEnd));
       return;
     }
     // 'new' falls through to the create below -- today's behaviour, but chosen
