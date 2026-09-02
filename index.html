@@ -2118,13 +2118,30 @@
   .wb-row-open td{ background:var(--panel-700); }
   .wb-row-clickable{ cursor:pointer; }
   .wb-edit-row td{ padding:0; border-bottom:1px solid var(--hairline); }
+  /* *** THREE LINES, NOT A FLOW. ***
+     This was grid auto-fit with almost every block set to span the full width,
+     so on a laptop the columns collapsed to one and the editor became a tall
+     stack with dead space either side of it. Kyle's layout: dates and routing on
+     one line, aircraft and crew on the next, notes across the bottom.
+     A column of rows rather than a grid, because the rows have different shapes
+     and auto-fit cannot be told that. */
   .wb-edit{
-    display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
-    gap:12px; padding:14px 12px 16px; background:var(--panel-800);
+    display:flex; flex-direction:column;
+    gap:12px; padding:12px 12px 14px; background:var(--panel-800);
   }
+  /* Each line lays its own children out and wraps on a narrow screen, which is
+     what puts the iPad back to a stack without a media query. */
+  .wb-edit-line{ display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+  .wb-edit-line > .wb-field{ flex:1 1 160px; }
+  /* A date input has one size. Letting it stretch bought nothing and was most of
+     the wasted width on the first line. */
+  .wb-edit-line > .wb-field-day{ flex:0 0 150px; max-width:150px; }
+  .wb-edit-line > .wb-field-routing{ flex:1 1 240px; }
+  /* Both blocks were grid-column:1/-1, which is inert now they sit in a flex
+     line -- the flex basis below is what makes them share the row. */
+  .wb-edit-line > .wb-ac-block,
+  .wb-edit-line > .wb-crew-block{ flex:1 1 280px; min-width:0; }
   .wb-field{ display:flex; flex-direction:column; gap:5px; min-width:0; }
-  /* Notes takes the whole width wherever the grid lands. */
-  .wb-field-wide{ grid-column:1 / -1; }
   .wb-field label{
     font-size:10px; font-weight:600; letter-spacing:0.06em;
     text-transform:uppercase; color:var(--fog-500);
@@ -2135,7 +2152,7 @@
     padding:8px 10px; font-size:14px; font-family:inherit; width:100%;
     box-sizing:border-box;
   }
-  .wb-field textarea{ min-height:64px; resize:vertical; }
+  .wb-field textarea{ min-height:48px; resize:vertical; }
   .wb-field input:focus, .wb-field textarea:focus{
     outline:none; border-color:var(--amber-500);
   }
@@ -3776,7 +3793,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T22:00:00Z';
+const BUILD_VERSION = '2026-09-03T22:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12233,29 +12250,40 @@ function wbEditorHTML(t, colCount){
   return '<tr class="wb-edit-row" data-wb-editor="' + escHtml(t.id || '') + '">'
     + '<td colspan="' + colCount + '">'
     + '<div class="wb-edit">'
-      + '<div class="wb-field wb-field-wide">'
-        + '<label for="wbfRouting">Routing</label>'
-        + '<input type="text" id="wbfRouting" data-wb-field="destinations" '
-        + 'value="' + escHtml(t.destinations || '') + '" '
-        + 'placeholder="BDL-TEB-LEMD" />'
+      // Line 1 -- when and where. The dates first because that is the order the
+      // question gets asked: which days, then what routing on them.
+      + '<div class="wb-edit-line">'
+        + '<div class="wb-field wb-field-day">'
+          + '<label for="wbfStart">Start date</label>'
+          + '<input type="date" id="wbfStart" data-wb-field="start_date" '
+          + 'value="' + escHtml(t.start_date || '') + '" />'
+        + '</div>'
+        + '<div class="wb-field wb-field-day">'
+          + '<label for="wbfEnd">End date</label>'
+          + '<input type="date" id="wbfEnd" data-wb-field="end_date" '
+          + 'value="' + escHtml(t.end_date || '') + '" />'
+        + '</div>'
+        + '<div class="wb-field wb-field-routing">'
+          + '<label for="wbfRouting">Routing</label>'
+          + '<input type="text" id="wbfRouting" data-wb-field="destinations" '
+          + 'value="' + escHtml(t.destinations || '') + '" '
+          + 'placeholder="BDL-TEB-LEMD" />'
+        + '</div>'
       + '</div>'
-      + '<div class="wb-field">'
-        + '<label for="wbfStart">Start date</label>'
-        + '<input type="date" id="wbfStart" data-wb-field="start_date" '
-        + 'value="' + escHtml(t.start_date || '') + '" />'
+      // Line 2 -- who and what. Side by side because they are the two halves of
+      // the same question and were previously one under the other.
+      + '<div class="wb-edit-line">'
+        + wbAircraftEditHTML(t)
+        + wbCrewEditHTML(t)
       + '</div>'
-      + '<div class="wb-field">'
-        + '<label for="wbfEnd">End date</label>'
-        + '<input type="date" id="wbfEnd" data-wb-field="end_date" '
-        + 'value="' + escHtml(t.end_date || '') + '" />'
+      // Line 3 -- notes, across the bottom, where free text belongs.
+      + '<div class="wb-edit-line">'
+        + '<div class="wb-field">'
+          + '<label for="wbfNotes">Notes</label>'
+          + '<textarea id="wbfNotes" data-wb-field="notes">'
+          + escHtml(t.notes || '') + '</textarea>'
+        + '</div>'
       + '</div>'
-      + '<div class="wb-field wb-field-wide">'
-        + '<label for="wbfNotes">Notes</label>'
-        + '<textarea id="wbfNotes" data-wb-field="notes">'
-        + escHtml(t.notes || '') + '</textarea>'
-      + '</div>'
-      + wbAircraftEditHTML(t)
-      + wbCrewEditHTML(t)
       + '<div class="wb-edit-note">Changes save as you leave each field.</div>'
       // Last in the editor on purpose: it is the one control here that does not
       // edit the trip but ends it, so it sits below the note rather than among
