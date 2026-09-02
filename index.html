@@ -3636,7 +3636,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T10:05:00Z';
+const BUILD_VERSION = '2026-09-02T10:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -22043,15 +22043,16 @@ function renderScheduleView(){
   setPageHeader({
     title: 'Schedule',
     actionsHTML:
-      '<button type="button" class="sched-hbtn sched-nav" data-sched-step="-1" aria-label="Previous month">\u2039</button>' +
-      '<button type="button" class="sched-hbtn" data-sched-today="1">Today</button>' +
-      '<button type="button" class="sched-hbtn sched-nav" data-sched-step="1" aria-label="Next month">\u203A</button>' +
-      '<button type="button" class="sched-hbtn sched-yearbtn" data-sched-yearpick="1" aria-haspopup="listbox" aria-label="Choose year. Currently ' + w.year + '">' +
-        w.year +
-      '</button>' +
-      // Sits AFTER the year, outside the month cluster. The three month
-      // controls and the year all move the view; this one opens a different
-      // surface, so it does not belong inside that group.
+      // *** FIRST, AHEAD OF THE MONTH CONTROLS. ***
+      // It sat after the year to begin with, on the reasoning that the four
+      // navigation controls belong together and this one opens a different
+      // surface. True, but it made the button the LAST thing in the row, and a
+      // thing you arrive at last reads as an afterthought rather than as the
+      // way in. Kyle: it needs to come over to the other side so it reads as
+      // more of an action button. Leading the row is what makes it one.
+      //
+      // The month cluster is still intact -- chevron, Today, chevron, year --
+      // it has simply moved along. Nothing was inserted INTO it.
       //
       // The label names the month the grid is showing rather than naming the
       // panel. "Workbench" needed explaining; "September trips" does not, and
@@ -22067,6 +22068,12 @@ function renderScheduleView(){
           '<span class="wb-btn-word" id="schedTripsBtnLbl">' + escHtml(_tripsMonthName) + '</span>' +
           '<span class="wb-btn-sub">Trips</span>' +
         '</span>' +
+      '</button>' +
+      '<button type="button" class="sched-hbtn sched-nav" data-sched-step="-1" aria-label="Previous month">\u2039</button>' +
+      '<button type="button" class="sched-hbtn" data-sched-today="1">Today</button>' +
+      '<button type="button" class="sched-hbtn sched-nav" data-sched-step="1" aria-label="Next month">\u203A</button>' +
+      '<button type="button" class="sched-hbtn sched-yearbtn" data-sched-yearpick="1" aria-haspopup="listbox" aria-label="Choose year. Currently ' + w.year + '">' +
+        w.year +
       '</button>'
   });
 
