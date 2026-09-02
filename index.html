@@ -2163,6 +2163,28 @@
     font-size:20px; line-height:1; padding:6px 8px; cursor:pointer;
   }
   .wb-ac-del:hover{ color:var(--alert-600); }
+  /* The row's delete control. Same restraint as .wb-ac-del -- grey until you
+     are on it -- because it sits on every row of the table and a column of red
+     crosses would read as a warning about the trips rather than a control. */
+  .wb-trip-del{
+    background:none; border:none; color:var(--fog-500);
+    font-size:18px; line-height:1; padding:4px 6px; cursor:pointer;
+  }
+  .wb-trip-del:hover{ color:var(--alert-600); }
+  .wb-trip-del:disabled{ opacity:0.35; cursor:default; }
+  .wb-trip-del:disabled:hover{ color:var(--fog-500); }
+  .wb-c-del{ width:1%; text-align:right; }
+  /* The editor's version is a named button, not a cross. Inside the editor
+     there is room to say what it does, and the trip being acted on is not in
+     doubt -- it is the one that is open. */
+  .wb-trip-withdraw{
+    align-self:flex-start; background:none; border:1px solid var(--hairline);
+    color:var(--fog-500); border-radius:6px; padding:6px 12px;
+    font-size:13px; font-family:inherit; cursor:pointer;
+  }
+  .wb-trip-withdraw:hover{ color:var(--alert-600); border-color:var(--alert-600); }
+  .wb-trip-withdraw:disabled{ opacity:0.35; cursor:default; }
+  .wb-trip-withdraw:disabled:hover{ color:var(--fog-500); border-color:var(--hairline); }
   .wb-ac-add{
     align-self:flex-start; background:none; border:1px solid var(--hairline);
     color:var(--amber-500); border-radius:6px; padding:6px 12px;
@@ -3721,7 +3743,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T16:40:00Z';
+const BUILD_VERSION = '2026-09-03T17:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11421,6 +11443,57 @@ async function saveWorkbenchTrip(trip){
   }
 }
 
+// One place to ask, because the answer is now rendered into two controls and
+// checked again in the handler. rosterViewerIsAdmin may not be defined yet at
+// some call sites, which is why the typeof guard exists here rather than being
+// repeated three times.
+function wbCanEditTrips(){
+  return typeof rosterViewerIsAdmin !== 'function' || rosterViewerIsAdmin();
+}
+
+// Names the trip in a way somebody would recognise on the panel: tail and
+// routing if it has them, dates if it does not, and a plain fallback for a trip
+// that has neither yet -- a drag creates one with almost nothing filled in, and
+// "Delete ?" would be worse than saying nothing.
+function wbTripDescribe(t){
+  if(!t) return 'this trip';
+  const bits = [];
+  const tail = wbTailLabel(t);
+  if(tail) bits.push(tail);
+  if(t.destinations && t.destinations.trim()) bits.push(t.destinations.trim());
+  if(!bits.length && t.start_date) bits.push(wbShortDate(t.start_date));
+  return bits.length ? bits.join(' \u2014 ') : 'this trip';
+}
+
+// *** THE CONFIRM IS THE WHOLE SAFETY MARGIN. ***
+// The cross sits on every row of the panel, next to a row whose entire surface
+// expands the editor, so a misplaced tap is a matter of when. There is no undo
+// in the app -- deleted_at can be set back to null, but only in SQL -- so the
+// dialog is the last point at which a mistake is cheap.
+async function wbDeleteTrip(id){
+  if(!id) return;
+  if(!wbCanEditTrips()){ showToast('Only an admin can build trips.'); return; }
+  const t = (Array.isArray(workbenchCache) ? workbenchCache : [])
+    .find(function(x){ return x.id === id; });
+  const ok = await showConfirm(
+    wbTripDescribe(t) + '.\n\n' +
+    'The trip comes off the panel and off the schedule, for everyone.',
+    { title: 'Delete this trip?', okLabel: 'Delete' });
+  if(!ok) return;
+  const done = await retireWorkbenchTrip(id);
+  if(!done) return;
+  // The editor was open on a trip that no longer exists.
+  if(wbExpandedId === id){ wbExpandedId = ''; wbPendingAircraft = ''; wbPendingCrewSlot = ''; }
+  showToast('Trip deleted');
+  renderWorkbenchBody();
+  // Both busy-day functions join workbench_trips with `deleted_at is null`, so
+  // the bars go on their own once the grid is read again -- the orphaned
+  // workbench_trip_aircraft rows survive the withdrawal but the join drops them.
+  // Nothing to clean up; the grid just has to be asked again.
+  schedData = null;
+  await openScheduleView();
+}
+
 // Withdraw, not delete. There is no DELETE policy on the table at all, so this
 // is the only way a trip leaves the workbench, and it is reversible by setting
 // deleted_at back to null.
@@ -11901,6 +11974,13 @@ function wbEditorHTML(t, colCount){
       + wbAircraftEditHTML(t)
       + wbCrewEditHTML(t)
       + '<div class="wb-edit-note">Changes save as you leave each field.</div>'
+      // Last in the editor on purpose: it is the one control here that does not
+      // edit the trip but ends it, so it sits below the note rather than among
+      // the fields. Disabled rather than hidden for a non-admin -- a crew member
+      // should be able to see the trip can be deleted and know to ask.
+      + '<button type="button" class="wb-trip-withdraw" data-wb-tripdel="'
+      + escHtml(t.id || '') + '"' + (wbCanEditTrips() ? '' : ' disabled')
+      + '>Delete this trip</button>'
     + '</div>'
     + '</td></tr>';
 }
@@ -11915,7 +11995,7 @@ function workbenchTableHTML(trips){
     + '<th>Tail</th><th>Routing</th><th>Start</th><th>End</th><th>Days</th>'
     + '<th>PIC</th><th>SIC</th><th>FA</th>'
     + (anyExtra ? '<th></th>' : '')
-    + '<th>Notes</th></tr></thead><tbody>';
+    + '<th>Notes</th><th></th></tr></thead><tbody>';
 
   trips.forEach(function(t){
     const days = wbDayCount(t.start_date, t.end_date);
@@ -11941,12 +12021,20 @@ function workbenchTableHTML(trips){
       + '<td class="wb-c-seat">'    + (fa || WB_BLANK) + '</td>'
       + (anyExtra ? '<td>' + (extra || WB_BLANK) + '</td>' : '')
       + '<td class="wb-c-notes">'   + (t.notes ? escHtml(t.notes) : '') + '</td>'
+      // The cross carries data-wb-tripdel, and the click handler checks for it
+      // BEFORE the row lookup -- the whole row is the expand target, so without
+      // that ordering a tap here would open the editor instead of deleting.
+      + '<td class="wb-c-del">'
+        + '<button type="button" class="wb-trip-del" data-wb-tripdel="'
+        + escHtml(t.id || '') + '" aria-label="Delete this trip"'
+        + (wbCanEditTrips() ? '' : ' disabled') + '>&times;</button>'
+      + '</td>'
       + '</tr>';
 
     // Column count is computed, not written as a number: the extra crew column
     // only exists when some visible trip has an ACM or an unseated pilot, so a
     // hardcoded colspan would be wrong half the time and leave a gap.
-    if(isOpen) html += wbEditorHTML(t, anyExtra ? 10 : 9);
+    if(isOpen) html += wbEditorHTML(t, anyExtra ? 11 : 10);
   });
 
   return html + '</tbody></table></div>';
@@ -24093,6 +24181,11 @@ document.addEventListener('click', async function(e){
   if(t.closest('[data-wb-accancel]')){ wbPendingAircraft = ''; renderWorkbenchBody(); return; }
   const wbAcDel = t.closest('[data-wb-acdel]');
   if(wbAcDel){ wbRemoveTripAircraft(wbAcDel.getAttribute('data-wb-acdel') || '', wbExpandedId); return; }
+  // BEFORE the row lookup below, and before the editor guard. The cross lives
+  // in a cell of the clickable row, and the editor's button lives inside
+  // [data-wb-editor] -- either one would be swallowed by the checks underneath.
+  const wbTripDel = t.closest('[data-wb-tripdel]');
+  if(wbTripDel){ wbDeleteTrip(wbTripDel.getAttribute('data-wb-tripdel') || ''); return; }
   // A click inside the open editor must not collapse it -- the editor row is
   // inside the table, so a bare row lookup would match it and toggle the row
   // shut the moment anyone reached for a field.
