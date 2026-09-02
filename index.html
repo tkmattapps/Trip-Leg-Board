@@ -3776,7 +3776,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T20:45:00Z';
+const BUILD_VERSION = '2026-09-03T21:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -23107,6 +23107,24 @@ async function schedRemoveFromWorkbenchTrip(tripId){
     .select('*').eq('id', tripId).is('deleted_at', null).single();
   if(error || !data){ showToast('Could not read that trip.'); return; }
   const trip = normalizeWorkbenchTrip(data);
+
+  // *** ASK FIRST. ***
+  // This button used to write immediately and report afterwards, so the toast
+  // was the first anyone knew of it -- and it sits inches from the arrow that
+  // opens the trip and the cross that removes an exception. Taking a pilot off
+  // a trip is not recoverable from the schedule: putting them back means
+  // finding the trip in the workbench and seating them again.
+  //
+  // The dialog names WHO and WHICH TRIP, because the day panel can be showing
+  // more than one trip on the same day and the crosses look alike.
+  const who = schedOwnerLabel(e.ownerId, e.ownerKind);
+  const okToRemove = await showConfirm(
+    wbTripDescribe(trip) + '\n' + schedPrettySpan(trip.start_date, trip.end_date),
+    { title: e.ownerKind === 'aircraft'
+        ? 'Take ' + who + ' off this trip?'
+        : 'Remove ' + who + ' from this trip?',
+      okLabel: 'Remove' });
+  if(!okToRemove) return;
 
   if(e.ownerKind === 'aircraft'){
     // *** CLEARING tail_number IS NO LONGER ENOUGH. ***
