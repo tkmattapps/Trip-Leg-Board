@@ -1578,6 +1578,23 @@
   }
   /* Hover is a mouse-only nicety; the active state below is what a finger gets. */
   .sched-hbtn:hover{ background:var(--panel-700); color:var(--paper-050); }
+
+  /* ---- "<MONTH> TRIPS" BUTTON -------------------------------------------
+     The label changes as you scroll, so the button would otherwise change WIDTH
+     as you scroll -- May to September is a swing of six characters, and every
+     control to its left would shuffle sideways while the grid moved. So the
+     button is sized once, to the widest month, and never resizes.
+     *** DO NOT REPLACE THIS WITH A FIXED PIXEL WIDTH. *** The sizer span holds
+     the real longest string in the real font, so the width stays correct if the
+     font, the size or the wording ever changes. A hardcoded px value would be
+     right today and quietly clip later. The sizer is hidden but still laid out
+     -- visibility:hidden, never display:none, which would occupy nothing. */
+  .sched-wbbtn{ position:relative; }
+  .sched-wbbtn .wb-btn-sizer{ visibility:hidden; white-space:nowrap; }
+  .sched-wbbtn .wb-btn-lbl{
+    position:absolute; inset:0; display:flex;
+    align-items:center; justify-content:center; white-space:nowrap;
+  }
   .sched-hbtn:active{ background:var(--panel-800); }
   /* Keyboard focus still needs a visible ring -- removing the border must not
      remove focus visibility. :focus-visible only, so a mouse click does not
@@ -3651,7 +3668,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T08:10:00Z';
+const BUILD_VERSION = '2026-09-02T09:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -19980,6 +19997,52 @@ function schedMonthStart(dt){ return new Date(dt.getFullYear(), dt.getMonth(), 1
 const SCHED_STRIP_LEAD_MONTHS  = 1;   // December of the previous year
 const SCHED_STRIP_TRAIL_MONTHS = 1;   // January of the next
 
+// ---- THE "<MONTH> TRIPS" BUTTON LABEL --------------------------------------
+// The button names the month the grid is showing, so it changes as you scroll.
+// Both helpers go through toLocaleDateString for the same reason the month band
+// does -- one source of month names, not two that could disagree.
+
+function schedMonthLongName(y, m){
+  return new Date(y, m, 1).toLocaleDateString([], { month: 'long' });
+}
+
+function schedTripsBtnLabel(y, m){
+  return schedMonthLongName(y, m) + ' trips';
+}
+
+// The widest label the button will ever hold, used to size it once so it does
+// not resize while you scroll. DERIVED, not hardcoded to September: month names
+// come from the locale, and a hardcoded English string would be the wrong
+// reference the moment that changes.
+//
+// Longest STRING is a proxy for widest RENDERED string, which is not exact in a
+// proportional font. It is the right proxy here because the sizer holds the
+// actual text in the actual font -- the only risk is picking a name one or two
+// pixels narrower than the true widest, which the button's padding absorbs.
+let _schedWidestMonthName = null;
+function schedWidestMonthName(){
+  if(_schedWidestMonthName !== null) return _schedWidestMonthName;
+  let best = '';
+  for(let m = 0; m < 12; m++){
+    const s = schedMonthLongName(2026, m);
+    if(s.length > best.length) best = s;
+  }
+  _schedWidestMonthName = best;
+  return best;
+}
+
+// Rewrites the label in place. Deliberately does NOT re-render the header: the
+// header is rebuilt by renderMain, and rebuilding it on every scroll that
+// crosses a month boundary would throw away and recreate four buttons mid-drag.
+function schedUpdateTripsBtn(y, m){
+  const lblEl = document.getElementById('schedTripsBtnLbl');
+  if(!lblEl) return;
+  const lbl = schedTripsBtnLabel(y, m);
+  lblEl.textContent = lbl;
+  const btn = document.getElementById('schedTripsBtn');
+  if(btn) btn.setAttribute('aria-label', 'Open ' + lbl);
+}
+
 function schedWindow(){
   const first = schedAnchor || schedMonthStart(new Date());
   const year  = first.getFullYear();
@@ -21993,6 +22056,12 @@ function renderScheduleView(){
   //
   // Control order is one CLUSTER then the year: the three month controls belong
   // together, and putting the year between them split the group in half.
+  //
+  // The first label comes from schedAnchor. After this render, schedApplyScroll
+  // settles the grid and schedSyncMonthToScroll corrects the label if the
+  // resting position is in a different month than the anchor.
+  const _tripsA = schedAnchor || schedMonthStart(new Date());
+  const schedTripsLbl = schedTripsBtnLabel(_tripsA.getFullYear(), _tripsA.getMonth());
   setPageHeader({
     title: 'Schedule',
     actionsHTML:
@@ -22005,7 +22074,16 @@ function renderScheduleView(){
       // Sits AFTER the year, outside the month cluster. The three month
       // controls and the year all move the view; this one opens a different
       // surface, so it does not belong inside that group.
-      '<button type="button" class="sched-hbtn" data-wb-open="1" aria-label="Open the trip workbench">Workbench</button>'
+      //
+      // The label names the month the grid is showing rather than naming the
+      // panel. "Workbench" needed explaining; "September trips" does not, and
+      // it does not compete with the Trips nav item, the trip archive or the
+      // trip brief for the word "trip". The label is rewritten on scroll by
+      // schedUpdateTripsBtn, at the same moment the month band lights.
+      '<button type="button" class="sched-hbtn sched-wbbtn" id="schedTripsBtn" data-wb-open="1" aria-label="Open ' + escHtml(schedTripsLbl) + '">' +
+        '<span class="wb-btn-sizer" aria-hidden="true">' + escHtml(schedWidestMonthName() + ' trips') + '</span>' +
+        '<span class="wb-btn-lbl" id="schedTripsBtnLbl">' + escHtml(schedTripsLbl) + '</span>' +
+      '</button>'
   });
 
   if(schedLoading || !schedData){
@@ -22462,6 +22540,12 @@ function schedSyncMonthToScroll(){
   if(schedAnchor && schedAnchor.getFullYear() === kY){
     schedAnchor = new Date(kY, kM, 1);
   }
+
+  // The button names the month in view, so it changes at exactly this moment --
+  // the same key that lights the band and tints the column. Read from kY/kM and
+  // NOT from schedAnchor: the anchor's year is deliberately left alone above, so
+  // during a cross-year hold it would name a month the grid is not lighting.
+  schedUpdateTripsBtn(kY, kM);
 }
 
 // *** SMOOTH MONTH STEPS. ***
