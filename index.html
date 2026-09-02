@@ -3721,7 +3721,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T16:05:00Z';
+const BUILD_VERSION = '2026-09-03T16:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -23967,6 +23967,39 @@ document.addEventListener('input', function(e){
 document.addEventListener('click', async function(e){
   const t = e.target;
   if(!t || !t.closest) return;
+
+  // *** TAP OUTSIDE TO DISMISS -- AND WHY THE LIST IS AN EXCLUSION LIST. ***
+  //
+  // The day panel closed only on X or Cancel. Tapping away now closes it too,
+  // and the existing two are untouched.
+  //
+  // This sits at the TOP of the handler on purpose. The handler below is full
+  // of early returns -- a tap on a nav tab or a workbench row returns long
+  // before the end -- so a check placed at the bottom would never be reached
+  // for most of the clicks that ought to dismiss. It CLOSES BUT DOES NOT
+  // RETURN: the click still runs its normal handler underneath, so nothing
+  // needs a second tap.
+  //
+  // .sched-entry-overlay is pointer-events:none and covers nothing, so there
+  // is no scrim to hang this on -- it has to be worked out from the target.
+  //
+  // Excluded, and each for its own reason:
+  //   .sched-entry-panel  the panel itself; its own buttons are not "outside"
+  //   .sched-wrap         the grid AND the legend. Tapping another day still
+  //                       switches the panel to that day, which is the point
+  //                       of the panel -- it must not close first
+  //   .feedback-overlay   every modal shares this class, confirm included. A
+  //                       remove confirm is RAISED BY the panel; closing the
+  //                       panel out from under it would strand the dialog
+  //   .sheet/.sheet-backdrop  same argument for the year picker and drawers
+  //
+  // The page header is deliberately NOT excluded: the month steppers scroll the
+  // grid out from under the panel, so dismissing on those reads as correct.
+  if(schedEntry && !t.closest('.sched-entry-panel') && !t.closest('.sched-wrap')
+     && !t.closest('.feedback-overlay') && !t.closest('.sheet')
+     && !t.closest('.sheet-backdrop')){
+    closeSchedEntry();
+  }
 
   if(t.closest('#chatCloseBtn')){ closeChatSheet(); return; }
 
