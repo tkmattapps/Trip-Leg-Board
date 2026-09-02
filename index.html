@@ -3806,7 +3806,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T23:00:00Z';
+const BUILD_VERSION = '2026-09-03T23:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -24722,13 +24722,16 @@ document.addEventListener('click', async function(e){
   if(t.closest('[data-sched-yearpick]')){ openSchedYearSheet(); return; }
   if(t.closest('[data-sched-yearclose]')){ closeSchedYearSheet(); return; }
   if(t.closest('[data-wb-open]')){ openWorkbench(); return; }
-  if(t.closest('[data-wb-close]')){ closeWorkbench(); return; }
+  // Add before close. Nothing currently nests one inside the other, but + Trip
+  // sits in the same header as the X and this order is the safe one if anything
+  // ever wraps them again.
   if(t.closest('[data-wb-add]')){
     // The button is disabled for non-admins, but a disabled button is a UI
     // state and not a guard -- saveWorkbenchTrip re-checks, and so does RLS.
     wbAddTrip();
     return;
   }
+  if(t.closest('[data-wb-close]')){ closeWorkbench(); return; }
   const wbAcAdd = t.closest('[data-wb-acadd]');
   if(wbAcAdd){ wbAddAircraftRow(wbAcAdd.getAttribute('data-wb-acadd') || ''); return; }
   const wbCrewAdd = t.closest('[data-wb-crewadd]');
@@ -24967,9 +24970,57 @@ function openInstallOverlay(){
 
 // Backdrop only -- the close X and the + Trip button are handled by the
 // delegated document click, same as the year sheet above.
+//
+// *** THE BACKDROP IS NOT ENOUGH ON ITS OWN. ***
+// It has always closed the panel, but there is barely anything to hit: the
+// sheet is min(1080px, 94vw) wide and 96vh tall, so the dim strip is a sliver on
+// a laptop and almost nothing on an iPad. A gesture that exists but has nowhere
+// to land is a gesture nobody finds.
+//
+// A tap on the header was tried on 3 Sep 2026 and taken back out: the header is
+// also where the title and + Trip live, so a tap landing wide of the button
+// closed the panel instead of doing nothing. Escape covers the laptop; the
+// swipe below covers the iPad, where the backdrop is thinnest.
 (function wireWorkbenchSheet(){
   const bd = document.getElementById('workbenchBackdrop');
   if(bd) bd.addEventListener('click', closeWorkbench);
+
+  const sheet = document.getElementById('workbenchSheet');
+  if(!sheet) return;
+
+  document.addEventListener('keydown', function(e){
+    if(e.key !== 'Escape') return;
+    if(!sheet.classList.contains('open')) return;
+    // A modal raised FROM the panel owns the key while it is up -- Escape there
+    // means "close the dialog", and closing the panel underneath it would strand
+    // the dialog over an empty screen.
+    if(document.querySelector('.feedback-overlay.open')) return;
+    closeWorkbench();
+  });
+
+  // Swipe down to dismiss -- the gesture a sheet that slid up from the bottom
+  // has already promised. Deliberately narrow: it only counts when the press
+  // started on the HEADER. Starting anywhere in the body would fight the
+  // table's own vertical scroll, and the trip list is usually taller than the
+  // panel.
+  const head = sheet.querySelector('.sheet-head');
+  if(!head) return;
+  let startY = 0, tracking = false;
+  head.addEventListener('touchstart', function(ev){
+    if(ev.touches.length !== 1){ tracking = false; return; }
+    // Not on the buttons -- a swipe beginning on + Trip or the X belongs to them.
+    if(ev.target && ev.target.closest && ev.target.closest('button')){ tracking = false; return; }
+    startY = ev.touches[0].clientY;
+    tracking = true;
+  }, { passive: true });
+  head.addEventListener('touchend', function(ev){
+    if(!tracking) return;
+    tracking = false;
+    const t = ev.changedTouches && ev.changedTouches[0];
+    if(!t) return;
+    // 60px so a stray drag while reading the title does not dismiss.
+    if(t.clientY - startY > 60) closeWorkbench();
+  }, { passive: true });
 })();
 
 (function wireDrawer(){
