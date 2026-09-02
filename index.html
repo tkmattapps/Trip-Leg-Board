@@ -2163,6 +2163,19 @@
     font-size:13px; font-family:inherit; cursor:pointer;
   }
   .wb-ac-add:hover{ border-color:var(--amber-500); }
+  .wb-crew-block{ grid-column:1 / -1; display:flex; flex-direction:column; gap:8px; }
+  .wb-crew-grid{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px;
+  }
+  .wb-crew-grid select{
+    background:var(--ink-900); color:var(--paper-050);
+    border:1px solid var(--hairline); border-radius:6px;
+    padding:8px 10px; font-size:14px; font-family:inherit; width:100%;
+    box-sizing:border-box;
+  }
+  .wb-crew-grid select:focus{ outline:none; border-color:var(--amber-500); }
+  .wb-crew-un{ font-size:12px; color:var(--amber-500); }
+  .wb-crew-adds{ display:flex; gap:8px; flex-wrap:wrap; }
   .wb-edit-note{
     grid-column:1 / -1; font-size:12px; color:var(--fog-500);
   }
@@ -3700,7 +3713,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T15:10:00Z';
+const BUILD_VERSION = '2026-09-03T09:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11631,6 +11644,137 @@ async function wbSaveField(tripId, column, value){
 // a text box for a tail invites 'N667bb' and 'N 667BB' when the tail is what
 // the spreadsheet import matches a swap trip on. They arrive in their own
 // build; until then those cells are set by dragging on the grid, as before.
+// The crew block inside the expanded row.
+//
+// Anyone on the roster can be put in any seat at any time -- the trip does not
+// have to be dated, and they do not have to be on it already. That is Kyle's
+// rule and it is what the department actually does: names go on early and move
+// around as the trip firms up.
+function wbCrewEditHTML(t){
+  const c = t.crew || {};
+  let h = '<div class="wb-crew-block">'
+    + '<div class="wb-ac-head">Crew</div>'
+    + '<div class="wb-crew-grid">'
+    + wbSeatSelectHTML(t, 'pic', 'PIC', c.pic || '', -1)
+    + wbSeatSelectHTML(t, 'sic', 'SIC', c.sic || '', -1);
+
+  (c.acm || []).forEach(function(id, i){
+    h += wbSeatSelectHTML(t, 'acm', 'ACM', id, i);
+  });
+  (c.fa || []).forEach(function(id, i){
+    h += wbSeatSelectHTML(t, 'fa', 'Cabin crew', id, i);
+  });
+
+  // The empty seat only ever exists one at a time, so '+ ACM' cannot be used to
+  // stack up five blank pickers.
+  if(wbPendingCrewSlot === 'acm') h += wbSeatSelectHTML(t, 'acm', 'ACM', '', -2);
+  if(wbPendingCrewSlot === 'fa')  h += wbSeatSelectHTML(t, 'fa', 'Cabin crew', '', -2);
+
+  h += '</div>';
+
+  // Pilots put on the trip by a drag on their own row, before anyone decided
+  // which seat they hold. They already hold the day on the grid (migration 29),
+  // so this is about naming the seat, not about adding them.
+  const un = (c.unassigned || []).filter(Boolean);
+  if(un.length){
+    h += '<div class="wb-crew-un">Not yet seated: '
+      + un.map(function(id){ return escHtml(wbCrewLabel(id)); }).join(', ')
+      + ' &mdash; choose them in a seat above.</div>';
+  }
+
+  h += '<div class="wb-crew-adds">'
+    + (wbPendingCrewSlot === 'acm' ? '' :
+       '<button type="button" class="wb-ac-add" data-wb-crewadd="acm">+ ACM</button>')
+    + (wbPendingCrewSlot === 'fa' ? '' :
+       '<button type="button" class="wb-ac-add" data-wb-crewadd="fa">+ Cabin crew</button>')
+    + '</div>';
+
+  return h + '</div>';
+}
+
+// idx: -1 for a single seat (PIC, SIC), the list position for ACM and FA, and
+// -2 for the empty seat that has not been filled yet.
+function wbSeatSelectHTML(t, slot, label, value, idx){
+  const choices = wbCrewChoices(slot, t, value);
+  let opts = '<option value="">' + (idx === -2 ? 'Choose a person' : '&mdash;') + '</option>';
+  choices.forEach(function(ch){
+    opts += '<option value="' + escHtml(ch.value) + '"'
+         + (ch.value === value ? ' selected' : '') + '>'
+         + escHtml(ch.label) + '</option>';
+  });
+  return '<div class="wb-field">'
+    + '<label>' + escHtml(label) + '</label>'
+    + '<select data-wb-seat="' + escHtml(slot) + '" data-wb-seatidx="' + idx + '">'
+    + opts + '</select>'
+    + '</div>';
+}
+
+// Which list seat, if any, is showing an empty picker because someone tapped
+// '+ ACM' or '+ FA'. Panel state, never stored -- an empty seat is an intention,
+// not trip data, and persisting it would save half-finished crew. Same reasoning
+// as crewPendingSlot on the leg editor.
+let wbPendingCrewSlot = '';
+
+// Everyone already holding a seat on this trip, so one person cannot be booked
+// twice on the same trip. The UNSEATED bucket is deliberately NOT counted: a
+// pilot waiting there is exactly who you are trying to seat, and excluding them
+// would leave them unpickable in every seat on the trip they are already on.
+function wbCrewTaken(trip, selfValue){
+  const c = (trip && trip.crew) || {};
+  const ids = [];
+  if(c.pic) ids.push(c.pic);
+  if(c.sic) ids.push(c.sic);
+  (c.acm || []).forEach(function(x){ if(x) ids.push(x); });
+  (c.fa  || []).forEach(function(x){ if(x) ids.push(x); });
+  return ids.filter(function(x){ return x !== selfValue; });
+}
+
+// The roster entries eligible for a seat. CREW_SLOT_TITLES is the SAME lookup
+// the leg editor uses -- pilots in PIC/SIC/ACM, cabin crew in FA -- rather than
+// a second copy that could drift from it.
+function wbCrewChoices(slot, trip, selfValue){
+  const people = rosterCache || [];
+  const titles = CREW_SLOT_TITLES[slot] || [];
+  const taken  = wbCrewTaken(trip, selfValue);
+  const list = people
+    .filter(function(p){ return titles.indexOf(p.title) !== -1; })
+    .filter(function(p){ return p.id === selfValue || taken.indexOf(p.id) === -1; })
+    .map(function(p){ return { value: p.id, label: p.abbrev || p.name || p.email }; });
+  // Someone already on the trip who no longer qualifies -- title changed, or
+  // they have left -- must still render, or opening the trip would silently
+  // drop them off it.
+  if(selfValue && !list.some(function(c){ return c.value === selfValue; })){
+    list.push({ value: selfValue, label: wbCrewLabel(selfValue) + ' (unavailable)' });
+  }
+  list.sort(function(a, b){ return String(a.label).localeCompare(String(b.label)); });
+  return list;
+}
+
+// *** WARNS, DOES NOT STOP. *** Kyle, 3 Sep 2026.
+// Crew get moved onto trips they clash with all the time and the department
+// sorts it out afterwards; a picker that refused the choice would just be worked
+// around. So this counts the days and says so, and the save goes through either
+// way.
+//
+// Reads schedData, already in memory because the panel is opened from the
+// schedule. Rows belonging to THIS trip are excluded or seating someone would
+// report them as clashing with themselves. No dates on the trip means no days to
+// check, and it says nothing rather than guessing.
+function wbCrewClashDays(userId, trip){
+  if(!userId || !trip || !trip.start_date || !trip.end_date) return 0;
+  const rows = (schedData && schedData.crew) || [];
+  const lo = trip.start_date < trip.end_date ? trip.start_date : trip.end_date;
+  const hi = trip.start_date < trip.end_date ? trip.end_date : trip.start_date;
+  const days = {};
+  rows.forEach(function(r){
+    if(r.user_id !== userId) return;
+    if(String(r.ref_id || '') === String(trip.id)) return;
+    const d = String(r.day || '').slice(0, 10);
+    if(d >= lo && d <= hi) days[d] = true;
+  });
+  return Object.keys(days).length;
+}
+
 // The aircraft on a trip, as a list rather than one picker.
 //
 // *** EACH AEROPLANE CARRIES ITS OWN DATES. ***
@@ -11733,8 +11877,8 @@ function wbEditorHTML(t, colCount){
         + escHtml(t.notes || '') + '</textarea>'
       + '</div>'
       + wbAircraftEditHTML(t)
-      + '<div class="wb-edit-note">Crew are set by dragging on the schedule for '
-      + 'now. Changes here save as you leave each field.</div>'
+      + wbCrewEditHTML(t)
+      + '<div class="wb-edit-note">Changes save as you leave each field.</div>'
     + '</div>'
     + '</td></tr>';
 }
@@ -11784,6 +11928,54 @@ function workbenchTableHTML(trips){
   });
 
   return html + '</tbody></table></div>';
+}
+
+// Seats a person, clears a seat, or moves one. Writes the WHOLE crew object,
+// because crew is a single jsonb column -- there is no per-field write to be had
+// here, and pretending otherwise would mean a read-modify-write either way.
+async function wbSetSeat(tripId, slot, idx, userId){
+  const trip = (workbenchCache || []).find(function(x){ return x.id === tripId; });
+  if(!trip) return;
+  const c = trip.crew || {};
+  const next = {
+    pic: c.pic || '',
+    sic: c.sic || '',
+    acm: (c.acm || []).slice(),
+    fa:  (c.fa  || []).slice(),
+    unassigned: (c.unassigned || []).slice()
+  };
+
+  if(slot === 'pic' || slot === 'sic'){
+    next[slot] = userId || '';
+  } else if(idx === -2){
+    if(userId) next[slot].push(userId);
+  } else {
+    // An emptied list seat is REMOVED, not left as a blank entry. A '' sitting
+    // in the acm array would render as a ghost picker on every future open.
+    if(userId) next[slot][idx] = userId;
+    else next[slot].splice(idx, 1);
+  }
+
+  // Seating someone takes them out of the not-yet-seated bucket. Leaving them in
+  // both would double-count nothing on the grid -- a day is a day -- but the
+  // panel would keep telling you to seat a person who is already seated.
+  if(userId) next.unassigned = next.unassigned.filter(function(x){ return x !== userId; });
+
+  const ok = await wbSaveField(tripId, 'crew', next);
+  if(!ok) return;
+  trip.crew = next;
+  wbPendingCrewSlot = '';
+  wbGridDirty = true;
+  schedData = null;
+
+  if(userId){
+    const clash = wbCrewClashDays(userId, trip);
+    if(clash){
+      showToast(wbCrewLabel(userId) + ' is already committed on '
+        + clash + (clash === 1 ? ' day' : ' days') + ' of this trip.');
+    }
+  }
+  renderWorkbenchBody();
 }
 
 // One column per write, same reasoning as wbSaveField.
@@ -11872,6 +12064,13 @@ function wbWireEditor(){
   if(!id) return;
   // Aircraft rows first: same change-not-blur rule, one column per write. A
   // date here moves days on the grid, so the grid cache is dropped.
+  document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-seat]').forEach(function(el){
+    el.addEventListener('change', function(){
+      wbSetSeat(id, el.getAttribute('data-wb-seat') || '',
+                Number(el.getAttribute('data-wb-seatidx')), el.value || '');
+    });
+  });
+
   const newSel = document.querySelector('[data-wb-editor="' + id + '"] [data-wb-acnew]');
   if(newSel){
     newSel.addEventListener('change', function(){
@@ -11931,6 +12130,7 @@ function wbToggleRow(id){
   // The unsaved row belongs to the editor that was open. Leaving it set would
   // paint a choose-an-aircraft row into the next trip opened.
   wbPendingAircraft = '';
+  wbPendingCrewSlot = '';
   renderWorkbenchBody();
 }
 
@@ -11962,6 +12162,7 @@ function openWorkbench(){
   // that is no longer there.
   wbExpandedId = '';
   wbPendingAircraft = '';
+  wbPendingCrewSlot = '';
   const s = document.getElementById('workbenchSheet');
   const b = document.getElementById('workbenchBackdrop');
   if(s){ s.classList.add('open'); s.setAttribute('aria-hidden','false'); }
@@ -23712,6 +23913,12 @@ document.addEventListener('click', async function(e){
   }
   const wbAcAdd = t.closest('[data-wb-acadd]');
   if(wbAcAdd){ wbAddAircraftRow(wbAcAdd.getAttribute('data-wb-acadd') || ''); return; }
+  const wbCrewAdd = t.closest('[data-wb-crewadd]');
+  if(wbCrewAdd){
+    wbPendingCrewSlot = wbCrewAdd.getAttribute('data-wb-crewadd') || '';
+    renderWorkbenchBody();
+    return;
+  }
   if(t.closest('[data-wb-accancel]')){ wbPendingAircraft = ''; renderWorkbenchBody(); return; }
   const wbAcDel = t.closest('[data-wb-acdel]');
   if(wbAcDel){ wbRemoveTripAircraft(wbAcDel.getAttribute('data-wb-acdel') || '', wbExpandedId); return; }
