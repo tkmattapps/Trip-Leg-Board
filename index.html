@@ -2133,6 +2133,36 @@
   .wb-field input:focus, .wb-field textarea:focus{
     outline:none; border-color:var(--amber-500);
   }
+  .wb-ac-block{ grid-column:1 / -1; display:flex; flex-direction:column; gap:8px; }
+  .wb-ac-head{
+    font-size:10px; font-weight:600; letter-spacing:0.06em;
+    text-transform:uppercase; color:var(--fog-500);
+  }
+  .wb-ac-none{ font-size:13px; color:var(--fog-500); }
+  /* The delete sits on its own track so the three fields keep equal widths
+     whether or not the row can be removed. */
+  .wb-ac-row{
+    display:grid; grid-template-columns:repeat(3,minmax(120px,1fr)) auto;
+    gap:10px; align-items:end;
+  }
+  .wb-ac-row select{
+    background:var(--ink-900); color:var(--paper-050);
+    border:1px solid var(--hairline); border-radius:6px;
+    padding:8px 10px; font-size:14px; font-family:inherit; width:100%;
+    box-sizing:border-box;
+  }
+  .wb-ac-row select:focus{ outline:none; border-color:var(--amber-500); }
+  .wb-ac-del{
+    background:none; border:none; color:var(--fog-500);
+    font-size:20px; line-height:1; padding:6px 8px; cursor:pointer;
+  }
+  .wb-ac-del:hover{ color:var(--alert-600); }
+  .wb-ac-add{
+    align-self:flex-start; background:none; border:1px solid var(--hairline);
+    color:var(--amber-500); border-radius:6px; padding:6px 12px;
+    font-size:13px; font-family:inherit; cursor:pointer;
+  }
+  .wb-ac-add:hover{ border-color:var(--amber-500); }
   .wb-edit-note{
     grid-column:1 / -1; font-size:12px; color:var(--fog-500);
   }
@@ -3670,7 +3700,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T14:05:00Z';
+const BUILD_VERSION = '2026-09-02T14:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11231,6 +11261,50 @@ function wbPlanMonthFor(startDate){
   return mo.y + '-' + mm + '-01';
 }
 
+// Assignments for every trip in the department, keyed by trip id. Loaded with
+// the trips rather than per row: the panel shows a month at a time and one read
+// is cheaper than one per trip.
+let wbAircraftCache = null;
+
+async function loadWorkbenchTripAircraft(){
+  try {
+    const deptId = await getFlightDepartmentId();
+    const { data, error } = await sb.from('workbench_trip_aircraft')
+      .select('*')
+      .eq('flight_department_id', deptId)
+      .is('deleted_at', null)
+      .order('start_date', { ascending: true, nullsFirst: false });
+    if(error) throw error;
+    const byTrip = {};
+    (data || []).forEach(function(r){
+      (byTrip[r.trip_id] = byTrip[r.trip_id] || []).push(r);
+    });
+    wbAircraftCache = byTrip;
+  } catch(e){
+    wbAircraftCache = {};
+    if(!(e && e.isNoDepartment)) showToast('Could not load trip aircraft.');
+  }
+  return wbAircraftCache;
+}
+
+function wbAircraftFor(tripId){
+  return (wbAircraftCache && wbAircraftCache[tripId]) || [];
+}
+
+// The tail as text, for the table's Tail column. More than one aeroplane on a
+// trip reads as 'N668BB / N667BB' -- in assignment order, which is date order,
+// so it reads as the sequence it happened in.
+function wbTailLabel(t){
+  const rows = wbAircraftFor(t.id);
+  if(!rows.length) return (t.tailNumber || '').trim();
+  const fleet = aircraftCache || [];
+  const names = rows.map(function(r){
+    const ac = fleet.find(function(a){ return a.id === r.aircraft_id; });
+    return ac ? (ac.tail_number || '') : '';
+  }).filter(Boolean);
+  return names.join(' / ');
+}
+
 // Puts an aeroplane on a trip for a range of days.
 //
 // *** THE AIRCRAFT IS NO LONGER THE TAIL ON THE TRIP ROW. ***
@@ -11557,6 +11631,82 @@ async function wbSaveField(tripId, column, value){
 // a text box for a tail invites 'N667bb' and 'N 667BB' when the tail is what
 // the spreadsheet import matches a swap trip on. They arrive in their own
 // build; until then those cells are set by dragging on the grid, as before.
+// The aircraft on a trip, as a list rather than one picker.
+//
+// *** EACH AEROPLANE CARRIES ITS OWN DATES. ***
+// A trip can be flown by two: one goes AOG and another launches to recover it.
+// Giving them the trip's span between them would show an aeroplane working on
+// days it never flew, and the grid is what people check before committing an
+// aeroplane elsewhere. So the dates sit on the row, not on the trip.
+function wbAircraftEditHTML(t){
+  const rows  = wbAircraftFor(t.id);
+  const fleet = (aircraftCache || []).filter(function(a){ return a.is_active; });
+
+  let h = '<div class="wb-ac-block">'
+    + '<div class="wb-ac-head">Aircraft</div>';
+
+  if(!rows.length){
+    h += '<div class="wb-ac-none">No aircraft on this trip yet.</div>';
+  }
+
+  rows.forEach(function(r){
+    // A retired aeroplane still on an old trip must stay pickable in its own
+    // row, or opening the trip silently reassigns it to whatever the select
+    // lands on first.
+    const known = fleet.some(function(a){ return a.id === r.aircraft_id; });
+    const extra = known ? null : (aircraftCache || []).find(function(a){ return a.id === r.aircraft_id; });
+
+    let opts = '<option value="">Choose an aircraft</option>';
+    fleet.forEach(function(a){
+      opts += '<option value="' + escHtml(a.id) + '"'
+           + (a.id === r.aircraft_id ? ' selected' : '') + '>'
+           + escHtml(a.tail_number || '') + '</option>';
+    });
+    if(extra){
+      opts += '<option value="' + escHtml(extra.id) + '" selected>'
+           + escHtml((extra.tail_number || '') + ' (retired)') + '</option>';
+    }
+
+    h += '<div class="wb-ac-row" data-wb-ac="' + escHtml(r.id) + '">'
+      + '<div class="wb-field">'
+        + '<label>Aircraft</label>'
+        + '<select data-wb-acfield="aircraft_id">' + opts + '</select>'
+      + '</div>'
+      + '<div class="wb-field">'
+        + '<label>From</label>'
+        + '<input type="date" data-wb-acfield="start_date" value="'
+        + escHtml(r.start_date || '') + '" />'
+      + '</div>'
+      + '<div class="wb-field">'
+        + '<label>To</label>'
+        + '<input type="date" data-wb-acfield="end_date" value="'
+        + escHtml(r.end_date || '') + '" />'
+      + '</div>'
+      + '<button type="button" class="wb-ac-del" data-wb-acdel="' + escHtml(r.id) + '" '
+      + 'aria-label="Take this aircraft off the trip">&times;</button>'
+      + '</div>';
+  });
+
+  if(wbPendingAircraft && wbPendingAircraft === t.id){
+    let opts = '<option value="">Choose an aircraft</option>';
+    fleet.forEach(function(a){
+      opts += '<option value="' + escHtml(a.id) + '">' + escHtml(a.tail_number || '') + '</option>';
+    });
+    h += '<div class="wb-ac-row" data-wb-ac="new">'
+      + '<div class="wb-field">'
+        + '<label>Aircraft</label>'
+        + '<select data-wb-acnew="' + escHtml(t.id || '') + '">' + opts + '</select>'
+      + '</div>'
+      + '<button type="button" class="wb-ac-del" data-wb-accancel="1" '
+      + 'aria-label="Cancel">&times;</button>'
+      + '</div>';
+  } else {
+    h += '<button type="button" class="wb-ac-add" data-wb-acadd="' + escHtml(t.id || '') + '">'
+      + '+ Aircraft</button>';
+  }
+  return h + '</div>';
+}
+
 function wbEditorHTML(t, colCount){
   return '<tr class="wb-edit-row" data-wb-editor="' + escHtml(t.id || '') + '">'
     + '<td colspan="' + colCount + '">'
@@ -11582,8 +11732,9 @@ function wbEditorHTML(t, colCount){
         + '<textarea id="wbfNotes" data-wb-field="notes">'
         + escHtml(t.notes || '') + '</textarea>'
       + '</div>'
-      + '<div class="wb-edit-note">Tail and crew are set by dragging on the '
-      + 'schedule for now. Changes here save as you leave each field.</div>'
+      + wbAircraftEditHTML(t)
+      + '<div class="wb-edit-note">Crew are set by dragging on the schedule for '
+      + 'now. Changes here save as you leave each field.</div>'
     + '</div>'
     + '</td></tr>';
 }
@@ -11614,7 +11765,7 @@ function workbenchTableHTML(trips){
     const isOpen = t.id && t.id === wbExpandedId;
     html += '<tr class="wb-row-clickable' + (isOpen ? ' wb-row-open' : '') + '"'
       + ' data-wb-trip="' + escHtml(t.id || '') + '">'
-      + '<td class="wb-c-tail">'    + (t.tailNumber ? escHtml(t.tailNumber) : WB_BLANK) + '</td>'
+      + '<td class="wb-c-tail">'    + (wbTailLabel(t) ? escHtml(wbTailLabel(t)) : WB_BLANK) + '</td>'
       + '<td class="wb-c-routing">' + (t.destinations ? escHtml(t.destinations) : WB_BLANK) + '</td>'
       + '<td class="wb-c-date">'    + (t.start_date ? escHtml(wbShortDate(t.start_date)) : WB_BLANK) + '</td>'
       + '<td class="wb-c-date">'    + (t.end_date   ? escHtml(wbShortDate(t.end_date))   : WB_BLANK) + '</td>'
@@ -11635,12 +11786,114 @@ function workbenchTableHTML(trips){
   return html + '</tbody></table></div>';
 }
 
+// One column per write, same reasoning as wbSaveField.
+async function wbSaveAircraftField(rowId, column, value){
+  if(!rowId || !column) return false;
+  if(typeof rosterViewerIsAdmin === 'function' && !rosterViewerIsAdmin()){
+    showToast('Only an admin can build trips.');
+    return false;
+  }
+  const patch = {};
+  patch[column] = value;
+  patch.updated_at = new Date().toISOString();
+  try {
+    const { data, error } = await sb.from('workbench_trip_aircraft')
+      .update(patch).eq('id', rowId).select().single();
+    if(error) throw error;
+    if(!data){ showToast('Not saved.'); return false; }
+    const list = wbAircraftFor(data.trip_id);
+    const row = list.find(function(x){ return x.id === rowId; });
+    if(row) row[column] = data[column];
+    return true;
+  } catch(e){
+    console.error('wbSaveAircraftField', column, e);
+    showToast('Could not save that.');
+    return false;
+  }
+}
+
+// RETIRED, not deleted -- the table has no DELETE policy, matching
+// workbench_trips.
+async function wbRemoveTripAircraft(rowId, tripId){
+  if(typeof rosterViewerIsAdmin === 'function' && !rosterViewerIsAdmin()){
+    showToast('Only an admin can build trips.');
+    return;
+  }
+  try {
+    const { data, error } = await sb.from('workbench_trip_aircraft')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', rowId).select().single();
+    if(error) throw error;
+    if(!data){ showToast('Not removed.'); return; }
+    if(wbAircraftCache && wbAircraftCache[tripId]){
+      wbAircraftCache[tripId] = wbAircraftCache[tripId].filter(function(x){ return x.id !== rowId; });
+    }
+    // The grid derives its days from this table, so it is now out of date.
+    schedData = null;
+    renderWorkbenchBody();
+  } catch(e){
+    console.error('wbRemoveTripAircraft', e);
+    showToast('Could not take that aircraft off.');
+  }
+}
+
+// The trip whose editor is showing an unsaved 'choose an aircraft' row, or ''.
+//
+// *** + Aircraft WRITES NOTHING. ***
+// aircraft_id is NOT NULL, so a blank row cannot be stored -- and it should not
+// be: defaulting to the first of the fleet would put an aeroplane on a trip
+// nobody chose. So the row exists in the panel only, and the insert happens on
+// the choice. Pressing + and walking away leaves no trace.
+let wbPendingAircraft = '';
+
+function wbAddAircraftRow(tripId){
+  if(!tripId) return;
+  wbPendingAircraft = tripId;
+  renderWorkbenchBody();
+}
+
+// Dates are left empty on create. An assignment without dates posts no days, so
+// a half-finished row claims nothing on the grid.
+async function wbChooseAircraft(tripId, aircraftId){
+  if(!tripId || !aircraftId) return;
+  const row = await wbAddTripAircraft(tripId, aircraftId, null, null, null);
+  if(!row) return;
+  (wbAircraftCache[tripId] = wbAircraftCache[tripId] || []).push(row);
+  wbPendingAircraft = '';
+  renderWorkbenchBody();
+}
+
 // Save on leaving a field. `change` rather than `blur`: it fires on blur for a
 // text box but only when the value actually differs, and fires immediately on a
 // date picker, so nothing is written when someone tabs through without typing.
 function wbWireEditor(){
   const id = wbExpandedId;
   if(!id) return;
+  // Aircraft rows first: same change-not-blur rule, one column per write. A
+  // date here moves days on the grid, so the grid cache is dropped.
+  const newSel = document.querySelector('[data-wb-editor="' + id + '"] [data-wb-acnew]');
+  if(newSel){
+    newSel.addEventListener('change', function(){
+      if(!newSel.value) return;
+      wbChooseAircraft(newSel.getAttribute('data-wb-acnew') || '', newSel.value);
+    });
+  }
+
+  document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-acfield]').forEach(function(el){
+    el.addEventListener('change', function(){
+      const holder = el.closest('[data-wb-ac]');
+      if(!holder) return;
+      const col = el.getAttribute('data-wb-acfield');
+      const isDate = (col === 'start_date' || col === 'end_date');
+      const val = (isDate || col === 'aircraft_id') ? (el.value || null) : el.value;
+      wbSaveAircraftField(holder.getAttribute('data-wb-ac'), col, val).then(function(ok){
+        if(!ok) return;
+        schedData = null;
+        renderWorkbenchBody();
+      });
+    });
+  });
+
   const rows = document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-field]');
   rows.forEach(function(el){
     el.addEventListener('change', function(){
@@ -11671,6 +11924,9 @@ function wbWireEditor(){
 function wbToggleRow(id){
   if(!id) return;
   wbExpandedId = (wbExpandedId === id) ? '' : id;
+  // The unsaved row belongs to the editor that was open. Leaving it set would
+  // paint a choose-an-aircraft row into the next trip opened.
+  wbPendingAircraft = '';
   renderWorkbenchBody();
 }
 
@@ -11701,6 +11957,7 @@ function openWorkbench(){
   // to a trip that is not in this month's list or attach its handlers to a row
   // that is no longer there.
   wbExpandedId = '';
+  wbPendingAircraft = '';
   const s = document.getElementById('workbenchSheet');
   const b = document.getElementById('workbenchBackdrop');
   if(s){ s.classList.add('open'); s.setAttribute('aria-hidden','false'); }
@@ -11712,6 +11969,11 @@ function openWorkbench(){
   // rather than as a not-yet-loaded one. Load it alongside the trips.
   Promise.all([
     loadWorkbenchTrips(),
+    loadWorkbenchTripAircraft(),
+    // The aircraft picker and the Tail column both resolve an aircraft id to a
+    // tail through this cache. Without it every assignment paints blank, which
+    // reads as no aeroplane rather than as one not yet loaded.
+    (!aircraftCache || !aircraftCache.length) ? loadAircraft() : Promise.resolve(),
     (!rosterCache || !rosterCache.length) ? loadRoster() : Promise.resolve()
   ]).then(function(){
     // Only repaint if the panel is still open -- a load resolving after a close
@@ -23428,6 +23690,11 @@ document.addEventListener('click', async function(e){
     wbAddTrip();
     return;
   }
+  const wbAcAdd = t.closest('[data-wb-acadd]');
+  if(wbAcAdd){ wbAddAircraftRow(wbAcAdd.getAttribute('data-wb-acadd') || ''); return; }
+  if(t.closest('[data-wb-accancel]')){ wbPendingAircraft = ''; renderWorkbenchBody(); return; }
+  const wbAcDel = t.closest('[data-wb-acdel]');
+  if(wbAcDel){ wbRemoveTripAircraft(wbAcDel.getAttribute('data-wb-acdel') || '', wbExpandedId); return; }
   // A click inside the open editor must not collapse it -- the editor row is
   // inside the table, so a bare row lookup would match it and toggle the row
   // shut the moment anyone reached for a field.
