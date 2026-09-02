@@ -241,6 +241,16 @@
   .set-tail{ font-size:15px; font-weight:600; letter-spacing:0.04em; color:var(--paper-050); }
   /* Slightly lighter than a tail number: a person's name is not an identifier. */
   .set-person{ font-family:system-ui,'Inter',sans-serif; font-size:14px; color:var(--paper-050); }
+  /* Name, crew abbreviation and any badges on one row. Wraps rather than
+     overlaps: on a narrow phone the abbreviation drops under the name instead
+     of being written over by it. */
+  .set-person-line{ display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 10px; min-width:0; }
+  .set-badge{
+    font-family:system-ui,'Inter',sans-serif; font-size:10px; font-weight:600;
+    letter-spacing:0.06em; text-transform:uppercase; white-space:nowrap;
+    padding:1px 7px; border-radius:9px; flex:0 0 auto;
+    border:1px solid var(--amber-500); color:var(--amber-500);
+  }
   /* Read-only counterpart to .set-status: same right-hand slot, no affordance. */
   .set-jobtitle{ font-family:system-ui,'Inter',sans-serif; font-size:13px; color:var(--fog-300); text-align:right; white-space:nowrap; }
   .set-jobtitle.is-unset{ color:var(--fog-500); font-style:italic; }
@@ -265,7 +275,7 @@
   .set-meta-k{ font-family:system-ui,'Inter',sans-serif; font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:var(--fog-500); }
   .set-meta-v{ font-family:system-ui,'Inter',sans-serif; font-size:14px; color:var(--paper-050); }
   .set-meta-v.is-unset{ color:var(--fog-500); font-style:italic; }
-  .set-row-sub{ font-size:12px; color:var(--fog-500); margin-top:2px; }
+  .set-row-sub{ font-size:12px; color:var(--fog-500); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   /* UNIFORM WIDTH. Left to shrink-wrap, HOME came out roughly half the width of
      MAINTENANCE, so a column of aircraft read as ragged pills of three different
      sizes rather than one status column. min-width is set to comfortably clear
@@ -3550,7 +3560,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T01:20:00Z';
+const BUILD_VERSION = '2026-09-02T01:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11658,19 +11668,33 @@ function rosterRowHTML(p){
   // Fall back to the email when no display name is set: an account with a blank
   // name would otherwise render as an anonymous row.
   const primary = p.name || p.email;
-  const sub = [];
-  if(p.name && p.email) sub.push(escapeHtml(p.email));
-  if(p.isAdmin) sub.push('Admin');
-  if(p.membershipRole === 'contractor') sub.push('Contractor');
+  // Email moves to its own line UNDER the name. It used to sit in the same
+  // sub-line as the badges, which meant a long address ran under the crew
+  // abbreviation on a phone -- the abbreviation is a flex sibling with
+  // flex:0 0 auto, so the sub-line had no width left to give and simply
+  // overlapped it. Name and abbreviation now share a line of their own and the
+  // email gets a clean one below.
+  const badges = [];
+  if(p.isAdmin) badges.push('Admin');
+  if(p.membershipRole === 'contractor') badges.push('Contractor');
   const abb = (p.abbrev || '').toUpperCase();
   return '' +
     '<div class="set-row" data-person-id="' + escapeHtml(p.id) + '">' +
       '<div class="set-row-main">' +
-        '<div class="set-person">' + escapeHtml(primary) + '</div>' +
-        (sub.length ? '<div class="set-row-sub">' + sub.join(' \u00b7 ') + '</div>' : '') +
+        '<div class="set-person-line">' +
+          '<span class="set-person">' + escapeHtml(primary) + '</span>' +
+          '<span class="set-abbrev' + (abb ? '' : ' is-unset') + '">' +
+            (abb ? escapeHtml(abb) : 'No abbreviation') + '</span>' +
+          badges.map(function(b){
+            return '<span class="set-badge">' + b + '</span>';
+          }).join('') +
+        '</div>' +
+        // Only when a display name exists: with none, the email IS the name
+        // above and printing it twice would be noise.
+        (p.name && p.email
+          ? '<div class="set-row-sub">' + escapeHtml(p.email) + '</div>'
+          : '') +
       '</div>' +
-      '<div class="set-abbrev' + (abb ? '' : ' is-unset') + '">' +
-        (abb ? escapeHtml(abb) : 'No abbreviation') + '</div>' +
       '<div class="set-jobtitle' + (t ? '' : ' is-unset') + '">' + escapeHtml(titleLabel) + '</div>' +
       (rosterViewerIsAdmin()
         ? '<div class="set-row-actions">' +
