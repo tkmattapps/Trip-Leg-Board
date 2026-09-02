@@ -3636,7 +3636,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T10:35:00Z';
+const BUILD_VERSION = '2026-09-02T11:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11178,6 +11178,21 @@ async function loadWorkbenchTrips(){
 // The client-side admin check only stops a request that is already known to
 // fail; the real gate is the RLS policy, which carries is_department_admin()
 // on both insert and update.
+// The month a newly created trip is filed under, as an ISO date on the 1st.
+//
+// Takes the trip's own start date when it has one. Falls back to the month the
+// schedule is currently showing, which is the month the person was looking at
+// when they made the trip -- schedAnchor is already normalised to the 1st. Last
+// resort is this month, so the column can never come back null: the constraint
+// in migration 31 is what guarantees a trip is always findable in some panel,
+// and an insert that trips it would just be a trip nobody can create.
+function wbPlanMonthFor(startDate){
+  if(startDate) return String(startDate).slice(0, 8) + '01';
+  const a = schedAnchor || schedMonthStart(new Date());
+  const mm = String(a.getMonth() + 1).padStart(2, '0');
+  return a.getFullYear() + '-' + mm + '-01';
+}
+
 async function saveWorkbenchTrip(trip){
   if(typeof rosterViewerIsAdmin === 'function' && !rosterViewerIsAdmin()){
     showToast('Only an admin can build trips.');
@@ -11210,6 +11225,18 @@ async function saveWorkbenchTrip(trip){
         .update(row).eq('id', trip.id).select().single());
     } else {
       row.created_by = me;
+      // *** SET ON CREATE AND NEVER AGAIN. *** plan_month is the month whose
+      // panel an UNDATED trip is filed under. Once a trip has dates, panel
+      // membership is derived from date overlap and this column is unread --
+      // which is exactly why the update branch above must not touch it. A
+      // plan_month rewritten on every date edit would be a second source of
+      // truth, silently disagreeing with the dates whenever the two diverge.
+      //
+      // Dates first, anchor month second. Every trip created today comes from
+      // schedEntryToWorkbench, which refuses to build one without a start and
+      // an end, so the first branch is the live one; the anchor is there for
+      // `+ Trip`, which will be able to file a month-only trip.
+      row.plan_month = wbPlanMonthFor(row.start_date);
       ({ data, error } = await sb.from('workbench_trips')
         .insert(row).select().single());
     }
