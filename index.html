@@ -202,6 +202,35 @@
     border:1px solid var(--amber-500); color:var(--amber-500);
     font-size:10px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase;
   }
+  /* Smart schedule switch. Unlike .set-soon above, this one IS built, so it
+     gets a real control. For a non-admin it is DISABLED, not hidden: a crew
+     member should be able to see the setting exists, read what it does, and
+     know it is someone else's to change. */
+  .set-switch-row{ display:flex; align-items:center; gap:14px; padding:12px 14px; background:var(--panel-800); border:1px solid var(--hairline,#24384f); border-radius:10px; }
+  .set-switch-main{ min-width:0; flex:1; }
+  .set-switch-name{ font-size:14px; font-weight:600; color:var(--paper-050); }
+  .set-switch-sub{ font-size:12px; color:var(--fog-500); margin-top:2px; line-height:1.4; }
+  .set-switch{ position:relative; flex:none; width:46px; height:26px; }
+  /* The input stays in the layout rather than display:none so it keeps focus
+     and keyboard toggling; it is the track and knob that are drawn. */
+  .set-switch input{ position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; }
+  .set-switch input:disabled{ cursor:default; }
+  .set-switch-track{ position:absolute; inset:0; border-radius:13px; background:var(--panel-700); border:1px solid var(--hairline,#24384f); transition:background 120ms ease, border-color 120ms ease; pointer-events:none; }
+  .set-switch-knob{ position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:var(--fog-500); transition:transform 120ms ease, background 120ms ease; pointer-events:none; }
+  .set-switch input:checked ~ .set-switch-track{ background:var(--amber-700); border-color:var(--amber-500); }
+  .set-switch input:checked ~ .set-switch-knob{ transform:translateX(20px); background:var(--paper-050); }
+  .set-switch input:focus-visible ~ .set-switch-track{ border-color:var(--amber-500); }
+  .set-switch input:disabled ~ .set-switch-track,
+  .set-switch input:disabled ~ .set-switch-knob{ opacity:0.45; }
+  .set-smart-info{
+    margin-top:10px; border:1px solid var(--hairline); border-radius:6px;
+    padding:12px 14px; background:var(--panel-800);
+    font-size:12px; color:var(--fog-500); line-height:1.6;
+  }
+  .set-smart-info strong{ color:var(--fog-300); font-weight:600; }
+  .set-smart-info ul{ margin:8px 0 0; padding-left:18px; }
+  .set-smart-info li + li{ margin-top:6px; }
+  .set-smart-info li b{ color:var(--fog-300); font-weight:600; }
   .set-list{ display:flex; flex-direction:column; gap:8px; }
   .set-group{ display:flex; flex-direction:column; gap:8px; }
   .set-group + .set-group{ margin-top:18px; }
@@ -3521,7 +3550,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-01T21:40:00Z';
+const BUILD_VERSION = '2026-09-02T01:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -10945,6 +10974,11 @@ function updateHistoryCards(){
 const AIRCRAFT_STATUSES = ['home', 'away', 'maintenance'];
 const AIRCRAFT_STATUS_LABELS = { home:'Home', away:'Away', maintenance:'Maintenance' };
 let aircraftCache = null;
+// Three states: null = not read yet (renders as Loading), 'unknown' = the read
+// failed, true/false = a real answer. Settings reads this on its own rather
+// than borrowing schedData.smart, because Settings can be opened without the
+// schedule ever having been loaded.
+let schedSmartCache = null;
 
 function openSettingsView(){
   if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
@@ -10955,6 +10989,32 @@ function openSettingsView(){
   loadAircraft();
   loadRoster();
   loadArchivedTrips();
+  loadSchedSmart();
+}
+
+// Settings' own read of the department's smart-features flag.
+//
+// It does NOT share loadScheduleData's fallback. There, a failed read must
+// assume ON, because assuming OFF would strip every extracted trip and look to
+// the crew like a wiped schedule. Here the cost is reversed: painting a switch
+// in a position we did not actually read invites an admin to "correct" it and
+// write the value they were already on. So a failed read leaves this null and
+// the section says so.
+async function loadSchedSmart(){
+  try {
+    const deptId = await getFlightDepartmentId();
+    const { data, error } = await sb.from('flight_departments')
+      .select('schedule_smart_features')
+      .eq('id', deptId)
+      .maybeSingle();
+    if(error) throw error;
+    schedSmartCache = data ? (data.schedule_smart_features !== false) : 'unknown';
+  } catch(e){
+    // 'unknown', not null: null still means "not read yet" and renders as
+    // Loading, which would spin forever on a failure.
+    schedSmartCache = 'unknown';
+  }
+  if(state.view === 'settings') renderSettingsView();
 }
 
 async function loadAircraft(){
@@ -11041,6 +11101,63 @@ function aircraftRowHTML(a){
     '</div>';
 }
 
+// The switch plus the box under it that says what the two modes actually mean.
+//
+// *** THE LIST IS NOT DECORATION. KEEP IT HONEST. ***
+// It names every automated thing the flag turns on, and right now that is
+// exactly two: `flight` rows are dropped at the load (loadScheduleData) and
+// schedFillAwayDays is skipped at the render. If a third smart feature is ever
+// gated on this flag -- overlap flagging is the one designed and not built --
+// it belongs in this list on the same commit. A list that undersells the
+// switch is worse than no list, because an admin turning it off will be
+// surprised by whatever went away silently.
+//
+// Shown in BOTH positions rather than only when on. The question the box
+// answers is "what would change if I flipped this", which someone reading it
+// while switched off needs answered more, not less.
+function smartScheduleHTML(){
+  const FEATURES =
+    '<ul>' +
+      '<li><b>Flight duty days.</b> Every day a leg touches appears on that crew ' +
+        'member\u2019s row and on the aircraft\u2019s row, taken from the trip.</li>' +
+      '<li><b>Away days.</b> The days in the middle of a trip when nobody flies but ' +
+        'the crew are still out, filled in from the first departure to the last arrival.</li>' +
+    '</ul>';
+
+  if(schedSmartCache === null) return '<div class="set-empty">Loading\u2026</div>';
+  if(schedSmartCache === 'unknown'){
+    return '<div class="set-empty">Could not read this setting. Reopen Settings to try again.</div>';
+  }
+
+  const on = schedSmartCache === true;
+  const isAdmin = rosterViewerIsAdmin();
+
+  const info = on
+    ? '<div class="set-smart-info"><strong>Smart schedule is on.</strong> ' +
+        'Beacon works these out from the trips it already holds:' + FEATURES +
+        '<br>Anything entered by hand is left alone, and stays on the schedule either way.</div>'
+    : '<div class="set-smart-info"><strong>Smart schedule is off \u2014 the schedule is manual.</strong> ' +
+        'It shows only what someone has entered by hand. Turn it on and Beacon will also fill in:' +
+        FEATURES + '</div>';
+
+  return '<div class="set-switch-row">' +
+      '<div class="set-switch-main">' +
+        '<div class="set-switch-name">' + (on ? 'Smart' : 'Manual') + '</div>' +
+        '<div class="set-switch-sub">' +
+          (isAdmin
+            ? 'Applies to everyone in the department.'
+            : 'Set by a department admin.') +
+        '</div>' +
+      '</div>' +
+      '<label class="set-switch">' +
+        '<input type="checkbox" id="schedSmartToggle"' + (on ? ' checked' : '') +
+          (isAdmin ? '' : ' disabled') + ' aria-label="Smart schedule" />' +
+        '<span class="set-switch-track"></span>' +
+        '<span class="set-switch-knob"></span>' +
+      '</label>' +
+    '</div>' + info;
+}
+
 function renderSettingsView(){
   const main = document.getElementById('mainPanel');
   setPageHeader({ title:'Settings', sub:'Department', backLabel:'Home', backTo:'home' });
@@ -11098,6 +11215,12 @@ function renderSettingsView(){
           ? ' As an admin you can add people, edit names and crew abbreviations, and reset passwords here.'
           : '') + '</p>' +
       rosterHTML +
+    '</div>' +
+    '<div class="set-section">' +
+      '<div class="set-section-head"><div class="set-section-title">Smart schedule</div></div>' +
+      '<p class="set-section-note">Whether Beacon works the schedule out from your trips, ' +
+        'or shows only what someone has entered by hand.</p>' +
+      smartScheduleHTML() +
     '</div>' +
     // DESIGNED, NOT BUILT - see beacon-configurable-fields-design.md.
     // Shown to beta testers so the absence reads as "coming" rather than
@@ -11173,6 +11296,11 @@ function renderSettingsView(){
   // relies on the RLS policy, and the database column grant is the last word.
   const addPersonBtn = document.getElementById('personAddBtn');
   if(addPersonBtn) addPersonBtn.addEventListener('click', openPersonCreateSheet);
+
+  const smartBox = document.getElementById('schedSmartToggle');
+  if(smartBox) smartBox.addEventListener('change', function(){
+    handleSchedSmartToggle(smartBox.checked);
+  });
 
   main.querySelectorAll('[data-person-reset]').forEach(btn => {
     btn.addEventListener('click', function(){ resetPersonPassword(btn.getAttribute('data-person-reset')); });
@@ -12202,6 +12330,38 @@ async function runPersonAction(id, action, successMsg){
 // rather than letting the insert fail with a constraint error.
 function normalizeTail(s){
   return String(s || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+
+// Writes through set_schedule_smart_features (migration 22), never a direct
+// UPDATE: flight_departments has no UPDATE policy at all, and adding one would
+// have opened `name` and `company_id` alongside this flag. The RPC is SECURITY
+// DEFINER and carries its own is_department_admin() check, which is the real
+// gate -- the check below only stops the client firing a request it knows will
+// be refused. Non-admins raise 42501 there.
+async function handleSchedSmartToggle(next){
+  if(!rosterViewerIsAdmin()){
+    showToast('Only a department admin can change this.');
+    renderSettingsView();
+    return;
+  }
+  try {
+    const deptId = await getFlightDepartmentId();
+    const { error } = await sb.rpc('set_schedule_smart_features', {
+      p_dept_id: deptId,
+      p_enabled: !!next
+    });
+    if(error) throw error;
+    schedSmartCache = !!next;
+    // The schedule filters at the LOAD, so a cached schedData still holds rows
+    // this flag now excludes. Drop it and the next visit re-reads.
+    schedData = null;
+    showToast(next ? 'Smart schedule on.' : 'Smart schedule off \u2014 manual.');
+  } catch(e){
+    showToast('Could not change this setting.');
+  }
+  // Repaint either way: on success for the new copy, on failure to put the
+  // switch back where the stored value actually is.
+  if(state.view === 'settings') renderSettingsView();
 }
 
 async function handleAddAircraft(){
