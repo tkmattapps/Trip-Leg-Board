@@ -2044,6 +2044,29 @@
     padding-bottom:env(safe-area-inset-bottom);
   }
   .sheet.open{ transform:translateY(0); }
+  /* The workbench is a WORKING SURFACE, not a prompt. It holds the month's whole
+     trip list and gets scrolled, so it takes the screen rather than the 88vh a
+     question-shaped sheet uses. The grid stays dimmed behind it deliberately --
+     filling a slot updates the grid, and that feedback is lost if the panel
+     covers it completely. */
+  .sheet-full{ max-height:96vh; height:96vh; }
+  .wb-head-actions{ display:flex; align-items:center; gap:10px; }
+  .wb-add-btn{
+    background:var(--amber-700); border:1px solid var(--amber-500);
+    color:var(--paper-050); font-family:system-ui,'Inter',sans-serif;
+    font-size:13px; font-weight:600; padding:6px 12px; border-radius:6px;
+    cursor:pointer; white-space:nowrap;
+  }
+  .wb-add-btn:hover{ background:var(--amber-500); }
+  /* Disabled, not hidden. A crew member should see that trip building exists
+     and know to ask an admin, which is the same posture as the smart-schedule
+     toggle and the opposite of how Aircraft and People hide their controls. */
+  .wb-add-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+  .wb-add-btn:disabled:hover{ background:var(--amber-700); }
+  .wb-empty{
+    font-family:system-ui,'Inter',sans-serif; font-size:13px;
+    color:var(--fog-500); text-align:center; padding:32px 8px; line-height:1.5;
+  }
   @media (min-width:821px){
     .sheet{ left:50%; right:auto; transform:translate(-50%, 100%); width:520px; }
     .sheet.open{ transform:translate(-50%, 0); }
@@ -3351,6 +3374,21 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   <div class="sheet-body" id="schedYearBody"></div>
 </div>
 
+<div class="sheet-backdrop" id="workbenchBackdrop"></div>
+<div class="sheet sheet-full" id="workbenchSheet" role="dialog" aria-label="Trip workbench" aria-hidden="true">
+  <div class="sheet-head">
+    <div>
+      <div class="sheet-title" id="workbenchTitle">Workbench</div>
+      <div class="sheet-sub" id="workbenchSub">Trips being built</div>
+    </div>
+    <div class="wb-head-actions">
+      <button type="button" class="wb-add-btn" id="workbenchAddBtn" data-wb-add="1">+ Trip</button>
+      <button type="button" class="sheet-close" data-wb-close="1" aria-label="Close">&times;</button>
+    </div>
+  </div>
+  <div class="sheet-body" id="workbenchBody"></div>
+</div>
+
 <div class="sheet-backdrop" id="personEditBackdrop"></div>
 <div class="sheet" id="personEditSheet" role="dialog" aria-label="Edit person" aria-hidden="true">
   <div class="sheet-head">
@@ -3560,7 +3598,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T03:10:00Z';
+const BUILD_VERSION = '2026-09-02T03:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11162,6 +11200,71 @@ async function retireWorkbenchTrip(id){
     showToast('Could not withdraw the trip.');
     return false;
   }
+}
+
+// ---- Workbench panel -----------------------------------------------------
+//
+// Shell only at this stage: it opens, it closes, it says what it is. Trip cards
+// land in renderWorkbenchBody() next.
+//
+// Opening kicks the load and re-renders when it arrives, rather than awaiting
+// before the panel appears. A panel that waits on the network to become visible
+// reads as a broken tap.
+
+function renderWorkbenchBody(){
+  const body = document.getElementById('workbenchBody');
+  if(!body) return;
+  const isAdmin = (typeof rosterViewerIsAdmin === 'function') ? rosterViewerIsAdmin() : false;
+
+  const addBtn = document.getElementById('workbenchAddBtn');
+  if(addBtn){
+    addBtn.disabled = !isAdmin;
+    addBtn.title = isAdmin ? '' : 'Only an admin can build trips';
+  }
+
+  const sub = document.getElementById('workbenchSub');
+  if(sub){
+    sub.textContent = isAdmin
+      ? 'Trips being built'
+      : 'Trips being built \u00b7 read only';
+  }
+
+  // null means the read has not come back yet. An empty array is a real answer
+  // and must not render as Loading, or an empty workbench looks broken forever.
+  if(workbenchCache === null){
+    body.innerHTML = '<div class="wb-empty">Loading trips\u2026</div>';
+    return;
+  }
+  if(!workbenchCache.length){
+    body.innerHTML = '<div class="wb-empty">No trips on the workbench yet.'
+      + (isAdmin ? '<br>Add one with the + Trip button above.' : '')
+      + '</div>';
+    return;
+  }
+  // Cards land here next.
+  body.innerHTML = '<div class="wb-empty">' + workbenchCache.length
+    + ' trip' + (workbenchCache.length === 1 ? '' : 's') + '.</div>';
+}
+
+function openWorkbench(){
+  const s = document.getElementById('workbenchSheet');
+  const b = document.getElementById('workbenchBackdrop');
+  if(s){ s.classList.add('open'); s.setAttribute('aria-hidden','false'); }
+  if(b) b.classList.add('open');
+  renderWorkbenchBody();
+  loadWorkbenchTrips().then(function(){
+    // Only repaint if the panel is still open -- a load resolving after a close
+    // would otherwise write into a hidden panel and, worse, into the next one.
+    const el = document.getElementById('workbenchSheet');
+    if(el && el.classList.contains('open')) renderWorkbenchBody();
+  });
+}
+
+function closeWorkbench(){
+  const s = document.getElementById('workbenchSheet');
+  const b = document.getElementById('workbenchBackdrop');
+  if(s){ s.classList.remove('open'); s.setAttribute('aria-hidden','true'); }
+  if(b) b.classList.remove('open');
 }
 
 async function loadAircraft(){
@@ -21571,7 +21674,11 @@ function renderScheduleView(){
       '<button type="button" class="sched-hbtn sched-nav" data-sched-step="1" aria-label="Next month">\u203A</button>' +
       '<button type="button" class="sched-hbtn sched-yearbtn" data-sched-yearpick="1" aria-haspopup="listbox" aria-label="Choose year. Currently ' + w.year + '">' +
         w.year +
-      '</button>'
+      '</button>' +
+      // Sits AFTER the year, outside the month cluster. The three month
+      // controls and the year all move the view; this one opens a different
+      // surface, so it does not belong inside that group.
+      '<button type="button" class="sched-hbtn" data-wb-open="1" aria-label="Open the trip workbench">Workbench</button>'
   });
 
   if(schedLoading || !schedData){
@@ -22550,6 +22657,13 @@ document.addEventListener('click', async function(e){
 
   if(t.closest('[data-sched-yearpick]')){ openSchedYearSheet(); return; }
   if(t.closest('[data-sched-yearclose]')){ closeSchedYearSheet(); return; }
+  if(t.closest('[data-wb-open]')){ openWorkbench(); return; }
+  if(t.closest('[data-wb-close]')){ closeWorkbench(); return; }
+  if(t.closest('[data-wb-add]')){
+    // The button is disabled for non-admins, but a disabled button is a UI
+    // state and not a guard -- saveWorkbenchTrip re-checks, and so does RLS.
+    return;
+  }
   const schedYearSet = t.closest('[data-sched-yearset]');
   if(schedYearSet){ schedSetYear(parseInt(schedYearSet.getAttribute('data-sched-yearset'), 10) || 0); return; }
   const schedStep = t.closest('[data-sched-step]');
@@ -22761,6 +22875,13 @@ function openInstallOverlay(){
 (function wireSchedYearSheet(){
   const bd = document.getElementById('schedYearBackdrop');
   if(bd) bd.addEventListener('click', closeSchedYearSheet);
+})();
+
+// Backdrop only -- the close X and the + Trip button are handled by the
+// delegated document click, same as the year sheet above.
+(function wireWorkbenchSheet(){
+  const bd = document.getElementById('workbenchBackdrop');
+  if(bd) bd.addEventListener('click', closeWorkbench);
 })();
 
 (function wireDrawer(){
