@@ -2103,6 +2103,40 @@
   }
   .wb-chip-unseated .wb-chip-seat{ color:var(--amber-500); }
 
+  /* THE EXPANDED EDITOR.
+     A second <tr> under the trip's own row, spanning every column, so the
+     fields sit UNDER the row they belong to while the table stays visible
+     above as context. Editing the cells in place was rejected: the table is
+     ten columns wide and scrolls sideways on a phone, so a field would often
+     be typed into while its row was half off screen. */
+  .wb-row-open td{ background:var(--panel-700); }
+  .wb-row-clickable{ cursor:pointer; }
+  .wb-edit-row td{ padding:0; border-bottom:1px solid var(--hairline); }
+  .wb-edit{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:12px; padding:14px 12px 16px; background:var(--panel-800);
+  }
+  .wb-field{ display:flex; flex-direction:column; gap:5px; min-width:0; }
+  /* Notes takes the whole width wherever the grid lands. */
+  .wb-field-wide{ grid-column:1 / -1; }
+  .wb-field label{
+    font-size:10px; font-weight:600; letter-spacing:0.06em;
+    text-transform:uppercase; color:var(--fog-500);
+  }
+  .wb-field input, .wb-field textarea{
+    background:var(--ink-900); color:var(--paper-050);
+    border:1px solid var(--hairline); border-radius:6px;
+    padding:8px 10px; font-size:14px; font-family:inherit; width:100%;
+    box-sizing:border-box;
+  }
+  .wb-field textarea{ min-height:64px; resize:vertical; }
+  .wb-field input:focus, .wb-field textarea:focus{
+    outline:none; border-color:var(--amber-500);
+  }
+  .wb-edit-note{
+    grid-column:1 / -1; font-size:12px; color:var(--fog-500);
+  }
+
   @media (min-width:821px){
     .sheet{ left:50%; right:auto; transform:translate(-50%, 100%); width:520px; }
     .sheet.open{ transform:translate(-50%, 0); }
@@ -3636,7 +3670,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T11:35:00Z';
+const BUILD_VERSION = '2026-09-02T12:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11188,9 +11222,13 @@ async function loadWorkbenchTrips(){
 // and an insert that trips it would just be a trip nobody can create.
 function wbPlanMonthFor(startDate){
   if(startDate) return String(startDate).slice(0, 8) + '01';
-  const a = schedAnchor || schedMonthStart(new Date());
-  const mm = String(a.getMonth() + 1).padStart(2, '0');
-  return a.getFullYear() + '-' + mm + '-01';
+  // wbShownMonth, not schedAnchor. The two agree most of the time but not
+  // always -- the anchor's year is deliberately left alone during a cross-year
+  // scroll hold -- and a trip created from the panel must be filed under the
+  // month that panel is showing, or it vanishes the moment it is made.
+  const mo = wbShownMonth();
+  const mm = String(mo.m + 1).padStart(2, '0');
+  return mo.y + '-' + mm + '-01';
 }
 
 async function saveWorkbenchTrip(trip){
@@ -11384,6 +11422,11 @@ function renderWorkbenchBody(){
     return;
   }
   body.innerHTML = workbenchTableHTML(shown);
+  // *** WIRED AFTER THE MARKUP, NEVER BEFORE. ***
+  // The fields are painted from the cache, which is already the real row, so
+  // there is no window where a blur could read a blank box and save the blank
+  // over real data -- the mistake leg_notes made and paid for.
+  wbWireEditor();
 }
 
 // The four-character identifier the department chose, which is what the master
@@ -11428,6 +11471,85 @@ function wbChip(seatLabel, id, unseated){
     + escHtml(name) + '</span>';
 }
 
+// The id of the trip whose editor is open, or ''. One at a time -- opening a
+// second collapses the first, so there is never a question of which row a blur
+// belongs to.
+let wbExpandedId = '';
+
+// *** ONE COLUMN PER WRITE. ***
+// saveWorkbenchTrip sends every column on every call, which is right for a
+// create but wrong here: save-on-blur fires once per field, so a full-row write
+// would put back this browser's copy of everything else each time. Two admins
+// in the same trip would overwrite each other's fields. That is a narrow case
+// -- the write is admin-gated and a department normally has one person building
+// the schedule -- but a single-column update costs nothing extra.
+async function wbSaveField(tripId, column, value){
+  if(!tripId || !column) return false;
+  if(typeof rosterViewerIsAdmin === 'function' && !rosterViewerIsAdmin()){
+    showToast('Only an admin can build trips.');
+    return false;
+  }
+  const patch = {};
+  patch[column] = value;
+  patch.updated_at = new Date().toISOString();
+  try {
+    // .select() is LOAD-BEARING: an update matching no policy returns success
+    // with an empty array, so without it a blocked write reports as saved.
+    const { data, error } = await sb.from('workbench_trips')
+      .update(patch).eq('id', tripId).select().single();
+    if(error) throw error;
+    if(!data){ showToast('Not saved.'); return false; }
+    // Patch the cache in place rather than reloading. A reload would repaint
+    // the table and collapse the editor out from under the person still in it.
+    if(Array.isArray(workbenchCache)){
+      const row = workbenchCache.find(function(x){ return x.id === tripId; });
+      if(row) row[column] = data[column];
+    }
+    return true;
+  } catch(e){
+    console.error('wbSaveField', column, e);
+    showToast('Could not save that.');
+    return false;
+  }
+}
+
+// The editor for one trip, as a row spanning the whole table.
+//
+// Tail and the crew seats are NOT here yet -- they are pickers, not text, and
+// a text box for a tail invites 'N667bb' and 'N 667BB' when the tail is what
+// the spreadsheet import matches a swap trip on. They arrive in their own
+// build; until then those cells are set by dragging on the grid, as before.
+function wbEditorHTML(t, colCount){
+  return '<tr class="wb-edit-row" data-wb-editor="' + escHtml(t.id || '') + '">'
+    + '<td colspan="' + colCount + '">'
+    + '<div class="wb-edit">'
+      + '<div class="wb-field wb-field-wide">'
+        + '<label for="wbfRouting">Routing</label>'
+        + '<input type="text" id="wbfRouting" data-wb-field="destinations" '
+        + 'value="' + escHtml(t.destinations || '') + '" '
+        + 'placeholder="BDL-TEB-LEMD" />'
+      + '</div>'
+      + '<div class="wb-field">'
+        + '<label for="wbfStart">Start date</label>'
+        + '<input type="date" id="wbfStart" data-wb-field="start_date" '
+        + 'value="' + escHtml(t.start_date || '') + '" />'
+      + '</div>'
+      + '<div class="wb-field">'
+        + '<label for="wbfEnd">End date</label>'
+        + '<input type="date" id="wbfEnd" data-wb-field="end_date" '
+        + 'value="' + escHtml(t.end_date || '') + '" />'
+      + '</div>'
+      + '<div class="wb-field wb-field-wide">'
+        + '<label for="wbfNotes">Notes</label>'
+        + '<textarea id="wbfNotes" data-wb-field="notes">'
+        + escHtml(t.notes || '') + '</textarea>'
+      + '</div>'
+      + '<div class="wb-edit-note">Tail and crew are set by dragging on the '
+      + 'schedule for now. Changes here save as you leave each field.</div>'
+    + '</div>'
+    + '</td></tr>';
+}
+
 function workbenchTableHTML(trips){
   // The extra column exists only if something is in it anywhere in the table.
   const anyExtra = trips.some(function(t){
@@ -11451,7 +11573,9 @@ function workbenchTableHTML(trips){
             + (t.crew.unassigned || []).map(function(id){ return wbChip('?', id, true); }).join('');
     }
 
-    html += '<tr data-wb-trip="' + escHtml(t.id || '') + '">'
+    const isOpen = t.id && t.id === wbExpandedId;
+    html += '<tr class="wb-row-clickable' + (isOpen ? ' wb-row-open' : '') + '"'
+      + ' data-wb-trip="' + escHtml(t.id || '') + '">'
       + '<td class="wb-c-tail">'    + (t.tailNumber ? escHtml(t.tailNumber) : WB_BLANK) + '</td>'
       + '<td class="wb-c-routing">' + (t.destinations ? escHtml(t.destinations) : WB_BLANK) + '</td>'
       + '<td class="wb-c-date">'    + (t.start_date ? escHtml(wbShortDate(t.start_date)) : WB_BLANK) + '</td>'
@@ -11463,12 +11587,82 @@ function workbenchTableHTML(trips){
       + (anyExtra ? '<td>' + (extra || WB_BLANK) + '</td>' : '')
       + '<td class="wb-c-notes">'   + (t.notes ? escHtml(t.notes) : '') + '</td>'
       + '</tr>';
+
+    // Column count is computed, not written as a number: the extra crew column
+    // only exists when some visible trip has an ACM or an unseated pilot, so a
+    // hardcoded colspan would be wrong half the time and leave a gap.
+    if(isOpen) html += wbEditorHTML(t, anyExtra ? 10 : 9);
   });
 
   return html + '</tbody></table></div>';
 }
 
+// Save on leaving a field. `change` rather than `blur`: it fires on blur for a
+// text box but only when the value actually differs, and fires immediately on a
+// date picker, so nothing is written when someone tabs through without typing.
+function wbWireEditor(){
+  const id = wbExpandedId;
+  if(!id) return;
+  const rows = document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-field]');
+  rows.forEach(function(el){
+    el.addEventListener('change', function(){
+      const col = el.getAttribute('data-wb-field');
+      // Dates are nullable on purpose -- an undefined trip is a real state --
+      // and an empty string would be a date parse error, so it becomes null.
+      const isDate = (col === 'start_date' || col === 'end_date');
+      const val = isDate ? (el.value || null) : el.value;
+      wbSaveField(id, col, val).then(function(ok){
+        if(!ok || !isDate) return;
+        // A date edit changes the Days column and can move the trip out of the
+        // month you are standing in. Repaint so the row tells the truth, and
+        // say so rather than letting it silently disappear.
+        const mo = wbShownMonth();
+        const row = (workbenchCache || []).find(function(x){ return x.id === id; });
+        const gone = row && !wbTripInMonth(row, mo.y, mo.m);
+        if(gone){
+          wbExpandedId = '';
+          showToast('That trip no longer runs in ' + schedMonthLongName(mo.y, mo.m) + '.');
+        }
+        renderWorkbenchBody();
+      });
+    });
+  });
+}
+
+// Open a trip's editor, or close it if it is already the open one.
+function wbToggleRow(id){
+  if(!id) return;
+  wbExpandedId = (wbExpandedId === id) ? '' : id;
+  renderWorkbenchBody();
+}
+
+// *** CREATES THE ROW IMMEDIATELY. NO DIALOG, NO DATES ASKED FOR. ***
+// A trip goes on the panel the moment the department knows it is happening,
+// which is usually well before anyone knows the dates. Asking for dates up
+// front would either block the trip from being recorded or invite invented
+// ones -- and an invented date posts days on the grid against real people.
+// An undated trip posts nothing: migrations 28 and 29 expand a date range, and
+// a null range expands to nothing.
+async function wbAddTrip(){
+  if(typeof rosterViewerIsAdmin === 'function' && !rosterViewerIsAdmin()){
+    showToast('Only an admin can build trips.');
+    return;
+  }
+  const saved = await saveWorkbenchTrip({ crew: {} });
+  if(!saved) return;   // saveWorkbenchTrip has already said why.
+  if(Array.isArray(workbenchCache)) workbenchCache.push(saved);
+  // Straight into the editor. A blank row with no way into it is the thing
+  // this button must not produce.
+  wbExpandedId = saved.id;
+  renderWorkbenchBody();
+}
+
 function openWorkbench(){
+  // Never reopen into a stale editor. The panel may be opening on a different
+  // month than it last closed on, and an editor left open would either belong
+  // to a trip that is not in this month's list or attach its handlers to a row
+  // that is no longer there.
+  wbExpandedId = '';
   const s = document.getElementById('workbenchSheet');
   const b = document.getElementById('workbenchBackdrop');
   if(s){ s.classList.add('open'); s.setAttribute('aria-hidden','false'); }
@@ -23161,7 +23355,15 @@ document.addEventListener('click', async function(e){
   if(t.closest('[data-wb-add]')){
     // The button is disabled for non-admins, but a disabled button is a UI
     // state and not a guard -- saveWorkbenchTrip re-checks, and so does RLS.
+    wbAddTrip();
     return;
+  }
+  // A click inside the open editor must not collapse it -- the editor row is
+  // inside the table, so a bare row lookup would match it and toggle the row
+  // shut the moment anyone reached for a field.
+  if(!t.closest('[data-wb-editor]')){
+    const wbRow = t.closest('[data-wb-trip]');
+    if(wbRow){ wbToggleRow(wbRow.getAttribute('data-wb-trip') || ''); return; }
   }
   const schedYearSet = t.closest('[data-sched-yearset]');
   if(schedYearSet){ schedSetYear(parseInt(schedYearSet.getAttribute('data-sched-yearset'), 10) || 0); return; }
