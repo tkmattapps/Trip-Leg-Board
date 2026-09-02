@@ -2150,19 +2150,32 @@
      line -- the flex basis below is what makes them share the row. */
   .wb-edit-line > .wb-ac-block,
   .wb-edit-line > .wb-crew-block{ flex:1 1 280px; min-width:0; }
-  /* The last line is halved: tail, PIC and SIC across the left, the one
-     destructive control alone on the right. Keeping Delete out of the column
-     the selects live in is the point -- it is not another field. */
+  /* *** NOT ACTUALLY HALVES. ***
+     They were flex:1 1 0, so each side claimed half the card no matter what was
+     in it: tail, PIC, SIC and cabin crew took about a third between them and
+     Delete sat marooned at the far right with a hand's width of nothing before
+     it. The fields now take the width they need and the actions column takes
+     what is left, pushed to the far edge by the auto margin. */
   .wb-edit-half{
-    flex:1 1 0; min-width:0; display:flex; gap:12px;
+    flex:1 1 auto; min-width:0; display:flex; gap:12px;
     align-items:flex-start; flex-wrap:wrap;
   }
   .wb-edit-half > .wb-ac-block,
-  .wb-edit-half > .wb-crew-block{ flex:1 1 130px; min-width:0; }
-  /* Three selects sharing half a card cannot each demand 140px, so the crew
-     grid's floor comes down to match the space it now has. */
-  .wb-edit-half .wb-crew-grid{ grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; }
-  .wb-edit-half-actions{ justify-content:flex-end; align-items:flex-end; }
+  .wb-edit-half > .wb-crew-block{ flex:0 1 auto; min-width:0; }
+  /* Fixed-width tracks, not fractions. Fractions stretched three selects across
+     whatever room they were given, so tail and crew drifted apart as the panel
+     widened instead of reading as one row of fields. auto-fit collapses the
+     tracks nobody filled. */
+  .wb-edit-half .wb-crew-grid{
+    grid-template-columns:repeat(auto-fit,minmax(140px,170px)); gap:8px;
+  }
+  /* align-self:stretch is what puts Delete on the BOTTOM edge -- without it the
+     column is only as tall as the button and flex-end has nothing to push
+     against. */
+  .wb-edit-half-actions{
+    flex:0 0 auto; margin-left:auto; align-self:stretch;
+    justify-content:flex-end; align-items:flex-end;
+  }
   .wb-field{ display:flex; flex-direction:column; gap:5px; min-width:0; }
   .wb-field label{
     font-size:10px; font-weight:600; letter-spacing:0.06em;
@@ -2184,12 +2197,15 @@
     text-transform:uppercase; color:var(--fog-500);
   }
   .wb-ac-none{ font-size:13px; color:var(--fog-500); }
-  /* The delete sits on its own track so the three fields keep equal widths
-     whether or not the row can be removed. */
+  /* One aeroplane is one field, so one track. It used to be three tracks plus
+     an auto for the cross, which is why an unsplit row put its cross a whole
+     empty column away from the select it belonged to. Dates only appear when
+     the trip is shared, and that is what wb-ac-row-split widens for. */
   .wb-ac-row{
-    display:grid; grid-template-columns:repeat(3,minmax(120px,1fr)) auto;
+    display:grid; grid-template-columns:minmax(140px,170px);
     gap:10px; align-items:end;
   }
+  .wb-ac-row-split{ grid-template-columns:repeat(3,minmax(120px,1fr)); }
   .wb-ac-row select{
     background:var(--ink-900); color:var(--paper-050);
     border:1px solid var(--hairline); border-radius:6px;
@@ -2197,11 +2213,6 @@
     box-sizing:border-box;
   }
   .wb-ac-row select:focus{ outline:none; border-color:var(--amber-500); }
-  .wb-ac-del{
-    background:none; border:none; color:var(--fog-500);
-    font-size:20px; line-height:1; padding:6px 8px; cursor:pointer;
-  }
-  .wb-ac-del:hover{ color:var(--alert-600); }
   /* The editor's version is a named button, not a cross. Inside the editor
      there is room to say what it does, and the trip being acted on is not in
      doubt -- it is the one that is open. */
@@ -2226,10 +2237,13 @@
   .wb-merge-choice-sub{
     display:block; margin-top:3px; font-size:11px; color:var(--fog-500);
   }
+  /* All three sized to the longest of them (+ Cabin crew) rather than to their
+     own text, so they line up instead of stepping. */
   .wb-ac-add{
     align-self:flex-start; background:none; border:1px solid var(--hairline);
     color:var(--amber-500); border-radius:6px; padding:6px 12px;
     font-size:13px; font-family:inherit; cursor:pointer;
+    min-width:126px; text-align:center;
   }
   .wb-ac-add:hover{ border-color:var(--amber-500); }
   .wb-field-date{ max-width:170px; }
@@ -3804,7 +3818,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T00:10:00Z';
+const BUILD_VERSION = '2026-09-04T00:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12184,6 +12198,10 @@ function wbCrewClashDays(userId, trip){
 //
 // The moment a second aeroplane joins, From and To appear on BOTH rows, because
 // dividing the span between them is the entire reason the second one is there.
+// A value no aircraft id can collide with. It is the option that removes the
+// row, so it must never be mistaken for a real pick -- ids are UUIDs.
+const WB_AC_OFF = '__off__';
+
 function wbAircraftEditHTML(t){
   const rows  = wbAircraftFor(t.id);
   const fleet = (aircraftCache || []).filter(function(a){ return a.is_active; });
@@ -12214,12 +12232,24 @@ function wbAircraftEditHTML(t){
            + escHtml((extra.tail_number || '') + ' (retired)') + '</option>';
     }
 
-    // No second 'Aircraft' label on the row -- the block above it already says
-    // so, and the two together read as a heading with a heading.
+    // *** THE LABEL IS LOAD-BEARING, NOT DECORATION. ***
+    // Aircraft and crew sit side by side, and the crew selects each carry a
+    // label. Without one here the tail select rides a label's height higher
+    // than PIC and SIC and the row looks broken. 'Tail' rather than a second
+    // 'Aircraft' -- the block head already says that, and the two together
+    // read as a heading with a heading.
+    //
+    // Taking the aeroplane off the trip is the last option IN the select. The
+    // cross that used to do it sat in its own grid track, visibly detached from
+    // the field it acted on, and on an iPhone it crowded the select it was not
+    // obviously attached to.
     h += '<div class="wb-ac-row' + (split ? ' wb-ac-row-split' : '') + '" '
       + 'data-wb-ac="' + escHtml(r.id) + '">'
       + '<div class="wb-field">'
-        + '<select data-wb-acfield="aircraft_id">' + opts + '</select>'
+        + '<label>Tail</label>'
+        + '<select data-wb-acfield="aircraft_id">' + opts
+        + '<option value="' + WB_AC_OFF + '">Take off this trip</option>'
+        + '</select>'
       + '</div>'
       + (split
         ? '<div class="wb-field wb-field-date">'
@@ -12233,8 +12263,6 @@ function wbAircraftEditHTML(t){
           + escHtml(r.end_date || '') + '" />'
         + '</div>'
         : '')
-      + '<button type="button" class="wb-ac-del" data-wb-acdel="' + escHtml(r.id) + '" '
-      + 'aria-label="Take this aircraft off the trip">&times;</button>'
       + '</div>';
   });
 
@@ -12245,10 +12273,11 @@ function wbAircraftEditHTML(t){
     });
     h += '<div class="wb-ac-row" data-wb-ac="new">'
       + '<div class="wb-field">'
-        + '<select data-wb-acnew="' + escHtml(t.id || '') + '">' + opts + '</select>'
+        + '<label>Tail</label>'
+        + '<select data-wb-acnew="' + escHtml(t.id || '') + '">' + opts
+        + '<option value="' + WB_AC_OFF + '">Cancel</option>'
+        + '</select>'
       + '</div>'
-      + '<button type="button" class="wb-ac-del" data-wb-accancel="1" '
-      + 'aria-label="Cancel">&times;</button>'
       + '</div>';
   } else {
     h += '<button type="button" class="wb-ac-add" data-wb-acadd="' + escHtml(t.id || '') + '">'
@@ -12552,6 +12581,7 @@ function wbWireEditor(){
   const newSel = document.querySelector('[data-wb-editor="' + id + '"] [data-wb-acnew]');
   if(newSel){
     newSel.addEventListener('change', function(){
+      if(newSel.value === WB_AC_OFF){ wbPendingAircraft = ''; renderWorkbenchBody(); return; }
       if(!newSel.value) return;
       wbChooseAircraft(newSel.getAttribute('data-wb-acnew') || '', newSel.value);
     });
@@ -12562,6 +12592,12 @@ function wbWireEditor(){
       const holder = el.closest('[data-wb-ac]');
       if(!holder) return;
       const col = el.getAttribute('data-wb-acfield');
+      // Removal, not an edit. Straight out before the write path -- saving the
+      // sentinel into aircraft_id would be a foreign key error at best.
+      if(col === 'aircraft_id' && el.value === WB_AC_OFF){
+        wbRemoveTripAircraft(holder.getAttribute('data-wb-ac') || '', id);
+        return;
+      }
       const isDate = (col === 'start_date' || col === 'end_date');
       const val = (isDate || col === 'aircraft_id') ? (el.value || null) : el.value;
       wbSaveAircraftField(holder.getAttribute('data-wb-ac'), col, val).then(function(ok){
@@ -24743,9 +24779,8 @@ document.addEventListener('click', async function(e){
     renderWorkbenchBody();
     return;
   }
-  if(t.closest('[data-wb-accancel]')){ wbPendingAircraft = ''; renderWorkbenchBody(); return; }
-  const wbAcDel = t.closest('[data-wb-acdel]');
-  if(wbAcDel){ wbRemoveTripAircraft(wbAcDel.getAttribute('data-wb-acdel') || '', wbExpandedId); return; }
+  // Removing an aeroplane and cancelling a new one are both options inside the
+  // select now, handled on change -- there are no crosses left to click.
   // The editor's Delete button lives inside [data-wb-editor], which the guard
   // below skips, so it has to be tested before that guard. It is the only route
   // to deleting a trip now -- the per-row cross was removed on 3 Sep 2026.
