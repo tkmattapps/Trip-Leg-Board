@@ -3560,7 +3560,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T01:45:00Z';
+const BUILD_VERSION = '2026-09-02T03:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -10989,6 +10989,11 @@ let aircraftCache = null;
 // than borrowing schedData.smart, because Settings can be opened without the
 // schedule ever having been loaded.
 let schedSmartCache = null;
+// Workbench trips. Two states only, unlike schedSmartCache: null = not read
+// yet, array = a real answer including the empty one. A failed read leaves []
+// and toasts, because an empty workbench and a broken workbench look the same
+// on screen and the toast is what tells them apart.
+let workbenchCache = null;
 
 function openSettingsView(){
   if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
@@ -11025,6 +11030,138 @@ async function loadSchedSmart(){
     schedSmartCache = 'unknown';
   }
   if(state.view === 'settings') renderSettingsView();
+}
+
+// ---- Workbench trips -----------------------------------------------------
+//
+// A workbench trip is a trip as the department knows it BEFORE dispatch has
+// built the legs. It is the only kind of trip in Beacon that is a stored row
+// rather than a grouping derived from legs at read time.
+//
+// *** THE IDENTITY IS row.id AND IT NEVER CHANGES. *** trip_number starts empty
+// and is typed in later, once dispatch issues one. Never key anything on the
+// trip number -- that is the live bug in trip_chat_links, where a link saved
+// against an unnumbered trip is orphaned the moment the trip is numbered.
+//
+// crew is the SAME SHAPE as leg.crew -- { pic, sic, acm[], fa[] }, pic/sic a
+// single user id, acm/fa arrays of ids -- so the existing crew pickers can be
+// pointed at a workbench trip without translating anything.
+
+// Every read and write goes through this. A row from the database can be
+// missing crew entirely (an older row, or a partial write), and every caller
+// would otherwise have to null-check four fields. Mirrors what the leg
+// normaliser at the top of the file does for leg.crew.
+function normalizeWorkbenchTrip(row){
+  const t = Object.assign({}, row || {});
+  const c = (t.crew && typeof t.crew === 'object') ? t.crew : {};
+  t.crew = {
+    pic: c.pic || '',
+    sic: c.sic || '',
+    acm: Array.isArray(c.acm) ? c.acm.slice() : [],
+    fa:  Array.isArray(c.fa)  ? c.fa.slice()  : []
+  };
+  t.tripNumber   = (t.trip_number  || '').trim();
+  t.tailNumber   = (t.tail_number  || '').trim();
+  t.destinations = (t.destinations || '').trim();
+  t.notes        = (t.notes        || '').trim();
+  return t;
+}
+
+async function loadWorkbenchTrips(){
+  try {
+    const deptId = await getFlightDepartmentId();
+    // deleted_at is filtered HERE rather than in an index: withdrawn trips are
+    // rare, and a partial index would have to be rebuilt to ever surface them.
+    const { data, error } = await sb.from('workbench_trips')
+      .select('*')
+      .eq('flight_department_id', deptId)
+      .is('deleted_at', null)
+      .order('start_date', { ascending: true, nullsFirst: false });
+    if(error) throw error;
+    workbenchCache = (data || []).map(normalizeWorkbenchTrip);
+  } catch(e){
+    workbenchCache = [];
+    if(!(e && e.isNoDepartment)) showToast('Could not load trips.');
+  }
+  return workbenchCache;
+}
+
+// Insert when there is no id, update when there is. The caller never picks --
+// two entry points into one table is how duplicate trips get made.
+//
+// The client-side admin check only stops a request that is already known to
+// fail; the real gate is the RLS policy, which carries is_department_admin()
+// on both insert and update.
+async function saveWorkbenchTrip(trip){
+  if(typeof rosterViewerIsAdmin === 'function' && !rosterViewerIsAdmin()){
+    showToast('Only an admin can build trips.');
+    return null;
+  }
+  const deptId = await getFlightDepartmentId();
+  // NOT named `uid` -- that is the global id generator, and shadowing it inside
+  // a save function is a trap waiting for whoever edits this next.
+  const me = (typeof myUserId === 'function') ? myUserId() : null;
+  const row = {
+    flight_department_id: deptId,
+    trip_number:  (trip.tripNumber   || '').trim(),
+    tail_number:  (trip.tailNumber   || '').trim(),
+    destinations: (trip.destinations || '').trim(),
+    notes:        (trip.notes        || '').trim(),
+    // Dates are nullable on purpose -- an undefined trip is a real state. An
+    // empty string would be a date parse error, so it has to become null.
+    start_date: trip.start_date || null,
+    end_date:   trip.end_date   || null,
+    crew: normalizeWorkbenchTrip(trip).crew
+  };
+  try {
+    let data, error;
+    if(trip.id){
+      row.updated_at = new Date().toISOString();
+      // .select() is LOAD-BEARING: an update that matched no policy returns
+      // success with an empty array, so without it a blocked write reports as
+      // saved. Same reason trip_notes does it.
+      ({ data, error } = await sb.from('workbench_trips')
+        .update(row).eq('id', trip.id).select().single());
+    } else {
+      row.created_by = me;
+      ({ data, error } = await sb.from('workbench_trips')
+        .insert(row).select().single());
+    }
+    if(error) throw error;
+    if(!data){ showToast('Trip not saved.'); return null; }
+    return normalizeWorkbenchTrip(data);
+  } catch(e){
+    console.error('saveWorkbenchTrip', e);
+    showToast('Could not save the trip.');
+    return null;
+  }
+}
+
+// Withdraw, not delete. There is no DELETE policy on the table at all, so this
+// is the only way a trip leaves the workbench, and it is reversible by setting
+// deleted_at back to null.
+async function retireWorkbenchTrip(id){
+  if(!id) return false;
+  if(typeof rosterViewerIsAdmin === 'function' && !rosterViewerIsAdmin()){
+    showToast('Only an admin can withdraw a trip.');
+    return false;
+  }
+  try {
+    const stamp = new Date().toISOString();
+    const { data, error } = await sb.from('workbench_trips')
+      .update({ deleted_at: stamp, updated_at: stamp })
+      .eq('id', id).select('id');
+    if(error) throw error;
+    if(!data || !data.length){ showToast('Trip not withdrawn.'); return false; }
+    if(Array.isArray(workbenchCache)){
+      workbenchCache = workbenchCache.filter(function(t){ return t.id !== id; });
+    }
+    return true;
+  } catch(e){
+    console.error('retireWorkbenchTrip', e);
+    showToast('Could not withdraw the trip.');
+    return false;
+  }
 }
 
 async function loadAircraft(){
