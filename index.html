@@ -3715,7 +3715,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T12:15:00Z';
+const BUILD_VERSION = '2026-09-03T13:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -20788,9 +20788,12 @@ const SCHED_LABELS = {
   quarterly_call: 'Quarterly call',
   soft_day:       'Soft day',
   other:          'Other',
-  maintenance:    'In maintenance',
-  away_from_base: 'Away from base'
+  maintenance:    'In maintenance'
 };
+// NOTE: there is no 'away_from_base' label any more. The category was removed
+// on 3 Sep 2026 and the database will not accept it. SCHED_COLORS still has a
+// key of that name because it is the teal a committed TAIL is painted in --
+// the name is historical, the colour is load-bearing. Do not delete it.
 
 // Anchored on a MONTH, not on today, so paging is predictable. Stored as the
 // first of the month; the visible window is derived from it.
@@ -21662,7 +21665,14 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
 // never build upon in the future." 'other' already covers anything flying-shaped
 // that is not a trip, and its reason field is mandatory, so nothing is lost.
 const SCHED_CREW_CATS = ['training','pto','quarterly_call','soft_day','other'];
-const SCHED_AC_CATS   = ['maintenance','away_from_base','other'];
+// A tail has TWO hand-entered states: maintenance, and other with a reason.
+// 'away_from_base' was removed on 3 Sep 2026 -- it never said anything the
+// reason field was not already saying, and it collided in colour with a tail
+// on a trip, which is a different fact with a different author. The database
+// CHECK on aircraft_availability.status no longer accepts it (migration 38),
+// so this list and the constraint have to stay in step: adding it back here
+// would produce a save the database rejects.
+const SCHED_AC_CATS   = ['maintenance','other'];
 
 let schedEntry = null;   // { ownerId, ownerKind, ownerLabel, category, start, end, reason }
 
@@ -23193,7 +23203,7 @@ function renderScheduleView(){
   // element to animate rather than several that would drift out of step.
   key += '<div class="sched-keypanel">';
   key += '<div class="sched-key">';
-  ['flight','training','pto','quarterly_call','soft_day','other','maintenance','away_from_base'].forEach(function(k){
+  ['flight','training','pto','quarterly_call','soft_day','other','maintenance'].forEach(function(k){
     key += '<span class="sched-key-item"><span class="sched-key-dot" style="background:' + SCHED_COLORS[k] + '"></span>' +
            escapeHtml(SCHED_LABELS[k]) + '</span>';
   });
