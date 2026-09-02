@@ -3715,7 +3715,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T11:40:00Z';
+const BUILD_VERSION = '2026-09-03T12:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -22511,9 +22511,15 @@ function renderSchedEntry(){
   // It renders inside the category row on purpose: the person is choosing "what
   // is this day", and hiding the most likely answer somewhere else would mean
   // learning that trips live in a different place before you could build one.
+  // The WORDING is band-specific for the same reason schedKindLabel's is: this
+  // button makes the same trip either way, but "Flight duty" describes a person
+  // being rostered, not a tail being committed. The key names the tail's teal run
+  // "Away on trip", so the button that creates it has to say the same thing or
+  // the grid and the control that fills it disagree in front of the user.
+  // The dot does NOT change -- flight_assigned is already this teal on both bands.
   h += '<button type="button" class="sched-cat" data-sched-toworkbench="1">' +
          '<span class="sched-key-dot" style="background:' + SCHED_COLORS.flight_assigned + '"></span>' +
-         escapeHtml(SCHED_LABELS.flight) + ' \u2192' +
+         escapeHtml(e.ownerKind === 'aircraft' ? 'Away on trip' : SCHED_LABELS.flight) + ' \u2192' +
        '</button>';
   cats.forEach(function(c){
     const on = c === e.category;
