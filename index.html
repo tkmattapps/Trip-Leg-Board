@@ -2163,6 +2163,8 @@
     font-size:13px; font-family:inherit; cursor:pointer;
   }
   .wb-ac-add:hover{ border-color:var(--amber-500); }
+  .wb-field-date{ max-width:170px; }
+  .wb-ac-row-split .wb-field:first-child{ max-width:200px; }
   .wb-crew-block{ grid-column:1 / -1; display:flex; flex-direction:column; gap:8px; }
   .wb-crew-grid{
     display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px;
@@ -3713,7 +3715,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T09:20:00Z';
+const BUILD_VERSION = '2026-09-03T10:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11782,9 +11784,20 @@ function wbCrewClashDays(userId, trip){
 // Giving them the trip's span between them would show an aeroplane working on
 // days it never flew, and the grid is what people check before committing an
 // aeroplane elsewhere. So the dates sit on the row, not on the trip.
+// *** THE DATE FIELDS ONLY EXIST WHEN THERE IS SOMETHING TO SPLIT. ***
+// Kyle, 3 Sep 2026: the second tail is an edge case -- an aeroplane goes AOG
+// mid-trip and another recovers it -- and the edge case should not be on display
+// the rest of the time. One aeroplane on the trip means it flies the whole trip,
+// its assignment carries no dates of its own, and migration 35 has the grid read
+// the trip's. Four fields disappear off the ordinary trip and there is nothing
+// left to keep in step.
+//
+// The moment a second aeroplane joins, From and To appear on BOTH rows, because
+// dividing the span between them is the entire reason the second one is there.
 function wbAircraftEditHTML(t){
   const rows  = wbAircraftFor(t.id);
   const fleet = (aircraftCache || []).filter(function(a){ return a.is_active; });
+  const split = rows.length > 1;
 
   let h = '<div class="wb-ac-block">'
     + '<div class="wb-ac-head">Aircraft</div>';
@@ -11811,21 +11824,25 @@ function wbAircraftEditHTML(t){
            + escHtml((extra.tail_number || '') + ' (retired)') + '</option>';
     }
 
-    h += '<div class="wb-ac-row" data-wb-ac="' + escHtml(r.id) + '">'
+    // No second 'Aircraft' label on the row -- the block above it already says
+    // so, and the two together read as a heading with a heading.
+    h += '<div class="wb-ac-row' + (split ? ' wb-ac-row-split' : '') + '" '
+      + 'data-wb-ac="' + escHtml(r.id) + '">'
       + '<div class="wb-field">'
-        + '<label>Aircraft</label>'
         + '<select data-wb-acfield="aircraft_id">' + opts + '</select>'
       + '</div>'
-      + '<div class="wb-field">'
-        + '<label>From</label>'
-        + '<input type="date" data-wb-acfield="start_date" value="'
-        + escHtml(r.start_date || '') + '" />'
-      + '</div>'
-      + '<div class="wb-field">'
-        + '<label>To</label>'
-        + '<input type="date" data-wb-acfield="end_date" value="'
-        + escHtml(r.end_date || '') + '" />'
-      + '</div>'
+      + (split
+        ? '<div class="wb-field wb-field-date">'
+          + '<label>From</label>'
+          + '<input type="date" data-wb-acfield="start_date" value="'
+          + escHtml(r.start_date || '') + '" />'
+        + '</div>'
+        + '<div class="wb-field wb-field-date">'
+          + '<label>To</label>'
+          + '<input type="date" data-wb-acfield="end_date" value="'
+          + escHtml(r.end_date || '') + '" />'
+        + '</div>'
+        : '')
       + '<button type="button" class="wb-ac-del" data-wb-acdel="' + escHtml(r.id) + '" '
       + 'aria-label="Take this aircraft off the trip">&times;</button>'
       + '</div>';
@@ -11838,7 +11855,6 @@ function wbAircraftEditHTML(t){
     });
     h += '<div class="wb-ac-row" data-wb-ac="new">'
       + '<div class="wb-field">'
-        + '<label>Aircraft</label>'
         + '<select data-wb-acnew="' + escHtml(t.id || '') + '">' + opts + '</select>'
       + '</div>'
       + '<button type="button" class="wb-ac-del" data-wb-accancel="1" '
@@ -12020,6 +12036,20 @@ async function wbRemoveTripAircraft(rowId, tripId){
     if(wbAircraftCache && wbAircraftCache[tripId]){
       wbAircraftCache[tripId] = wbAircraftCache[tripId].filter(function(x){ return x.id !== rowId; });
     }
+
+    // *** DROPPING BACK TO ONE AEROPLANE CLEARS ITS DATES AGAIN. ***
+    // The survivor was pinned to half the trip because it was sharing it. Now it
+    // is not, and the date fields it was typed into have just disappeared off
+    // the panel -- so a half-span left behind would be invisible AND wrong: the
+    // grid would show the aeroplane on the first three days of a week-long trip
+    // with nothing on screen to explain why. Blank means the whole trip, which
+    // is what one aeroplane on a trip means.
+    const left = wbAircraftFor(tripId);
+    if(left.length === 1){
+      if(left[0].start_date) await wbSaveAircraftField(left[0].id, 'start_date', null);
+      if(left[0].end_date)   await wbSaveAircraftField(left[0].id, 'end_date',   null);
+    }
+
     // The grid derives its days from this table, so it is now out of date.
     schedData = null;
     wbGridDirty = true;
@@ -12047,12 +12077,33 @@ function wbAddAircraftRow(tripId){
 
 // Dates are left empty on create. An assignment without dates posts no days, so
 // a half-finished row claims nothing on the grid.
+// *** ADDING THE SECOND AEROPLANE FILLS THE FIRST ONE'S DATES IN. ***
+// Until now the aeroplane already on the trip had no dates, because it covered
+// all of it. A second one arriving makes that no longer true, and leaving the
+// first blank would put both tails on every day of the trip until someone typed
+// the handover in. So the first one is pinned to the trip's span at that moment,
+// and the only thing left to edit is where the handover falls.
 async function wbChooseAircraft(tripId, aircraftId){
   if(!tripId || !aircraftId) return;
+  const existing = wbAircraftFor(tripId);
+  const trip = (workbenchCache || []).find(function(x){ return x.id === tripId; });
+
   const row = await wbAddTripAircraft(tripId, aircraftId, null, null, null);
   if(!row) return;
   (wbAircraftCache[tripId] = wbAircraftCache[tripId] || []).push(row);
   wbPendingAircraft = '';
+
+  // Only when this is the one that turns a single aeroplane into two, and only
+  // for a row that has no dates of its own. An undated TRIP has nothing to copy,
+  // and both rows stay blank rather than being given invented days.
+  if(existing.length === 1 && trip && trip.start_date && trip.end_date){
+    const first = existing[0];
+    if(!first.start_date) await wbSaveAircraftField(first.id, 'start_date', trip.start_date);
+    if(!first.end_date)   await wbSaveAircraftField(first.id, 'end_date',   trip.end_date);
+  }
+
+  wbGridDirty = true;
+  schedData = null;
   renderWorkbenchBody();
 }
 
@@ -22721,11 +22772,13 @@ async function schedEntryToWorkbench(){
   const saved = await saveWorkbenchTrip(seed);
   if(!saved) return;   // saveWorkbenchTrip has already said why.
 
-  // Dragged on an aircraft row, so that aeroplane is on the trip for exactly
-  // the days that were dragged. tail_number is still written by the save above
-  // and is now display only -- nothing derives days from it any more.
+  // Dragged on an aircraft row, so that aeroplane is on the trip. NO DATES are
+  // written on the assignment: the drag set the trip's dates, and since
+  // migration 35 a blank assignment covers the whole trip. Writing the same two
+  // dates again would only create a copy that can drift when the trip moves.
+  // tail_number is still written by the save above and is display only.
   if(e.ownerKind === 'aircraft'){
-    await wbAddTripAircraft(saved.id, e.ownerId, start, end, null);
+    await wbAddTripAircraft(saved.id, e.ownerId, null, null, null);
   }
 
   closeSchedEntry();
