@@ -3721,7 +3721,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T14:30:00Z';
+const BUILD_VERSION = '2026-09-03T15:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -23233,14 +23233,27 @@ function renderScheduleView(){
   const keyRow = function(band, items){
     let r = '<div class="sched-key"><span class="sched-key-band">' + escapeHtml(band) + '</span>';
     items.forEach(function(it){
-      r += '<span class="sched-key-item"><span class="sched-key-dot" style="background:' +
-           it.color + '"></span>' + escapeHtml(it.label) + '</span>';
+      // An item is normally a filled swatch. The clash marker is drawn as an
+      // outline instead, because that is how it appears on the grid -- it sits
+      // ON TOP of whatever colour the day already has rather than replacing it.
+      // Same row as the categories it can strike, different mark.
+      const swatch = it.clash
+        ? '<span class="sched-key-clash" aria-hidden="true"></span>'
+        : '<span class="sched-key-dot" style="background:' + it.color + '"></span>';
+      r += '<span class="sched-key-item">' + swatch + escapeHtml(it.label) + '</span>';
     });
     return r + '</div>';
   };
   const kindItem = function(k){ return { color: SCHED_COLORS[k], label: SCHED_LABELS[k] }; };
 
-  key += keyRow('Crew', ['flight','training','pto','quarterly_call','soft_day','other'].map(kindItem));
+  // The clash marker rides with CREW because it can only ever happen there:
+  // SCHED_PROTECTED is { pto, training }, both crew categories, and a tail's
+  // picklist is maintenance and other. schedIsClash therefore cannot return
+  // true on an aircraft row. It sat on its own line until the key had bands at
+  // all -- being a state rather than a category is a reason to mark it
+  // differently, not a reason to file it away from the band it belongs to.
+  key += keyRow('Crew', ['flight','training','pto','quarterly_call','soft_day','other'].map(kindItem)
+                .concat([{ clash: true, label: 'Flying on a protected day' }]));
 
   // "Away on trip" is NOT a stored kind and must not be added to SCHED_LABELS.
   // It is the AIRCRAFT reading of flight / away_on_trip / flight_assigned, all
@@ -23255,13 +23268,6 @@ function renderScheduleView(){
     kindItem('other')
   ]);
 
-  // The clash marker is a STATE, not a category, so it is named apart from the
-  // colours rather than listed among them -- and it belongs to neither band's
-  // list for the same reason.
-  key += '<div class="sched-key">' +
-           '<span class="sched-key-item"><span class="sched-key-clash" aria-hidden="true"></span>' +
-           'Flying on a protected day</span>' +
-         '</div>';
   // The note is part of the same explanation, so it folds with it rather than
   // being left behind as an orphan line.
   key += '<div class="sched-note">Flight duty is read from the trips themselves and cannot be edited here. ' +
