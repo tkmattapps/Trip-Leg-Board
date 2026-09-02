@@ -3776,7 +3776,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T21:00:00Z';
+const BUILD_VERSION = '2026-09-03T21:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11468,7 +11468,17 @@ function wbMergeCandidates(ownerKind, ownerId, start, end){
 
 // Three ways out, so this cannot be a confirm. Resolves to one of:
 //   { action: 'merge', trip }   { action: 'new' }   { action: 'cancel' }
-function showTripMergeChoice(candidates, start, end){
+//
+// Two jobs, one dialog. MERGE stretches a trip the owner is already on to cover
+// the dragged days. JOIN puts the owner onto a trip that already covers exactly
+// those days. They ask a different question and the wording has to say which,
+// but the shape -- do the clever thing, do the plain thing, do nothing -- is the
+// same, and two near-identical dialogs would drift apart the first time one of
+// them was edited.
+function showTripMergeChoice(candidates, opts){
+  opts = opts || {};
+  const join = opts.mode === 'join';
+  const who = opts.who || '';
   return new Promise(function(resolve){
     const overlay  = document.getElementById('mergeOverlay');
     const titleEl  = document.getElementById('mergeTitle');
@@ -11484,15 +11494,21 @@ function showTripMergeChoice(candidates, start, end){
     // the tail and the dates. It read as information rather than as a control --
     // nothing on it said what tapping would do -- so the only buttons that
     // looked like buttons were the two that declined. The trip's identity is now
-    // in the sentence, and the thing you press says "Merge trip".
-    titleEl.textContent = many ? 'Which trip?' : 'Merge trip?';
+    // in the sentence, and the thing you press says what it does.
+    mergeBtn.textContent = join ? 'Add' : 'Merge';
     if(many){
-      msgEl.textContent = 'Those days overlap more than one trip you are already on. Pick the one to merge with.';
+      titleEl.textContent = 'Which trip?';
+      msgEl.textContent = join
+        ? 'More than one trip runs on exactly these days. Pick the one to add ' + who + ' to.'
+        : 'Those days overlap more than one trip you are already on. Pick the one to merge with.';
       mergeBtn.style.display = 'none';
     } else {
       const t = candidates[0];
+      titleEl.textContent = join ? ('Add ' + who + ' to this trip?') : 'Merge trip?';
       msgEl.textContent = wbTripDescribe(t) + '\n' + schedPrettySpan(t.start_date, t.end_date) +
-        '\n\nMerging stretches that trip to cover these days \u2014 for everyone on it.';
+        (join
+          ? '\n\nThis trip already runs on exactly these days.'
+          : '\n\nMerging stretches that trip to cover these days \u2014 for everyone on it.');
       mergeBtn.style.display = '';
     }
 
@@ -11506,7 +11522,8 @@ function showTripMergeChoice(candidates, start, end){
         b.className = 'wb-merge-choice';
         // Each row says what pressing it does, for the same reason the single
         // case has a named button.
-        b.appendChild(document.createTextNode('Merge with ' + wbTripDescribe(t)));
+        b.appendChild(document.createTextNode(
+          (join ? 'Add to ' : 'Merge with ') + wbTripDescribe(t)));
         const sub = document.createElement('span');
         sub.className = 'wb-merge-choice-sub';
         sub.textContent = schedPrettySpan(t.start_date, t.end_date);
@@ -11522,6 +11539,7 @@ function showTripMergeChoice(candidates, start, end){
       overlay.classList.remove('open');
       choices.textContent = '';
       mergeBtn.style.display = '';
+      mergeBtn.textContent = 'Merge';
       mergeBtn.removeEventListener('click', onMerge);
       newBtn.removeEventListener('click', onNew);
       cancelBtn.removeEventListener('click', onCancel);
@@ -11541,6 +11559,65 @@ function showTripMergeChoice(candidates, start, end){
     cancelBtn.addEventListener('click', onCancel);
     overlay.addEventListener('click', onBackdrop);
   });
+}
+
+// *** EXACTLY THESE DAYS, AND SOMEBODY ELSE'S TRIP. ***
+// The other half of the story: a trip was dragged out yesterday, and today the
+// second pilot or the tail is dragged onto the same days meaning "and them too".
+// Today that makes a second trip sitting on top of the first.
+//
+// The test is an EXACT date match, first day and last day both. Kyle's call, and
+// it is what keeps this quiet: with three aeroplanes and several trips running,
+// days overlap constantly, so anything looser would prompt on ordinary work. Two
+// drags landing on precisely the same span is a statement of intent.
+//
+// Owners already on the trip are excluded here -- they are the merge case, and
+// a drag matching the trip exactly adds no days anyway.
+function wbJoinCandidates(ownerKind, ownerId, start, end){
+  if(!Array.isArray(workbenchCache)) return [];
+  return workbenchCache.filter(function(t){
+    if(!t.start_date || !t.end_date) return false;
+    const s = t.start_date <= t.end_date ? t.start_date : t.end_date;
+    const e = t.start_date <= t.end_date ? t.end_date : t.start_date;
+    if(s !== start || e !== end) return false;
+    return !wbOwnerOnTrip(t, ownerKind, ownerId);
+  });
+}
+
+// Put one pilot, or one aeroplane, onto a trip that is already there.
+//
+// The trip is re-read rather than taken from the cache. saveWorkbenchTrip
+// rewrites the whole row, so writing a cached copy back would undo anything
+// anyone else has changed since this browser last loaded the panel -- and this
+// gesture is specifically the one made after walking away and coming back.
+async function wbAddOwnerToTrip(tripId, ownerKind, ownerId){
+  if(!wbCanEditTrips()){ showToast('Only an admin can build trips.'); return false; }
+  try {
+    const { data, error } = await sb.from('workbench_trips')
+      .select('*').eq('id', tripId).is('deleted_at', null).single();
+    if(error || !data){ showToast('Could not read that trip.'); return false; }
+    const trip = normalizeWorkbenchTrip(data);
+
+    if(ownerKind === 'aircraft'){
+      // No dates on the assignment. The trip's span is exactly what was dragged,
+      // and a blank assignment inherits it -- writing the same two dates again
+      // would only make a copy that drifts when the trip moves.
+      const added = await wbAddTripAircraft(tripId, ownerId, null, null, null);
+      if(!added){ showToast('Could not add the aircraft.'); return false; }
+      return true;
+    }
+
+    // Same bucket the drag-create uses, so the two paths agree: committed to the
+    // trip, seat not yet decided. The workbench picker is where a seat is chosen,
+    // and guessing one here would write a decision nobody made.
+    trip.crew.unassigned = trip.crew.unassigned.concat([ownerId]);
+    const saved = await saveWorkbenchTrip(trip);
+    return !!saved;
+  } catch(e){
+    console.error('wbAddOwnerToTrip', e);
+    showToast('Could not add to the trip.');
+    return false;
+  }
 }
 
 // Stretch a trip to cover new days.
@@ -23210,7 +23287,7 @@ async function schedEntryToWorkbench(){
   if(!wbAircraftCache) await loadWorkbenchTripAircraft();
   const cands = wbMergeCandidates(e.ownerKind, e.ownerId, start, end);
   if(cands.length){
-    const choice = await showTripMergeChoice(cands, start, end);
+    const choice = await showTripMergeChoice(cands, { mode: 'merge' });
     if(choice.action === 'cancel') return;
     if(choice.action === 'merge'){
       const mt = choice.trip;
@@ -23242,6 +23319,29 @@ async function schedEntryToWorkbench(){
     }
     // 'new' falls through to the create below -- today's behaviour, but chosen
     // rather than arrived at by default.
+  } else {
+    // Nothing to merge with, so the other question: is there already a trip on
+    // exactly these days that this pilot or aeroplane is NOT on? Only reached
+    // when the merge case did not apply, because a trip cannot be both.
+    const joins = wbJoinCandidates(e.ownerKind, e.ownerId, start, end);
+    if(joins.length){
+      const who = schedOwnerLabel(e.ownerId, e.ownerKind);
+      const choice = await showTripMergeChoice(joins, { mode: 'join', who: who });
+      if(choice.action === 'cancel') return;
+      if(choice.action === 'merge'){
+        const ok = await wbAddOwnerToTrip(choice.trip.id, e.ownerKind, e.ownerId);
+        if(!ok) return;
+        closeSchedEntry();
+        workbenchCache = null;
+        wbAircraftCache = null;
+        schedData = null;
+        // Stays on the grid, same as a merge: the bar appearing on this row is
+        // the whole point, and the workbench would cover it.
+        await openScheduleView();
+        showToast(who + ' added to the trip');
+        return;
+      }
+    }
   }
 
   const seed = { start_date: start, end_date: end, crew: {} };
