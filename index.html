@@ -3743,7 +3743,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T18:10:00Z';
+const BUILD_VERSION = '2026-09-03T18:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12329,7 +12329,7 @@ function openWorkbench(){
     // reads as no aeroplane rather than as one not yet loaded.
     (!aircraftCache || !aircraftCache.length) ? loadAircraft() : Promise.resolve(),
     (!rosterCache || !rosterCache.length) ? loadRoster() : Promise.resolve()
-  ]).then(function(){
+  ]).then(async function(){
     // Only repaint if the panel is still open -- a load resolving after a close
     // would otherwise write into a hidden panel and, worse, into the next one.
     const el = document.getElementById('workbenchSheet');
@@ -12337,32 +12337,38 @@ function openWorkbench(){
     if(wbOpenToTripId){
       const want = wbOpenToTripId;
       wbOpenToTripId = '';
+      const t = (Array.isArray(workbenchCache) ? workbenchCache : [])
+        .find(function(x){ return x.id === want; });
+      if(!t){
+        renderWorkbenchBody();
+        showToast('That trip is no longer on the workbench');
+        return;
+      }
+      // *** THE PANEL SHOWS ONE MONTH, AND IT IS THE GRID'S MONTH. ***
+      // A trip can easily be outside it: the grid's month is decided by the day
+      // five in from the LEFT EDGE, so on a wide screen the right-hand half of
+      // the strip is often already into the next month. Tap a day there and the
+      // trip you are asking for is filed on a panel you are not looking at.
+      //
+      // Moving the GRID rather than the panel alone is the deliberate choice --
+      // the two are meant to be showing the same month, and a panel quietly
+      // displaying August over an September grid is a worse answer than a grid
+      // that moved. Kyle: "the grid and panel should move focus to the target
+      // month."
+      //
+      // The trip's own start is the target. For a trip crossing a boundary that
+      // is the month it begins in, which is also the panel a person would say
+      // the trip is on.
+      const mo = wbShownMonth();
+      if(!wbTripInMonth(t, mo.y, mo.m)){
+        await schedFocusMonthOfDay(t.start_date || t.end_date || t.plan_month || '');
+      }
       wbExpandedId = want;
       renderWorkbenchBody();
-      // *** THE PANEL SHOWS ONE MONTH. *** Membership is derived from the trip's
-      // dates against the month the grid is showing, so a trip tapped on a day
-      // that is not in that month has no row here to open. Rather than a panel
-      // that appears to have lost the trip, say where it is.
-      if(!document.querySelector('[data-wb-trip="' + want + '"]')){
-        wbExpandedId = '';
-        const t = (Array.isArray(workbenchCache) ? workbenchCache : [])
-          .find(function(x){ return x.id === want; });
-        const d = t && (t.start_date || t.end_date);
-        showToast(d
-          ? 'That trip is on the ' + wbMonthNameOf(d) + ' panel'
-          : 'That trip is not on this month\u2019s panel');
-      }
       return;
     }
     renderWorkbenchBody();
   });
-}
-
-// Month name from an ISO date, for telling someone where a trip actually sits.
-function wbMonthNameOf(iso){
-  const dt = new Date(String(iso) + 'T00:00:00');
-  if(isNaN(dt)) return 'another month';
-  return dt.toLocaleDateString(undefined, { month: 'long' });
 }
 
 // Open the workbench with one trip already expanded. The order matters: the
@@ -23002,7 +23008,14 @@ async function schedEntryToWorkbench(){
   // is how the two drift apart.
   schedData = null;
   await openScheduleView();
-  openWorkbench();
+  // *** OPEN ONTO THE TRIP, NOT JUST ONTO THE PANEL. ***
+  // This was a bare openWorkbench, which shows whatever month the grid is
+  // focused on. Drag a trip on days outside that month -- easily done, since the
+  // grid's month is set by its left edge and the strip runs well past it -- and
+  // the panel opened without the trip in it. The trip was created correctly and
+  // filed on the right month the whole time; there was simply no sign of it on
+  // the panel that opened, which reads exactly like a create that failed.
+  openWorkbenchAtTrip(saved.id);
 }
 
 async function saveSchedEntry(){
@@ -23840,6 +23853,39 @@ async function openScheduleView(){
 // two things: it is simply that back means "the start of this month" whenever
 // the grid is not already showing it, and a whole month once it is. Forward is
 // unaffected and always steps a month.
+// *** MOVE THE GRID ONTO THE MONTH CONTAINING A GIVEN DAY. ***
+// The same three moves schedStepMonth makes -- set the anchor, name the day to
+// scroll to, then either scroll inside the strip or rebuild it for a new year.
+// Written as its own function rather than reusing schedStepMonth because that
+// one takes a DELTA, and a caller holding a date would have to work out the
+// number of months between here and there just to hand it over.
+//
+// schedShownMonthKey is cleared deliberately. It is the "has this changed"
+// guard on the scroll sync, and leaving it set to the old month is harmless,
+// but leaving it set to the NEW one would make the sync return early and never
+// repaint the month band -- the grid would move and the highlight would not
+// follow. Clearing it also makes wbShownMonth fall back to schedAnchor, which
+// is how the workbench panel arrives at the same month as the grid without
+// waiting for a scroll event.
+async function schedFocusMonthOfDay(iso){
+  if(!iso) return;
+  const dt = new Date(String(iso) + 'T00:00:00');
+  if(isNaN(dt)) return;
+  const a = schedAnchor || schedMonthStart(new Date());
+  const next = new Date(dt.getFullYear(), dt.getMonth(), 1);
+  const stripChanged = next.getFullYear() !== a.getFullYear();
+  schedAnchor = next;
+  schedScrollToDay = schedISO(next);
+  schedScrollSmooth = !stripChanged;
+  schedShownMonthKey = null;
+  if(stripChanged){
+    schedData = null;
+    await openScheduleView();
+    return;
+  }
+  schedApplyScroll();
+}
+
 function schedStepMonth(delta){
   const a = schedAnchor || schedMonthStart(new Date());
   if(delta < 0 && !schedAtMonthStart()){
