@@ -3721,7 +3721,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T15:20:00Z';
+const BUILD_VERSION = '2026-09-03T16:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -21135,6 +21135,18 @@ function schedFillAwayDays(idx){
 //
 // So the colour depends on the band. This is the ONLY kind that varies, and it
 // varies because the meaning varies, not the styling.
+// COLOUR AND LABEL READ THE SAME LIST, and that is the whole point of it being
+// a list. They each carried their own copy until 3 Sep 2026, and they drifted:
+// flight_assigned was painted teal by the colour function but missed by the
+// label one, so a workbench trip with only a tail on it drew as an "Away on
+// trip" run and then called itself "Flight duty -- assigned" on hover and in
+// the day panel. Add a kind here and both surfaces pick it up together.
+//
+// DECLARED ABOVE BOTH CONSUMERS ON PURPOSE. A const is not hoisted the way a
+// function is; schedKindColor sits below this line and would hit a temporal
+// dead zone if anything ever called it during script evaluation.
+const SCHED_AC_TRIP_KINDS = { flight: 1, away_on_trip: 1, flight_assigned: 1 };
+
 function schedKindColor(kind, ownerKind){
   // ONE TRIP, ONE COLOUR -- PER BAND. A crew trip reads as one unbroken green
   // run; a tail's trip reads as one unbroken TEAL run, flying days and parked
@@ -21143,8 +21155,7 @@ function schedKindColor(kind, ownerKind){
   // is, from the grid's point of view, a single fact: this tail is committed.
   // Teal also puts a derived away day in the same family as a hand-entered
   // away-from-base, which is correct -- same fact, different author.
-  if(ownerKind === 'aircraft' && (kind === 'flight' || kind === 'away_on_trip'
-      || kind === 'flight_assigned')){
+  if(ownerKind === 'aircraft' && SCHED_AC_TRIP_KINDS[kind]){
     return SCHED_COLORS.away_from_base;
   }
   return SCHED_COLORS[kind] || SCHED_COLORS.other;
@@ -21154,16 +21165,18 @@ function schedKindColor(kind, ownerKind){
 // the crew's point of view -- "Flight duty" is a thing a person is rostered for,
 // not a thing a tail does -- so an aircraft row was being described in crew
 // wording on both the grid tooltip and the day panel.
+// The qualifiers survive the rename: they carry real information that "Away on
+// trip" alone does not. "not flying" means a derived parked day between legs;
+// "assigned" means a workbench trip that has not been built into legs yet.
+const SCHED_AC_TRIP_LABELS = {
+  flight:          'Away on trip',
+  away_on_trip:    'Away on trip \u2014 not flying',
+  flight_assigned: 'Away on trip \u2014 assigned'
+};
+
 function schedKindLabel(kind, ownerKind){
-  if(ownerKind === 'aircraft'){
-    // "Away on trip" is the wording the KEY uses for this teal, so it is the
-    // wording every surface uses. It was "On a trip" until 3 Sep 2026, which
-    // said the same thing in different words and made the legend look like it
-    // described something else. The qualifier stays on the parked days -- they
-    // are only ever produced with smart features on, where a leg chain exists
-    // to derive them from.
-    if(kind === 'flight')       return 'Away on trip';
-    if(kind === 'away_on_trip') return 'Away on trip \u2014 not flying';
+  if(ownerKind === 'aircraft' && SCHED_AC_TRIP_KINDS[kind]){
+    return SCHED_AC_TRIP_LABELS[kind] || 'Away on trip';
   }
   return SCHED_LABELS[kind] || kind;
 }
