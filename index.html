@@ -2241,13 +2241,15 @@
   .wb-merge-choice-sub{
     display:block; margin-top:3px; font-size:11px; color:var(--fog-500);
   }
-  /* All three sized to the longest of them (+ Cabin crew) rather than to their
-     own text, so they line up instead of stepping. */
+  /* One field wide, so each button sits directly under the column it adds to:
+     + Aircraft under Tail, + ACM under PIC, + Cabin crew under SIC. Sized to
+     the field rather than to its own text, which is also what makes the three
+     match each other. */
   .wb-ac-add{
     align-self:flex-start; background:none; border:1px solid var(--hairline);
     color:var(--amber-500); border-radius:6px; padding:6px 12px;
     font-size:13px; font-family:inherit; cursor:pointer;
-    min-width:126px; text-align:center;
+    width:160px; flex:0 0 160px; text-align:center;
   }
   .wb-ac-add:hover{ border-color:var(--amber-500); }
   .wb-field-date{ max-width:170px; }
@@ -3822,7 +3824,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T01:05:00Z';
+const BUILD_VERSION = '2026-09-04T01:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
