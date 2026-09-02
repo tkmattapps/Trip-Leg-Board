@@ -3598,7 +3598,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T05:20:00Z';
+const BUILD_VERSION = '2026-09-02T05:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11096,7 +11096,17 @@ function normalizeWorkbenchTrip(row){
     pic: c.pic || '',
     sic: c.sic || '',
     acm: Array.isArray(c.acm) ? c.acm.slice() : [],
-    fa:  Array.isArray(c.fa)  ? c.fa.slice()  : []
+    fa:  Array.isArray(c.fa)  ? c.fa.slice()  : [],
+    // *** ON THE TRIP, NOT YET IN A SEAT. ***
+    // A drag on a pilot's row commits that pilot before anyone has decided
+    // whether they are PIC, SIC or ACM. Seating them on a guess would write a
+    // decision nobody made, so they wait here and the workbench picker seats
+    // them. crew_busy_days reads this bucket (migration 29), so an unseated
+    // pilot still holds the day on the grid.
+    //
+    // PILOTS ONLY. The gesture that fills this is a pilot-row drag; cabin crew
+    // are seated into fa from the start and never pass through here.
+    unassigned: Array.isArray(c.unassigned) ? c.unassigned.slice() : []
   };
   t.tripNumber   = (t.trip_number  || '').trim();
   t.tailNumber   = (t.tail_number  || '').trim();
@@ -21403,6 +21413,20 @@ function renderSchedEntry(){
 
   h += '<div class="sched-entry-sep">Add</div>';
   h += '<div class="sched-entry-cats">';
+  // *** THIS ONE IS A ROUTE, NOT A CATEGORY. ***
+  // Flight duty is not a crew_exceptions row and never will be -- that was the
+  // pencil, removed on 1 Sep 2026. An assignment is a TRIP, so this button hands
+  // the dates straight to the workbench and creates one. It sits first because
+  // it is the common case, carries the same green as flight duty on the grid,
+  // and the arrow says it goes somewhere rather than selecting.
+  //
+  // It renders inside the category row on purpose: the person is choosing "what
+  // is this day", and hiding the most likely answer somewhere else would mean
+  // learning that trips live in a different place before you could build one.
+  h += '<button type="button" class="sched-cat" data-sched-toworkbench="1">' +
+         '<span class="sched-key-dot" style="background:' + SCHED_COLORS.flight_assigned + '"></span>' +
+         escapeHtml(SCHED_LABELS.flight) + ' \u2192' +
+       '</button>';
   cats.forEach(function(c){
     const on = c === e.category;
     h += '<button type="button" class="sched-cat' + (on ? ' sched-cat-on' : '') + '" data-sched-cat="' + c + '">' +
@@ -21552,6 +21576,58 @@ async function trimSchedEntry(recId, newStart, newEnd, mode){
     console.error('schedule entry trim', err);
     showToast('Could not change that \u2014 try again');
   }
+}
+
+// *** THE DRAG IS THE COMMITMENT. ***
+//
+// Picking Flight duty in the entry panel creates a workbench trip there and
+// then, from the dates showing in the panel. No confirm step: the drag already
+// said which days, and the row already said who -- asking again would only be
+// asking the same question twice.
+//
+// The dates are read from the INPUTS, not from schedEntry. A person who dragged
+// three days and then corrected the end date in the field means the corrected
+// one; using the drag's dates would silently discard the edit.
+//
+// A pilot goes into `unassigned`, never into a seat. An aircraft row fills the
+// tail instead and puts nobody on the trip. Same undefined trip either way --
+// only the corner that was drawn on is filled in.
+async function schedEntryToWorkbench(){
+  if(!schedEntry) return;
+  // The panel is already admin-only above the category row, but a rule attached
+  // to a control is not a rule -- saveWorkbenchTrip and RLS both check again.
+  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can build trips'); return; }
+  const e = schedEntry;
+  const startEl = document.getElementById('schedStart');
+  const endEl   = document.getElementById('schedEnd');
+  const start = startEl ? startEl.value : e.start;
+  const end   = endEl   ? endEl.value   : e.end;
+  if(!start || !end){ showToast('A start and an end date are needed'); return; }
+  if(end < start){ showToast('The end date is before the start date'); return; }
+
+  const seed = { start_date: start, end_date: end, crew: {} };
+  if(e.ownerKind === 'aircraft'){
+    // workbench_trips.tail_number is TEXT, not an aircraft id -- schedOwnerLabel
+    // is already the resolver for that, so the tail is taken from there rather
+    // than reaching into aircraftCache a second way.
+    seed.tailNumber = schedOwnerLabel(e.ownerId, 'aircraft');
+  } else {
+    seed.crew.unassigned = [e.ownerId];
+  }
+
+  const saved = await saveWorkbenchTrip(seed);
+  if(!saved) return;   // saveWorkbenchTrip has already said why.
+
+  closeSchedEntry();
+  // The trip is real, so the cache must hold it before the workbench paints --
+  // otherwise the panel opens showing the trip you just made as absent.
+  workbenchCache = null;
+  // Re-read the grid rather than patching it. The green block is a rendering of
+  // a SQL derivation, and inventing the rows that derivation would have returned
+  // is how the two drift apart.
+  schedData = null;
+  await openScheduleView();
+  openWorkbench();
 }
 
 async function saveSchedEntry(){
@@ -22635,6 +22711,7 @@ document.addEventListener('click', async function(e){
   // record, not just a picture of it: pick a day months back, land on the trip.
   const schedGo = t.closest('[data-sched-goleg]');
   if(schedGo){ schedGoToLeg(schedGo.getAttribute('data-sched-goleg')); return; }
+  if(t.closest('[data-sched-toworkbench]')){ schedEntryToWorkbench(); return; }
   const schedCat = t.closest('[data-sched-cat]');
   if(schedCat && schedEntry){
     // Keep whatever has already been typed. Re-rendering the form must not
