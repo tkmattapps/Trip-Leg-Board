@@ -1588,13 +1588,32 @@
      the real longest string in the real font, so the width stays correct if the
      font, the size or the wording ever changes. A hardcoded px value would be
      right today and quietly clip later. The sizer is hidden but still laid out
-     -- visibility:hidden, never display:none, which would occupy nothing. */
-  .sched-wbbtn{ position:relative; }
-  .sched-wbbtn .wb-btn-sizer{ visibility:hidden; white-space:nowrap; }
+     -- visibility:hidden, never display:none, which would occupy nothing.
+
+     STACKED, two lines. Side by side, "September trips" is wider than the rest
+     of the header put together on a phone. Stacking sizes the button to the
+     longest month ALONE, and it is also what makes the button read as a button:
+     nothing else in that row is two lines, so shape does the work a border
+     would, next to three bare chevrons and a pilled year.
+
+     AMBER TEXT, NO BORDER. Amber is the app's action colour and matches the
+     + Trip button inside the panel this opens. *** NOT GREEN OR BLUE. *** On
+     this screen green means committed to a flight and teal means a tail
+     committed -- see the SCHED_COLORS note. A green control sitting directly
+     above that grid borrows a meaning the grid has already spent. */
+  .sched-wbbtn{ position:relative; color:var(--amber-500); }
+  .sched-wbbtn:hover{ color:var(--amber-500); }
+  .sched-wbbtn .wb-btn-sizer,
   .sched-wbbtn .wb-btn-lbl{
-    position:absolute; inset:0; display:flex;
-    align-items:center; justify-content:center; white-space:nowrap;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    line-height:1.15; white-space:nowrap;
   }
+  .sched-wbbtn .wb-btn-sizer{ visibility:hidden; }
+  .sched-wbbtn .wb-btn-lbl{ position:absolute; inset:0; }
+  /* "trips" is the constant half of the label, so it carries less information
+     than the month and is set back accordingly. */
+  .sched-wbbtn .wb-btn-word{ font-size:12px; font-weight:600; }
+  .sched-wbbtn .wb-btn-sub{ font-size:10px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; opacity:0.85; }
   .sched-hbtn:active{ background:var(--panel-800); }
   /* Keyboard focus still needs a visible ring -- removing the border must not
      remove focus visibility. :focus-visible only, so a mouse click does not
@@ -3668,7 +3687,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T09:05:00Z';
+const BUILD_VERSION = '2026-09-02T09:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -20037,10 +20056,13 @@ function schedWidestMonthName(){
 function schedUpdateTripsBtn(y, m){
   const lblEl = document.getElementById('schedTripsBtnLbl');
   if(!lblEl) return;
-  const lbl = schedTripsBtnLabel(y, m);
-  lblEl.textContent = lbl;
+  // Only the MONTH line changes. "Trips" is static markup in both the visible
+  // label and the sizer, so it is never rewritten.
+  lblEl.textContent = schedMonthLongName(y, m);
   const btn = document.getElementById('schedTripsBtn');
-  if(btn) btn.setAttribute('aria-label', 'Open ' + lbl);
+  // The aria-label carries the whole phrase -- a screen reader announcing a
+  // bare month name would not say what the control does.
+  if(btn) btn.setAttribute('aria-label', 'Open ' + schedTripsBtnLabel(y, m));
 }
 
 function schedWindow(){
@@ -22061,6 +22083,7 @@ function renderScheduleView(){
   // settles the grid and schedSyncMonthToScroll corrects the label if the
   // resting position is in a different month than the anchor.
   const _tripsA = schedAnchor || schedMonthStart(new Date());
+  const _tripsMonthName = schedMonthLongName(_tripsA.getFullYear(), _tripsA.getMonth());
   const schedTripsLbl = schedTripsBtnLabel(_tripsA.getFullYear(), _tripsA.getMonth());
   setPageHeader({
     title: 'Schedule',
@@ -22081,8 +22104,14 @@ function renderScheduleView(){
       // trip brief for the word "trip". The label is rewritten on scroll by
       // schedUpdateTripsBtn, at the same moment the month band lights.
       '<button type="button" class="sched-hbtn sched-wbbtn" id="schedTripsBtn" data-wb-open="1" aria-label="Open ' + escHtml(schedTripsLbl) + '">' +
-        '<span class="wb-btn-sizer" aria-hidden="true">' + escHtml(schedWidestMonthName() + ' trips') + '</span>' +
-        '<span class="wb-btn-lbl" id="schedTripsBtnLbl">' + escHtml(schedTripsLbl) + '</span>' +
+        '<span class="wb-btn-sizer" aria-hidden="true">' +
+          '<span class="wb-btn-word">' + escHtml(schedWidestMonthName()) + '</span>' +
+          '<span class="wb-btn-sub">Trips</span>' +
+        '</span>' +
+        '<span class="wb-btn-lbl">' +
+          '<span class="wb-btn-word" id="schedTripsBtnLbl">' + escHtml(_tripsMonthName) + '</span>' +
+          '<span class="wb-btn-sub">Trips</span>' +
+        '</span>' +
       '</button>'
   });
 
