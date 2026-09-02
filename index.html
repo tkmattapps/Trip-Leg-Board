@@ -3776,7 +3776,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T21:30:00Z';
+const BUILD_VERSION = '2026-09-03T21:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -24559,9 +24559,13 @@ document.addEventListener('click', async function(e){
   //
   // Excluded, and each for its own reason:
   //   .sched-entry-panel  the panel itself; its own buttons are not "outside"
-  //   .sched-wrap         the grid AND the legend. Tapping another day still
-  //                       switches the panel to that day, which is the point
-  //                       of the panel -- it must not close first
+  //   [data-sched-day]    a DAY CELL, and only a day cell. Tapping another day
+  //                       switches the panel to that day, which is the point of
+  //                       the panel -- it must not close first. Narrowed from
+  //                       .sched-wrap on 3 Sep 2026: the legend, the month band
+  //                       and the row labels were being treated as part of the
+  //                       grid, so a tap on any of them left the panel sitting
+  //                       there. Kyle: close on any tap other than a grid tap.
   //   .feedback-overlay   every modal shares this class, confirm included. A
   //                       remove confirm is RAISED BY the panel; closing the
   //                       panel out from under it would strand the dialog
@@ -24569,7 +24573,7 @@ document.addEventListener('click', async function(e){
   //
   // The page header is deliberately NOT excluded: the month steppers scroll the
   // grid out from under the panel, so dismissing on those reads as correct.
-  if(schedEntry && !t.closest('.sched-entry-panel') && !t.closest('.sched-wrap')
+  if(schedEntry && !t.closest('.sched-entry-panel') && !t.closest('[data-sched-day]')
      && !t.closest('.feedback-overlay') && !t.closest('.sheet')
      && !t.closest('.sheet-backdrop')){
     closeSchedEntry();
