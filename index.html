@@ -3700,7 +3700,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T14:45:00Z';
+const BUILD_VERSION = '2026-09-02T15:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11830,6 +11830,7 @@ async function wbRemoveTripAircraft(rowId, tripId){
     }
     // The grid derives its days from this table, so it is now out of date.
     schedData = null;
+    wbGridDirty = true;
     renderWorkbenchBody();
   } catch(e){
     console.error('wbRemoveTripAircraft', e);
@@ -11889,6 +11890,7 @@ function wbWireEditor(){
       wbSaveAircraftField(holder.getAttribute('data-wb-ac'), col, val).then(function(ok){
         if(!ok) return;
         schedData = null;
+        wbGridDirty = true;
         renderWorkbenchBody();
       });
     });
@@ -11909,6 +11911,8 @@ function wbWireEditor(){
         // say so rather than letting it silently disappear.
         const mo = wbShownMonth();
         const row = (workbenchCache || []).find(function(x){ return x.id === id; });
+        // Crew days come from the trip's own dates, so this moves the grid too.
+        wbGridDirty = true;
         const gone = row && !wbTripInMonth(row, mo.y, mo.m);
         if(gone){
           wbExpandedId = '';
@@ -11983,11 +11987,27 @@ function openWorkbench(){
   });
 }
 
-function closeWorkbench(){
+// Set by any panel edit that changes what the grid derives -- an aircraft
+// assignment, a date. Dropping schedData is not enough on its own: it only
+// means the NEXT fetch is real, and nothing fetches until the schedule view is
+// entered again. Kyle found this by changing a tail, closing the panel, and
+// watching the old aeroplane sit there until he left the schedule entirely and
+// came back.
+let wbGridDirty = false;
+
+async function closeWorkbench(){
   const s = document.getElementById('workbenchSheet');
   const b = document.getElementById('workbenchBackdrop');
   if(s){ s.classList.remove('open'); s.setAttribute('aria-hidden','true'); }
   if(b) b.classList.remove('open');
+
+  if(!wbGridDirty) return;
+  wbGridDirty = false;
+  // Re-read rather than patch. The block on the grid is a rendering of a SQL
+  // derivation, and inventing the rows that derivation would have returned is
+  // how the two drift apart.
+  schedData = null;
+  if(state.view === 'schedule') await openScheduleView();
 }
 
 async function loadAircraft(){
