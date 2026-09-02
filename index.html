@@ -3598,7 +3598,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T05:55:00Z';
+const BUILD_VERSION = '2026-09-02T06:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -20100,7 +20100,8 @@ function schedKindColor(kind, ownerKind){
   // is, from the grid's point of view, a single fact: this tail is committed.
   // Teal also puts a derived away day in the same family as a hand-entered
   // away-from-base, which is correct -- same fact, different author.
-  if(ownerKind === 'aircraft' && (kind === 'flight' || kind === 'away_on_trip')){
+  if(ownerKind === 'aircraft' && (kind === 'flight' || kind === 'away_on_trip'
+      || kind === 'flight_assigned')){
     return SCHED_COLORS.away_from_base;
   }
   return SCHED_COLORS[kind] || SCHED_COLORS.other;
@@ -20935,12 +20936,20 @@ async function loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO){
   }).map(function(r){ return { kind: r[srcKey], ref: r.ref_id || '', detail: r.detail || '' }; });
   const out = [];
   const refs = [];
+  const wbRefs = [];
   cell.forEach(function(e){
     if(e.kind === 'flight'){
       // Flight duty is derived from a leg. The schedule REPORTS it; the trip
       // owns it. Removing it here would mean editing a trip from a calendar,
       // which is the one thing this surface must not do.
       out.push({ id: e.ref, kind: 'flight', detail: e.detail || '', removable: false });
+    } else if(e.kind === 'flight_assigned'){
+      // *** A WORKBENCH REF IS NOT AN EXCEPTION ID. ***
+      // Without this branch the ref fell through to the crew_exceptions lookup
+      // below, matched nothing, and the day rendered as empty while the grid
+      // showed a green block -- the two surfaces contradicting each other, which
+      // is exactly what the away-on-trip recomputation above exists to prevent.
+      wbRefs.push(e.ref);
     } else if(e.ref){
       refs.push(e.ref);
     }
@@ -20959,6 +20968,29 @@ async function loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO){
     if(awayTrip){
       out.push({ id: '', kind: 'away_on_trip', detail: '', trip: awayTrip, removable: false });
     }
+  }
+  if(wbRefs.length){
+    // Read the trips rather than trusting workbenchCache: the cache may never
+    // have been loaded in this session, and a day panel that depends on whether
+    // someone happened to open the workbench first is a panel that sometimes
+    // lies.
+    const { data, error } = await sb.from('workbench_trips')
+      .select('id,trip_number,start_date,end_date,destinations,tail_number')
+      .in('id', wbRefs)
+      .is('deleted_at', null);
+    if(error) throw error;
+    (data || []).forEach(function(r){
+      out.push({
+        id: r.id, kind: 'flight_assigned',
+        start: r.start_date, end: r.end_date,
+        tripNumber: (r.trip_number || '').trim(),
+        destinations: (r.destinations || '').trim(),
+        // NOT `removable`. That flag wires the delete button to
+        // crew_exceptions; this row is a trip and needs its own action.
+        removable: false,
+        wbRemovable: true
+      });
+    });
   }
   if(refs.length){
     const tbl = ownerKind === 'aircraft' ? 'aircraft_availability' : 'crew_exceptions';
@@ -21210,6 +21242,14 @@ function schedExistingSubText(r, isAwayRow){
     return 'Between legs of ' + (named ? 'trip ' + r.trip : 'a trip') +
            ' \u2014 derived from the trip, nothing to remove';
   }
+  // A workbench trip owns its span the way an exception does, and it can also
+  // say where it is going -- which is usually the only thing identifying it
+  // before a trip number exists.
+  if(r.kind === 'flight_assigned'){
+    const span = schedPrettySpan(r.start, r.end);
+    const who  = r.tripNumber ? 'Trip ' + r.tripNumber : (r.destinations || 'No trip number yet');
+    return who + ' \u00b7 ' + span + ' \u00b7 built on the workbench';
+  }
   // An exception owns its own span, so it can state it.
   if(r.removable) return schedPrettySpan(r.start, r.end);
   // Flight duty belongs to the trip. Naming WHICH trip is more use than a
@@ -21340,6 +21380,14 @@ function schedExistingHTML(e){
            (r.removable && !e.readOnly
              ? '<button type="button" class="sched-del-btn" data-sched-del="' + escapeHtml(r.id) + '" ' +
                'aria-label="Remove">&times;</button>'
+             : '') +
+           // Takes THIS OWNER off the trip -- it does not withdraw the trip.
+           // Kyle: "it should just take the pilot off the trip." Withdrawing a
+           // whole trip is a workbench action, because the trip is the record
+           // and a calendar day is only one of its consequences.
+           (r.wbRemovable && !e.readOnly
+             ? '<button type="button" class="sched-del-btn" data-sched-wbdel="' + escapeHtml(r.id) + '" ' +
+               'aria-label="Take off this trip">&times;</button>'
              : '') +
          '</div>';
     // *** THE TRIM SAYS WHAT IT WILL DO BEFORE IT DOES IT. ***
@@ -21576,6 +21624,47 @@ async function trimSchedEntry(recId, newStart, newEnd, mode){
     console.error('schedule entry trim', err);
     showToast('Could not change that \u2014 try again');
   }
+}
+
+// Takes ONE OWNER off a workbench trip. The trip survives -- it is the record,
+// and it may still be carrying three other people and a tail.
+//
+// The pilot is pulled out of EVERY bucket, not just `unassigned`. By the time
+// someone removes them they may well have been seated, and a remove that only
+// worked before seating would be a control that quietly stops working.
+//
+// On an aircraft row the same button clears the tail instead, which is the
+// symmetric act: the trip keeps its crew and no longer claims an aeroplane.
+async function schedRemoveFromWorkbenchTrip(tripId){
+  if(!schedEntry || !tripId) return;
+  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can change trips'); return; }
+  const e = schedEntry;
+  const { data, error } = await sb.from('workbench_trips')
+    .select('*').eq('id', tripId).is('deleted_at', null).single();
+  if(error || !data){ showToast('Could not read that trip.'); return; }
+  const trip = normalizeWorkbenchTrip(data);
+
+  if(e.ownerKind === 'aircraft'){
+    trip.tailNumber = '';
+  } else {
+    const me = e.ownerId;
+    const c = trip.crew;
+    if(c.pic === me) c.pic = '';
+    if(c.sic === me) c.sic = '';
+    c.acm = c.acm.filter(function(x){ return x !== me; });
+    c.fa  = c.fa.filter(function(x){ return x !== me; });
+    c.unassigned = c.unassigned.filter(function(x){ return x !== me; });
+  }
+
+  const saved = await saveWorkbenchTrip(trip);
+  if(!saved) return;
+  showToast(e.ownerKind === 'aircraft' ? 'Aircraft taken off the trip' : 'Taken off the trip');
+  workbenchCache = null;
+  schedData = null;
+  await openScheduleView();
+  // Reopen on the same day so the panel reflects the change rather than closing
+  // out from under the person who just made it.
+  await openSchedEntry(e.ownerId, e.ownerKind, e.start, e.end);
 }
 
 // *** THE DRAG IS THE COMMITMENT. ***
@@ -22705,6 +22794,8 @@ document.addEventListener('click', async function(e){
     return;
   }
   if(t.closest('#schedEntrySaveBtn')){ saveSchedEntry(); return; }
+  const schedWbDel = t.closest('[data-sched-wbdel]');
+  if(schedWbDel){ schedRemoveFromWorkbenchTrip(schedWbDel.getAttribute('data-sched-wbdel')); return; }
   const schedDel = t.closest('[data-sched-del]');
   if(schedDel){ removeSchedEntry(schedDel.getAttribute('data-sched-del')); return; }
   // Flight row -> the trip it came from. The schedule becomes a way INTO the
