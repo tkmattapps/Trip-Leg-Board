@@ -2067,9 +2067,62 @@
     font-family:system-ui,'Inter',sans-serif; font-size:13px;
     color:var(--fog-500); text-align:center; padding:32px 8px; line-height:1.5;
   }
+
+  /* ---- WORKBENCH TRIP TABLE ---------------------------------------------
+     Deliberately the same shape as the block below the grid in the master
+     spreadsheet: TAIL / ROUTING / START / END / DAYS / PIC / SIC / FA / NOTES,
+     one row per trip. The point of that layout is that the EMPTY CELLS ARE THE
+     TO-DO LIST -- a trip with no PIC reads as unresolved at a glance, and that
+     property is lost the moment a cell is filled with a placeholder. Nothing
+     here writes anything into a blank cell. */
+  .wb-table-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .wb-table{ border-collapse:collapse; width:100%; font-family:system-ui,'Inter',sans-serif; }
+  .wb-table th{
+    font-size:10px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--fog-500); text-align:left; white-space:nowrap;
+    padding:0 10px 6px 0; border-bottom:1px solid var(--hairline);
+  }
+  .wb-table td{
+    font-size:13px; color:var(--paper-050); vertical-align:top;
+    padding:8px 10px 8px 0; border-bottom:1px solid var(--hairline);
+  }
+  .wb-table tr:last-child td{ border-bottom:none; }
+  .wb-c-tail{ font-weight:600; white-space:nowrap; }
+  .wb-c-routing{ color:var(--fog-300); min-width:180px; }
+  .wb-c-date{ color:var(--fog-300); white-space:nowrap; }
+  .wb-c-days{ color:var(--fog-500); white-space:nowrap; }
+  .wb-c-seat{ white-space:nowrap; font-weight:600; }
+  .wb-c-notes{ color:var(--fog-500); min-width:140px; }
+  /* A cell with nothing in it stays visibly empty. This is the placeholder for
+     an em-dash or similar, kept faint enough to read as absence, not as data. */
+  .wb-blank{ color:var(--panel-700); }
+
+  /* ACM and unseated pilots share ONE unheaded column, and the column is only
+     rendered when some visible trip actually has one. An ACM is an edge case;
+     a permanently blank headed column would be nine-tenths noise on every row. */
+  .wb-chip{
+    display:inline-flex; align-items:center; gap:5px; margin:0 4px 3px 0;
+    padding:2px 7px; border-radius:4px; border:1px solid var(--hairline);
+    background:var(--panel-700); font-size:11px; font-weight:600;
+    color:var(--paper-050); white-space:nowrap;
+  }
+  .wb-chip-seat{ font-size:9px; font-weight:600; letter-spacing:0.06em; color:var(--fog-500); }
+  /* *** UNSEATED MUST NOT READ AS SEATED. ***
+     A pilot committed to the trip but not yet PIC/SIC/ACM is a decision still
+     outstanding. Rendered as a plain name it looks resolved and the outstanding
+     decision disappears from the table -- so it carries a dashed amber outline
+     and a question mark where the seat would be. */
+  .wb-chip-unseated{
+    background:transparent; border-style:dashed; border-color:var(--amber-500);
+    color:var(--amber-500);
+  }
+  .wb-chip-unseated .wb-chip-seat{ color:var(--amber-500); }
+
   @media (min-width:821px){
     .sheet{ left:50%; right:auto; transform:translate(-50%, 100%); width:520px; }
     .sheet.open{ transform:translate(-50%, 0); }
+    /* The trip table needs the width a question-shaped sheet does not. */
+    .sheet-full{ width:min(1080px, 94vw); }
   }
   .sheet-head{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px 12px; border-bottom:1px solid var(--hairline); }
   .sheet-title{ font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:22px; color:var(--paper-050); }
@@ -3598,7 +3651,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T06:30:00Z';
+const BUILD_VERSION = '2026-09-02T08:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11251,9 +11304,89 @@ function renderWorkbenchBody(){
       + '</div>';
     return;
   }
-  // Cards land here next.
-  body.innerHTML = '<div class="wb-empty">' + workbenchCache.length
-    + ' trip' + (workbenchCache.length === 1 ? '' : 's') + '.</div>';
+  body.innerHTML = workbenchTableHTML(workbenchCache);
+}
+
+// The four-character identifier the department chose, which is what the master
+// spreadsheet's crew columns hold. Falls back to the display name so a person
+// whose abbrev has not been set still appears -- an unnamed slot would read as
+// an empty seat, which is a different fact entirely.
+function wbCrewLabel(id){
+  if(!id) return '';
+  const p = (rosterCache || []).find(function(x){ return x.id === id; });
+  if(!p) return 'Unknown';
+  return (p.abbrev || '').toUpperCase() || p.name || p.email || 'Unknown';
+}
+
+// '2026-10-04' -> '4 Oct'. Parsed by hand rather than through Date(), which
+// reads a bare ISO date as UTC midnight and can render the day before in a
+// western timezone.
+function wbShortDate(iso){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  if(!m) return '';
+  const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return String(Number(m[3])) + ' ' + (MON[Number(m[2]) - 1] || '');
+}
+
+// Inclusive, the way the spreadsheet's DAYS column counts: 4 Oct to 6 Oct is 3.
+function wbDayCount(startIso, endIso){
+  const a = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(startIso || ''));
+  const b = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(endIso || ''));
+  if(!a || !b) return null;
+  const d1 = Date.UTC(+a[1], +a[2] - 1, +a[3]);
+  const d2 = Date.UTC(+b[1], +b[2] - 1, +b[3]);
+  if(d2 < d1) return null;
+  return Math.round((d2 - d1) / 86400000) + 1;
+}
+
+const WB_BLANK = '<span class="wb-blank">&mdash;</span>';
+
+function wbChip(seatLabel, id, unseated){
+  const name = wbCrewLabel(id);
+  if(!name) return '';
+  return '<span class="wb-chip' + (unseated ? ' wb-chip-unseated' : '') + '">'
+    + '<span class="wb-chip-seat">' + escHtml(seatLabel) + '</span>'
+    + escHtml(name) + '</span>';
+}
+
+function workbenchTableHTML(trips){
+  // The extra column exists only if something is in it anywhere in the table.
+  const anyExtra = trips.some(function(t){
+    return (t.crew.acm && t.crew.acm.length) || (t.crew.unassigned && t.crew.unassigned.length);
+  });
+
+  let html = '<div class="wb-table-wrap"><table class="wb-table"><thead><tr>'
+    + '<th>Tail</th><th>Routing</th><th>Start</th><th>End</th><th>Days</th>'
+    + '<th>PIC</th><th>SIC</th><th>FA</th>'
+    + (anyExtra ? '<th></th>' : '')
+    + '<th>Notes</th></tr></thead><tbody>';
+
+  trips.forEach(function(t){
+    const days = wbDayCount(t.start_date, t.end_date);
+    const fa = (t.crew.fa || []).map(function(id){ return wbCrewLabel(id); })
+      .filter(Boolean).map(escHtml).join('<br>');
+
+    let extra = '';
+    if(anyExtra){
+      extra = (t.crew.acm || []).map(function(id){ return wbChip('ACM', id, false); }).join('')
+            + (t.crew.unassigned || []).map(function(id){ return wbChip('?', id, true); }).join('');
+    }
+
+    html += '<tr data-wb-trip="' + escHtml(t.id || '') + '">'
+      + '<td class="wb-c-tail">'    + (t.tailNumber ? escHtml(t.tailNumber) : WB_BLANK) + '</td>'
+      + '<td class="wb-c-routing">' + (t.destinations ? escHtml(t.destinations) : WB_BLANK) + '</td>'
+      + '<td class="wb-c-date">'    + (t.start_date ? escHtml(wbShortDate(t.start_date)) : WB_BLANK) + '</td>'
+      + '<td class="wb-c-date">'    + (t.end_date   ? escHtml(wbShortDate(t.end_date))   : WB_BLANK) + '</td>'
+      + '<td class="wb-c-days">'    + (days == null ? WB_BLANK : String(days)) + '</td>'
+      + '<td class="wb-c-seat">'    + (t.crew.pic ? escHtml(wbCrewLabel(t.crew.pic)) : WB_BLANK) + '</td>'
+      + '<td class="wb-c-seat">'    + (t.crew.sic ? escHtml(wbCrewLabel(t.crew.sic)) : WB_BLANK) + '</td>'
+      + '<td class="wb-c-seat">'    + (fa || WB_BLANK) + '</td>'
+      + (anyExtra ? '<td>' + (extra || WB_BLANK) + '</td>' : '')
+      + '<td class="wb-c-notes">'   + (t.notes ? escHtml(t.notes) : '') + '</td>'
+      + '</tr>';
+  });
+
+  return html + '</tbody></table></div>';
 }
 
 function openWorkbench(){
@@ -11262,7 +11395,14 @@ function openWorkbench(){
   if(s){ s.classList.add('open'); s.setAttribute('aria-hidden','false'); }
   if(b) b.classList.add('open');
   renderWorkbenchBody();
-  loadWorkbenchTrips().then(function(){
+  // The crew columns resolve ids through rosterCache. If it has not loaded --
+  // the workbench can be the first thing opened in a session -- every seat
+  // would paint as Unknown, which reads as a filled seat with a bad name
+  // rather than as a not-yet-loaded one. Load it alongside the trips.
+  Promise.all([
+    loadWorkbenchTrips(),
+    (!rosterCache || !rosterCache.length) ? loadRoster() : Promise.resolve()
+  ]).then(function(){
     // Only repaint if the panel is still open -- a load resolving after a close
     // would otherwise write into a hidden panel and, worse, into the next one.
     const el = document.getElementById('workbenchSheet');
