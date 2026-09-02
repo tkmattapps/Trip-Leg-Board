@@ -2079,6 +2079,13 @@
   }
   .wb-table tr:last-child td{ border-bottom:none; }
   .wb-c-tail{ font-weight:600; white-space:nowrap; }
+  /* inline-block because a transform does nothing to an inline element. */
+  .wb-chev{
+    display:inline-block; width:11px; margin-right:6px;
+    color:var(--fog-500); font-weight:400;
+    transition:transform 0.15s ease;
+  }
+  .wb-row-open .wb-chev{ transform:rotate(90deg); color:var(--amber-500); }
   .wb-c-routing{ color:var(--fog-300); min-width:180px; }
   .wb-c-date{ color:var(--fog-300); white-space:nowrap; }
   .wb-c-days{ color:var(--fog-500); white-space:nowrap; }
@@ -3806,7 +3813,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T23:35:00Z';
+const BUILD_VERSION = '2026-09-03T23:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12341,7 +12348,12 @@ function workbenchTableHTML(trips){
     const isOpen = t.id && t.id === wbExpandedId;
     html += '<tr class="wb-row-clickable' + (isOpen ? ' wb-row-open' : '') + '"'
       + ' data-wb-trip="' + escHtml(t.id || '') + '">'
-      + '<td class="wb-c-tail">'    + (wbTailLabel(t) ? escHtml(wbTailLabel(t)) : WB_BLANK) + '</td>'
+      + '<td class="wb-c-tail">'
+        // The row has always toggled -- tapping an open trip closed it -- but
+        // nothing said so, so there was no reason to try. The chevron is the
+        // whole fix: it marks the row as a control and shows which way it is.
+        + '<span class="wb-chev" aria-hidden="true">&#9656;</span>'
+        + (wbTailLabel(t) ? escHtml(wbTailLabel(t)) : WB_BLANK) + '</td>'
       + '<td class="wb-c-routing">' + (t.destinations ? escHtml(t.destinations) : WB_BLANK) + '</td>'
       + '<td class="wb-c-date">'    + (t.start_date ? escHtml(wbShortDate(t.start_date)) : WB_BLANK) + '</td>'
       + '<td class="wb-c-date">'    + (t.end_date   ? escHtml(wbShortDate(t.end_date))   : WB_BLANK) + '</td>'
