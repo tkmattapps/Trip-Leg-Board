@@ -1498,6 +1498,12 @@
   .sched-key{ display:flex; flex-wrap:wrap; gap:12px; }
   .sched-key-item{ display:inline-flex; align-items:center; gap:6px;
     font-size:11px; color:var(--fog-300); }
+  /* The band heading inside the key. Same typographic treatment as .sched-band
+     on the grid itself, so "CREW" over the legend reads as the same word as
+     "CREW" over the rows -- but without the sticky positioning, which belongs
+     to a scrolling grid and would do nothing useful here. */
+  .sched-key-band{ display:inline-flex; align-items:center; font-size:11px;
+    letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); }
   .sched-key-dot{ width:10px; height:10px; border-radius:2px; flex:0 0 auto; }
   .sched-note{ font-size:11px; color:var(--fog-500); }
   .sched-empty{ font-size:13px; color:var(--fog-500); padding:24px 0; }
@@ -3715,7 +3721,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T13:05:00Z';
+const BUILD_VERSION = '2026-09-03T14:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -20783,7 +20789,7 @@ const SCHED_LABELS = {
   flight_historical: 'Flight duty \u2014 before Beacon',
   flight_assigned: 'Flight duty \u2014 assigned',
   away_on_trip:   'Away on trip \u2014 not flying',
-  training:       'Training / on-site',
+  training:       'Training',
   pto:            'PTO',
   quarterly_call: 'Quarterly call',
   soft_day:       'Soft day',
@@ -21150,8 +21156,14 @@ function schedKindColor(kind, ownerKind){
 // wording on both the grid tooltip and the day panel.
 function schedKindLabel(kind, ownerKind){
   if(ownerKind === 'aircraft'){
-    if(kind === 'flight')       return 'On a trip';
-    if(kind === 'away_on_trip') return 'On a trip \u2014 not flying';
+    // "Away on trip" is the wording the KEY uses for this teal, so it is the
+    // wording every surface uses. It was "On a trip" until 3 Sep 2026, which
+    // said the same thing in different words and made the legend look like it
+    // described something else. The qualifier stays on the parked days -- they
+    // are only ever produced with smart features on, where a leg chain exists
+    // to derive them from.
+    if(kind === 'flight')       return 'Away on trip';
+    if(kind === 'away_on_trip') return 'Away on trip \u2014 not flying';
   }
   return SCHED_LABELS[kind] || kind;
 }
@@ -22286,10 +22298,13 @@ function schedGoToLeg(legId){
 // The one line under a row in the day panel. Pulled out of the template because
 // it now answers three different questions and a nested ternary inside string
 // concatenation is where paren bugs live.
-function schedExistingSubText(r, isAwayRow){
+function schedExistingSubText(r, isAwayRow, ownerKind){
   if(isAwayRow){
     const named = r.trip && r.trip.indexOf('__grp_') !== 0;
-    return 'Between legs of ' + (named ? 'trip ' + r.trip : 'a trip') +
+    // A person is between legs; a tail is parked. Same derived day, but the
+    // sentence has to describe the thing whose row it is sitting on.
+    const lead = ownerKind === 'aircraft' ? 'Parked between legs of ' : 'Between legs of ';
+    return lead + (named ? 'trip ' + r.trip : 'a trip') +
            ' \u2014 derived from the trip, nothing to remove';
   }
   // A workbench trip owns its span the way an exception does, and it can also
@@ -22423,7 +22438,7 @@ function schedExistingHTML(e){
                escapeHtml(label) +
              '</div>' +
              '<div class="sched-existing-sub">' +
-               escapeHtml(schedExistingSubText(r, isAwayRow)) +
+               escapeHtml(schedExistingSubText(r, isAwayRow, e.ownerKind)) +
                (r.reason ? ' \u00b7 ' + escapeHtml(r.reason) : '') +
              '</div>' +
            '</div>' +
@@ -22550,9 +22565,12 @@ function renderSchedEntry(){
            '<input type="date" id="schedEnd" value="' + escapeHtml(e.end) + '">' +
          '</div>' +
        '</div>';
+  // The example has to be an example of the right KIND of thing. "FAA medical"
+  // on a tail row is a crew reason offered to someone entering an aircraft one.
+  const reasonEg = e.ownerKind === 'aircraft' ? 'e.g. scheduled inspection' : 'e.g. FAA medical';
   h += '<div class="field"><label>Reason' + (needsReason ? '' : ' (optional)') + '</label>' +
          '<input type="text" id="schedReason" maxlength="120" value="' + escapeHtml(e.reason) + '" ' +
-         'placeholder="' + (needsReason ? 'Required for Other' : 'e.g. FAA medical') + '">' +
+         'placeholder="' + (needsReason ? 'Required for Other' : reasonEg) + '">' +
        '</div>';
   h += '<div class="sched-entry-span" id="schedSpan"></div>';
   body.innerHTML = h;
@@ -22613,7 +22631,11 @@ async function removeSchedEntry(recId){
   if(!rosterViewerIsAdmin()){ showToast('Only a department admin can change the schedule'); return; }
   const rec = (schedEntry.existing || []).find(function(x){ return x.id === recId; });
   if(!rec) return;
-  const label = SCHED_LABELS[rec.kind] || rec.kind;
+  // Band-aware. This string goes into a confirm title and then a toast, and the
+  // moment of deletion is the worst place to describe a tail in crew wording.
+  // schedKindLabel is the single source for that wording -- SCHED_LABELS is the
+  // crew's view of it and is not safe to read directly on a surface serving both.
+  const label = schedKindLabel(rec.kind, schedEntry.ownerKind);
   // Names the WHOLE span, because that is what goes. Removing day three of a
   // five-day block removes all five, and the confirm is the only place that
   // can say so before it happens.
@@ -22652,7 +22674,7 @@ async function trimSchedEntry(recId, newStart, newEnd, mode){
   if(!rosterViewerIsAdmin()){ showToast('Only a department admin can change the schedule'); return; }
   const rec = (schedEntry.existing || []).find(function(x){ return x.id === recId; });
   if(!rec) return;
-  const label = SCHED_LABELS[rec.kind] || rec.kind;
+  const label = schedKindLabel(rec.kind, schedEntry.ownerKind);
   const growing = mode === 'extend';
   // A protected category is worth a confirm when SHORTENING -- cutting into PTO
   // takes back time already granted. GROWING one does not: giving someone more
@@ -23202,26 +23224,44 @@ function renderScheduleView(){
   // Everything that slides lives in one panel, so the transition has a single
   // element to animate rather than several that would drift out of step.
   key += '<div class="sched-keypanel">';
-  key += '<div class="sched-key">';
-  ['flight','training','pto','quarterly_call','soft_day','other','maintenance'].forEach(function(k){
-    key += '<span class="sched-key-item"><span class="sched-key-dot" style="background:' + SCHED_COLORS[k] + '"></span>' +
-           escapeHtml(SCHED_LABELS[k]) + '</span>';
-  });
+  // *** THE KEY IS SPLIT BY BAND, AND THAT IS NOT DECORATION. ***
+  // Several colours mean one thing on a crew row and another on a tail row --
+  // the teal most of all, and 'other' appears on both bands legitimately. A
+  // single flat list forced the reader to already know which entries applied
+  // to which band, which is exactly the knowledge the key exists to supply.
+  // Two labelled rows, and an entry may appear in both if it belongs to both.
+  const keyRow = function(band, items){
+    let r = '<div class="sched-key"><span class="sched-key-band">' + escapeHtml(band) + '</span>';
+    items.forEach(function(it){
+      r += '<span class="sched-key-item"><span class="sched-key-dot" style="background:' +
+           it.color + '"></span>' + escapeHtml(it.label) + '</span>';
+    });
+    return r + '</div>';
+  };
+  const kindItem = function(k){ return { color: SCHED_COLORS[k], label: SCHED_LABELS[k] }; };
+
+  key += keyRow('Crew', ['flight','training','pto','quarterly_call','soft_day','other'].map(kindItem));
+
   // "Away on trip" is NOT a stored kind and must not be added to SCHED_LABELS.
   // It is the AIRCRAFT reading of flight / away_on_trip / flight_assigned, all
-  // three of which schedKindColor paints in this same teal on a tail row. The
-  // key is one strip serving both bands, and SCHED_LABELS is written from the
-  // crew's point of view -- "Flight duty" is a thing a person is rostered for --
-  // so the tail's wording has to be written here or it has nowhere to live.
-  // Label only: nothing about how the day behaves changes, and a tail is still
-  // dragged onto the grid exactly the way a crew flight duty is.
-  key += '<span class="sched-key-item"><span class="sched-key-dot" style="background:' +
-         SCHED_COLORS.away_from_base + '"></span>Away on trip</span>';
+  // three of which schedKindColor paints in this same teal on a tail row.
+  // SCHED_LABELS is written from the crew's point of view -- "Flight duty" is a
+  // thing a person is rostered for -- so the tail's wording is written here or
+  // it has nowhere to live. Label only: nothing about how the day behaves
+  // changes, and a tail is dragged onto the grid the way a crew duty is.
+  key += keyRow('Aircraft', [
+    { color: SCHED_COLORS.away_from_base, label: 'Away on trip' },
+    kindItem('maintenance'),
+    kindItem('other')
+  ]);
+
   // The clash marker is a STATE, not a category, so it is named apart from the
-  // colours rather than listed among them.
-  key += '<span class="sched-key-item"><span class="sched-key-clash" aria-hidden="true"></span>' +
-         'Flying on a protected day</span>';
-  key += '</div>';
+  // colours rather than listed among them -- and it belongs to neither band's
+  // list for the same reason.
+  key += '<div class="sched-key">' +
+           '<span class="sched-key-item"><span class="sched-key-clash" aria-hidden="true"></span>' +
+           'Flying on a protected day</span>' +
+         '</div>';
   // The note is part of the same explanation, so it folds with it rather than
   // being left behind as an orphan line.
   key += '<div class="sched-note">Flight duty is read from the trips themselves and cannot be edited here. ' +
