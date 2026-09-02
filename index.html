@@ -2142,10 +2142,11 @@
      what puts the iPad back to a stack without a media query. */
   .wb-edit-line{ display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
   .wb-edit-line > .wb-field{ flex:1 1 160px; }
-  /* A date input has one size. Letting it stretch bought nothing and was most of
-     the wasted width on the first line. */
-  .wb-edit-line > .wb-field-day{ flex:0 0 150px; max-width:150px; }
-  .wb-edit-line > .wb-field-routing{ flex:1 1 240px; }
+  /* A date input has one useful size, so it does not grow. It may shrink to
+     120 though -- holding hard at 150 meant that when the line ran short, the
+     only field that could give was Routing, and it gave until it was unusable. */
+  .wb-edit-line > .wb-field-day{ flex:0 1 150px; min-width:120px; max-width:150px; }
+  .wb-edit-line > .wb-field-routing{ flex:1 1 200px; min-width:0; }
   /* Both blocks were grid-column:1/-1, which is inert now they sit in a flex
      line -- the flex basis below is what makes them share the row. */
   .wb-edit-line > .wb-ac-block,
@@ -2190,6 +2191,19 @@
     border:1px solid var(--hairline); border-radius:6px;
     padding:8px 10px; font-size:14px; font-family:inherit; width:100%;
     box-sizing:border-box;
+    /* *** A DATE INPUT IS NOT A TEXT INPUT ON A PHONE. ***
+       iOS draws type="date" as a native control with its own intrinsic height
+       and its own idea of how wide it needs to be, and it ignores the padding
+       above. That is why Routing sat at a different height to the two dates and
+       why the dates would not hold the width they were given. Stripping the
+       native appearance and stating one height makes all three the same box
+       whatever their type.
+       min-width:0 matters just as much: an input carries a default minimum
+       width of about twenty characters, and .wb-field's min-width:0 does not
+       reach through to it. Without this the routing box refuses to shrink and
+       shoulders its neighbour instead. */
+    -webkit-appearance:none; appearance:none;
+    height:38px; min-width:0;
   }
   .wb-field textarea{ min-height:36px; height:36px; resize:vertical; }
   .wb-field input:focus, .wb-field textarea:focus{
@@ -3829,7 +3843,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T01:35:00Z';
+const BUILD_VERSION = '2026-09-04T01:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
