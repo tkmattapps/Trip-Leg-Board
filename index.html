@@ -2163,17 +2163,17 @@
   }
   .wb-edit-half > .wb-ac-block,
   .wb-edit-half > .wb-crew-block{ flex:0 1 auto; min-width:0; }
-  /* *** auto-fit CANNOT COUNT IN AN AUTO-WIDTH BOX. ***
-     The crew block sizes to its content, so the grid's available width is
-     indefinite -- and repeat(auto-fit,...) against an indefinite width resolves
-     to exactly one track. Every seat went under the last one and the crew
-     stacked into a column no matter how much room was going spare beside it.
-     A flex row with fixed-width seats does not have to know the width to lay
-     out across it, and still wraps on a phone. */
+  /* *** SIZED WITH A FLOOR, NOT FIXED. ***
+     Fixed 160px seats fitted tail, PIC and SIC on a phone and pushed cabin crew
+     onto its own line under PIC. The values in these boxes are four-character
+     codes, so 160 was never needed -- they can come down to 110 when the line
+     is short and open back out to 160 when it is not. Same floor on the tail,
+     so the aircraft block gives ground at the same rate rather than holding
+     full width while the crew wraps around it. */
   .wb-edit-half .wb-crew-grid{
     display:flex; flex-wrap:wrap; gap:8px;
   }
-  .wb-edit-half .wb-crew-grid > .wb-field{ flex:0 0 160px; }
+  .wb-edit-half .wb-crew-grid > .wb-field{ flex:1 1 110px; max-width:160px; }
   /* align-self:stretch is what puts Delete on the BOTTOM edge -- without it the
      column is only as tall as the button and flex-end has nothing to push
      against. */
@@ -2220,7 +2220,7 @@
      empty column away from the select it belonged to. Dates only appear when
      the trip is shared, and that is what wb-ac-row-split widens for. */
   .wb-ac-row{
-    display:grid; grid-template-columns:160px;
+    display:grid; grid-template-columns:minmax(110px,160px);
     gap:10px; align-items:end;
   }
   .wb-ac-row-split{ grid-template-columns:repeat(3,minmax(120px,1fr)); }
@@ -2263,12 +2263,14 @@
      *** WIDTH, NOT A FLEX BASIS. ***
      A basis applies to the main axis, and these buttons sit in two containers
      that disagree about which axis that is -- the crew adds are a row, the
-     aircraft block is a column. flex:0 0 160px made + Aircraft 160px TALL. */
+     aircraft block is a column. flex:0 0 160px made + Aircraft 160px TALL.
+     width with a max is safe in both, and it tracks the fields above, which now
+     narrow on a phone. */
   .wb-ac-add{
     align-self:flex-start; background:none; border:1px solid var(--hairline);
     color:var(--amber-500); border-radius:6px; padding:6px 12px;
     font-size:13px; font-family:inherit; cursor:pointer;
-    width:160px; flex:0 0 auto; text-align:center;
+    width:100%; max-width:160px; min-width:0; flex:0 1 auto; text-align:center;
   }
   .wb-ac-add:hover{ border-color:var(--amber-500); }
   .wb-field-date{ max-width:170px; }
@@ -3843,7 +3845,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T01:55:00Z';
+const BUILD_VERSION = '2026-09-04T02:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
