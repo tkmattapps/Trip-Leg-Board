@@ -3743,7 +3743,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T17:25:00Z';
+const BUILD_VERSION = '2026-09-03T18:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12308,6 +12308,10 @@ function openWorkbench(){
   wbExpandedId = '';
   wbPendingAircraft = '';
   wbPendingCrewSlot = '';
+  // Cleared here, and set again by openWorkbenchAtTrip immediately AFTER this
+  // returns. A jump abandoned before its load landed would otherwise leave the
+  // id sitting there and open the next plain visit onto the wrong trip.
+  wbOpenToTripId = '';
   const s = document.getElementById('workbenchSheet');
   const b = document.getElementById('workbenchBackdrop');
   if(s){ s.classList.add('open'); s.setAttribute('aria-hidden','false'); }
@@ -12329,9 +12333,52 @@ function openWorkbench(){
     // Only repaint if the panel is still open -- a load resolving after a close
     // would otherwise write into a hidden panel and, worse, into the next one.
     const el = document.getElementById('workbenchSheet');
-    if(el && el.classList.contains('open')) renderWorkbenchBody();
+    if(!el || !el.classList.contains('open')) return;
+    if(wbOpenToTripId){
+      const want = wbOpenToTripId;
+      wbOpenToTripId = '';
+      wbExpandedId = want;
+      renderWorkbenchBody();
+      // *** THE PANEL SHOWS ONE MONTH. *** Membership is derived from the trip's
+      // dates against the month the grid is showing, so a trip tapped on a day
+      // that is not in that month has no row here to open. Rather than a panel
+      // that appears to have lost the trip, say where it is.
+      if(!document.querySelector('[data-wb-trip="' + want + '"]')){
+        wbExpandedId = '';
+        const t = (Array.isArray(workbenchCache) ? workbenchCache : [])
+          .find(function(x){ return x.id === want; });
+        const d = t && (t.start_date || t.end_date);
+        showToast(d
+          ? 'That trip is on the ' + wbMonthNameOf(d) + ' panel'
+          : 'That trip is not on this month\u2019s panel');
+      }
+      return;
+    }
+    renderWorkbenchBody();
   });
 }
+
+// Month name from an ISO date, for telling someone where a trip actually sits.
+function wbMonthNameOf(iso){
+  const dt = new Date(String(iso) + 'T00:00:00');
+  if(isNaN(dt)) return 'another month';
+  return dt.toLocaleDateString(undefined, { month: 'long' });
+}
+
+// Open the workbench with one trip already expanded. The order matters: the
+// open resets the pending id, so it is set after that and still lands well
+// before the network load it is waiting on.
+function openWorkbenchAtTrip(tripId){
+  openWorkbench();
+  wbOpenToTripId = tripId || '';
+}
+
+// *** OPENING THE PANEL ONTO A PARTICULAR TRIP. ***
+// Set just before openWorkbench and consumed once the load lands. It cannot be
+// applied at open time: openWorkbench deliberately clears wbExpandedId and the
+// trips arrive over the network afterwards, so an editor set before the list
+// exists would be cleared by the render that follows.
+let wbOpenToTripId = '';
 
 // Set by any panel edit that changes what the grid derives -- an aircraft
 // assignment, a date. Dropping schedData is not enough on its own: it only
@@ -22361,6 +22408,20 @@ function schedFlightRowSub(legId){
   return bits.join('  \u00b7  ');
 }
 
+// Leave the schedule for the WORKBENCH trip an assigned row came from. The
+// sibling of schedGoToLeg, and separate from it on purpose: a flight row's id
+// is a leg and lands in the trip detail view, while an assigned row's id is a
+// workbench trip that has no legs yet and exists nowhere but the panel.
+//
+// Same promise as schedGoToLeg -- the day panel closes first, because it is
+// showing a selection that is about to leave the screen -- and the same rule
+// that navigating away from the schedule writes nothing.
+function schedGoToWorkbenchTrip(tripId){
+  if(!tripId) return;
+  closeSchedEntry();
+  openWorkbenchAtTrip(tripId);
+}
+
 // Leave the schedule for the trip a flight row came from. The day panel is
 // closed first: it acts on a selection that is about to stop being on screen,
 // and a panel left open over a different view is a lie about what is selected.
@@ -22531,8 +22592,20 @@ function schedExistingHTML(e){
     // the live set. An unreachable row must not look like a link, because a
     // control must do what its label says.
     const goTrip = (r.kind === 'flight' && schedFlightRefInfo(r.id)) ? r.id : '';
-    h += '<div class="sched-existing-row' + (goTrip ? ' sched-existing-go' : '') + '"' +
-           (goTrip ? ' data-sched-goleg="' + escapeHtml(goTrip) + '" role="button" tabindex="0"' : '') + '>' +
+    // *** THE SAME ARROW, A DIFFERENT DESTINATION. ***
+    // A day that came from a trip dragged onto the grid used to be a dead end:
+    // you could see the trip was there and still had to go and find it in the
+    // workbench yourself. The id on this row IS the workbench trip id -- that is
+    // what aircraft_busy_days and crew_busy_days put in ref_id -- so there is
+    // nothing to look up, only somewhere to send it.
+    //
+    // Not folded into goTrip: that one carries a LEG id into the trip detail
+    // view. Two different kinds of id going to two different places, so they
+    // stay two attributes and the handler cannot confuse them.
+    const goWb = (r.kind === 'flight_assigned' && r.id) ? r.id : '';
+    h += '<div class="sched-existing-row' + (goTrip || goWb ? ' sched-existing-go' : '') + '"' +
+           (goTrip ? ' data-sched-goleg="' + escapeHtml(goTrip) + '" role="button" tabindex="0"' : '') +
+           (goWb ? ' data-sched-gowb="' + escapeHtml(goWb) + '" role="button" tabindex="0"' : '') + '>' +
            '<span class="sched-key-dot" style="background:' + col + '"></span>' +
            '<div class="sched-existing-txt">' +
              '<div class="sched-existing-lbl">' +
@@ -24117,6 +24190,8 @@ document.addEventListener('click', async function(e){
   // record, not just a picture of it: pick a day months back, land on the trip.
   const schedGo = t.closest('[data-sched-goleg]');
   if(schedGo){ schedGoToLeg(schedGo.getAttribute('data-sched-goleg')); return; }
+  const schedGoWb = t.closest('[data-sched-gowb]');
+  if(schedGoWb){ schedGoToWorkbenchTrip(schedGoWb.getAttribute('data-sched-gowb')); return; }
   if(t.closest('[data-sched-toworkbench]')){ schedEntryToWorkbench(); return; }
   const schedCat = t.closest('[data-sched-cat]');
   if(schedCat && schedEntry){
@@ -24472,9 +24547,18 @@ function openInstallOverlay(){
     const t = e.target;
     if(!t || !t.closest) return;
     const go = t.closest('[data-sched-goleg]');
-    if(!go) return;
+    if(go){
+      e.preventDefault();
+      schedGoToLeg(go.getAttribute('data-sched-goleg'));
+      return;
+    }
+    // The assigned row is focusable for the same reason the flight row is, so
+    // it has to answer the keyboard too. A row that takes focus and does
+    // nothing on Enter is worse than one that never took it.
+    const goWb = t.closest('[data-sched-gowb]');
+    if(!goWb) return;
     e.preventDefault();
-    schedGoToLeg(go.getAttribute('data-sched-goleg'));
+    schedGoToWorkbenchTrip(goWb.getAttribute('data-sched-gowb'));
   });
 })();
 
