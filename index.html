@@ -3636,7 +3636,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T11:10:00Z';
+const BUILD_VERSION = '2026-09-02T11:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11286,6 +11286,54 @@ async function retireWorkbenchTrip(id){
 // before the panel appears. A panel that waits on the network to become visible
 // reads as a broken tap.
 
+// *** WHICH MONTH THE PANEL IS SHOWING. ***
+// The same month the grid is lighting and the button is naming, taken from the
+// same variable, so the three can never disagree. schedShownMonthKey is
+// 'YYYY-M' with a ZERO-BASED month, because it is built to match the month
+// band's data key -- do not read it as a display month.
+//
+// Null until the first scroll sync runs, which includes the case where the
+// panel is opened before the grid has been scrolled at all. schedAnchor is the
+// right fallback: it is the month the view was opened on.
+function wbShownMonth(){
+  if(schedShownMonthKey){
+    const parts = String(schedShownMonthKey).split('-');
+    return { y: parseInt(parts[0], 10), m: parseInt(parts[1], 10) };
+  }
+  const a = schedAnchor || schedMonthStart(new Date());
+  return { y: a.getFullYear(), m: a.getMonth() };
+}
+
+// Does this trip belong on the given month's panel?
+//
+// *** ONE ROW, SHOWN TWICE. *** A trip running 28 Oct to 2 Nov is on October's
+// panel AND November's, and it is the same record in both -- edit it in one and
+// the other is already correct, because membership is DERIVED from the dates
+// rather than stored. That is what stops the spreadsheet's double-entry problem
+// coming across with the data.
+//
+// Undated trips fall back to plan_month, which is the only time that column is
+// read. A trip with a start but no end (or the reverse) is treated as a single
+// day rather than as undated: a half-entered date is still a statement about
+// when, and dropping back to the filed month would move the trip out from under
+// someone mid-edit.
+function wbTripInMonth(trip, y, m){
+  const first = new Date(y, m, 1);
+  const last  = new Date(y, m + 1, 0);
+  const isoFirst = schedISO(first);
+  const isoLast  = schedISO(last);
+
+  const s = trip.start_date || trip.end_date || '';
+  const e = trip.end_date   || trip.start_date || '';
+  // ISO dates compare correctly as strings, so no parsing is needed here.
+  if(s && e) return s <= isoLast && e >= isoFirst;
+
+  const pm = trip.plan_month || '';
+  if(!pm) return false;   // Filed nowhere. Migration 31 makes this impossible.
+  const mm = String(m + 1).padStart(2, '0');
+  return String(pm).slice(0, 7) === (y + '-' + mm);
+}
+
 function renderWorkbenchBody(){
   const body = document.getElementById('workbenchBody');
   if(!body) return;
@@ -11304,19 +11352,38 @@ function renderWorkbenchBody(){
       : 'Trips being built \u00b7 read only';
   }
 
+  // The title names the month, matching the button that opened the panel. It is
+  // set here rather than in the markup because the month is not known until the
+  // panel opens -- the static text said "Workbench", which was correct only
+  // while the panel showed every trip in the department.
+  const mo = wbShownMonth();
+  const title = document.getElementById('workbenchTitle');
+  if(title) title.textContent = schedTripsBtnLabel(mo.y, mo.m);
+
   // null means the read has not come back yet. An empty array is a real answer
   // and must not render as Loading, or an empty workbench looks broken forever.
   if(workbenchCache === null){
     body.innerHTML = '<div class="wb-empty">Loading trips\u2026</div>';
     return;
   }
-  if(!workbenchCache.length){
-    body.innerHTML = '<div class="wb-empty">No trips on the workbench yet.'
+  // Filtered at RENDER, not at the read. One load holds every trip in the
+  // department and each open picks its month out of it, so scrolling to another
+  // month and reopening costs nothing and cannot show a stale half of the set.
+  const shown = workbenchCache.filter(function(t){
+    return wbTripInMonth(t, mo.y, mo.m);
+  });
+
+  if(!shown.length){
+    // Names the month. "No trips yet" over a panel titled September would read
+    // as "there are no trips at all", which is a different and probably wrong
+    // fact -- there may be plenty, just not in September.
+    body.innerHTML = '<div class="wb-empty">No trips in '
+      + escHtml(schedMonthLongName(mo.y, mo.m)) + ' yet.'
       + (isAdmin ? '<br>Add one with the + Trip button above.' : '')
       + '</div>';
     return;
   }
-  body.innerHTML = workbenchTableHTML(workbenchCache);
+  body.innerHTML = workbenchTableHTML(shown);
 }
 
 // The four-character identifier the department chose, which is what the master
