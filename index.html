@@ -2141,6 +2141,19 @@
      line -- the flex basis below is what makes them share the row. */
   .wb-edit-line > .wb-ac-block,
   .wb-edit-line > .wb-crew-block{ flex:1 1 280px; min-width:0; }
+  /* The last line is halved: tail, PIC and SIC across the left, the one
+     destructive control alone on the right. Keeping Delete out of the column
+     the selects live in is the point -- it is not another field. */
+  .wb-edit-half{
+    flex:1 1 0; min-width:0; display:flex; gap:12px;
+    align-items:flex-start; flex-wrap:wrap;
+  }
+  .wb-edit-half > .wb-ac-block,
+  .wb-edit-half > .wb-crew-block{ flex:1 1 130px; min-width:0; }
+  /* Three selects sharing half a card cannot each demand 140px, so the crew
+     grid's floor comes down to match the space it now has. */
+  .wb-edit-half .wb-crew-grid{ grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; }
+  .wb-edit-half-actions{ justify-content:flex-end; align-items:flex-end; }
   .wb-field{ display:flex; flex-direction:column; gap:5px; min-width:0; }
   .wb-field label{
     font-size:10px; font-weight:600; letter-spacing:0.06em;
@@ -2152,7 +2165,7 @@
     padding:8px 10px; font-size:14px; font-family:inherit; width:100%;
     box-sizing:border-box;
   }
-  .wb-field textarea{ min-height:48px; resize:vertical; }
+  .wb-field textarea{ min-height:36px; height:36px; resize:vertical; }
   .wb-field input:focus, .wb-field textarea:focus{
     outline:none; border-color:var(--amber-500);
   }
@@ -3793,7 +3806,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-03T22:40:00Z';
+const BUILD_VERSION = '2026-09-03T23:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12280,20 +12293,24 @@ function wbEditorHTML(t, colCount){
           + escHtml(t.notes || '') + '</textarea>'
         + '</div>'
       + '</div>'
-      // Line 3 -- who and what, side by side. They are the two halves of the
-      // same question and were previously one under the other.
+      // Line 3 -- tail, PIC and SIC across the left half; the delete control
+      // alone on the right. It sits on this line rather than below it because
+      // the editor had a whole row to itself for one button, and it is kept out
+      // of the fields' half because it is not a field: pressing it ends the trip
+      // rather than editing it. Disabled rather than hidden for a non-admin -- a
+      // crew member should see the trip can be deleted and know to ask.
       + '<div class="wb-edit-line">'
-        + wbAircraftEditHTML(t)
-        + wbCrewEditHTML(t)
+        + '<div class="wb-edit-half">'
+          + wbAircraftEditHTML(t)
+          + wbCrewEditHTML(t)
+        + '</div>'
+        + '<div class="wb-edit-half wb-edit-half-actions">'
+          + '<button type="button" class="wb-trip-withdraw" data-wb-tripdel="'
+          + escHtml(t.id || '') + '"' + (wbCanEditTrips() ? '' : ' disabled')
+          + '>Delete this trip</button>'
+        + '</div>'
       + '</div>'
       + '<div class="wb-edit-note">Changes save as you leave each field.</div>'
-      // Last in the editor on purpose: it is the one control here that does not
-      // edit the trip but ends it, so it sits below the note rather than among
-      // the fields. Disabled rather than hidden for a non-admin -- a crew member
-      // should be able to see the trip can be deleted and know to ask.
-      + '<button type="button" class="wb-trip-withdraw" data-wb-tripdel="'
-      + escHtml(t.id || '') + '"' + (wbCanEditTrips() ? '' : ' disabled')
-      + '>Delete this trip</button>'
     + '</div>'
     + '</td></tr>';
 }
