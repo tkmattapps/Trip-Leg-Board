@@ -3670,7 +3670,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T12:15:00Z';
+const BUILD_VERSION = '2026-09-02T13:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -23874,6 +23874,17 @@ async function bootApp(){
   // acceptance can be attributed, but BEFORE loadLegs() and before anything
   // renders. Nothing of the department's data reaches the screen until the
   // terms have been accepted.
+  // Establish there is a user BEFORE the gate. hasAcceptedCurrentTerms fails
+  // closed by design -- correct -- but "no session" and "has not accepted" are
+  // different facts, and only one of them is answerable by showing a checkbox.
+  // Without this the signed-out case lands on an acceptance box whose write
+  // cannot succeed.
+  const { data: { user: bootUser } } = await sb.auth.getUser();
+  if(!bootUser){
+    handleSignedOut('Your session expired. Please sign in again.');
+    return;
+  }
+
   if(!(await hasAcceptedCurrentTerms())){
     await showTermsGate();
   }
@@ -24154,9 +24165,46 @@ function startUpdateChecker(){
 
 var _appBooted = false;
 var _legsLoaded = false;
+
+// *** THE APP MUST NOTICE WHEN THE SESSION ENDS. ***
+// It previously did not. onAuthStateChange only ever booted the app; nothing
+// listened for the session going away. So when a token refresh failed,
+// supabase-js cleared the stored session and the page carried on looking
+// signed in -- every query silently failing RLS behind a normal-looking
+// screen. The first thing to fail closed was the terms gate, which then
+// offered an acceptance it could not possibly record: tick, Continue,
+// "Could not record - try again", forever, with no way out and no clue why.
+//
+// Found live on 2 Sep 2026. getUser() returned AuthSessionMissingError while
+// the app sat there fully rendered.
+//
+// Idempotent: several things can notice the loss at once.
+var _signedOutHandled = false;
+function handleSignedOut(message){
+  if(_signedOutHandled) return;
+  _signedOutHandled = true;
+
+  // Anything modal on top of the app has to come down, or the login screen
+  // renders underneath a gate nobody can dismiss.
+  const term = document.getElementById('termsOverlay');
+  if(term) term.classList.remove('open');
+
+  // Boot again from scratch on the next sign in. Leaving these set would mean
+  // signing back in and getting an app that never reloaded its data.
+  _appBooted  = false;
+  _legsLoaded = false;
+  currentFlightDepartmentId = null;
+
+  showLoginOverlay();
+  const errEl = document.getElementById('loginError');
+  if(errEl) errEl.textContent = message || 'You have been signed out. Please sign in again.';
+}
+
 async function enterAppFromSession(){
   if(_appBooted) return;
   _appBooted = true;
+  // A fresh boot means a fresh session, so re-arm the signed-out latch.
+  _signedOutHandled = false;
   state.view = 'home';
   hideLoginOverlay();
   // Paint the home shell immediately so the user sees the app right away.
@@ -24172,7 +24220,11 @@ async function enterAppFromSession(){
   // the app first; getSession is the backstop. We only reveal login once we've
   // confirmed there's genuinely no session, so signed-in users never see a flash.
   sb.auth.onAuthStateChange(function(event, session){
-    if(session && !_appBooted){ enterAppFromSession(); }
+    if(session && !_appBooted){ _signedOutHandled = false; enterAppFromSession(); return; }
+    // Losing the session AFTER the app is up is the case that used to go
+    // unhandled. Guarded on _appBooted because this same event arrives with a
+    // null session on an ordinary cold load, long before anyone is signed in.
+    if(!session && _appBooted){ handleSignedOut(); }
   });
   const { data: { session } } = await sb.auth.getSession();
   if(session){
