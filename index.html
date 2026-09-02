@@ -3598,7 +3598,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T03:35:00Z';
+const BUILD_VERSION = '2026-09-02T05:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -19714,6 +19714,13 @@ const SCHED_COLORS = {
   // green and did not count. The pencil was removed on 1 Sep 2026 -- see
   // SCHED_CREW_CATS.)
   flight_historical: '#24CC78',
+  // *** AN ASSIGNMENT IS DUTY. *** A trip built by hand on the workbench is a
+  // real commitment the moment crew are on it -- Kyle: "it's real until there's
+  // a conflict with extracted data." Same green as flight, deliberately
+  // indistinguishable on the grid. The distinction lives in the day panel, in
+  // words, exactly as flight_historical's does. If the two ever disagree, the
+  // disagreement flag says so; the grid does not pre-judge it with a colour.
+  flight_assigned: '#24CC78',
   away_on_trip:   '#24CC78',   // ONE TRIP, ONE COLOUR -- see schedCellHTML
   training:       '#2477CB',
   pto:            '#AB1E41',
@@ -19769,7 +19776,8 @@ function schedIsClash(entries){
   let flying = false, protectedDay = false;
   entries.forEach(function(e){
     if(e.kind === 'flight' || e.kind === 'away_on_trip'
-       || e.kind === 'flight_historical') flying = true;
+       || e.kind === 'flight_historical'
+       || e.kind === 'flight_assigned') flying = true;
     else if(SCHED_PROTECTED[e.kind]) protectedDay = true;
   });
   return flying && protectedDay;
@@ -19778,6 +19786,7 @@ function schedIsClash(entries){
 const SCHED_LABELS = {
   flight:         'Flight duty',
   flight_historical: 'Flight duty \u2014 before Beacon',
+  flight_assigned: 'Flight duty \u2014 assigned',
   away_on_trip:   'Away on trip \u2014 not flying',
   training:       'Training / on-site',
   pto:            'PTO',
@@ -20209,8 +20218,9 @@ function schedSuppressedDays(ownedDays, dayISOList){
 
 // The kinds whose identity is a TRIP rather than a reason. away_on_trip is the
 // derived interior of a trip and flight_historical is a backfilled duty day, so
-// both belong to a trip in exactly the same sense a leg does.
-const SCHED_TRIP_KINDS = { flight:1, away_on_trip:1, flight_historical:1 };
+// both belong to a trip in exactly the same sense a leg does. flight_assigned is
+// a workbench trip, which is a trip by construction -- its ref_id IS the trip id.
+const SCHED_TRIP_KINDS = { flight:1, away_on_trip:1, flight_historical:1, flight_assigned:1 };
 
 // ---- RUN DETECTION -------------------------------------------------------
 //
@@ -20282,6 +20292,18 @@ function schedRunKeyFor(e){
     // schedFillAwayDays carries the trip key directly; a real leg resolves
     // through state.legs. Check the explicit one first -- it needs no lookup.
     let trip = e.trip || '';
+    // *** A WORKBENCH REF IS NOT A LEG ID. *** flight_assigned carries a
+    // workbench_trips id, so schedFlightRefInfo would search state.legs, find
+    // nothing, and fall through to the 'leg:' fallback below. That happens to
+    // produce the right SHAPE -- every day of one trip shares the ref, so they
+    // share a key and draw as one bar -- but it gets there by a failed lookup
+    // and labels a trip id as a leg. Named here instead.
+    //
+    // These days key SEPARATELY from extracted days of the same trip, which key
+    // on the trip number. That is not a bug to paper over: two bars mean the
+    // hand-built trip and the extracted one have not been reconciled, which is
+    // precisely what the disagreement flag exists to raise.
+    if(!trip && e.kind === 'flight_assigned') trip = 'wb:' + (e.ref || '');
     if(!trip){
       const info = (typeof schedFlightRefInfo === 'function') ? schedFlightRefInfo(e.ref) : null;
       trip = info ? (info.tripNumber || ('__grp_' + (info.groupId || e.ref))) : '';
