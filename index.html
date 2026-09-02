@@ -3670,7 +3670,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-02T13:05:00Z';
+const BUILD_VERSION = '2026-09-02T13:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11229,6 +11229,44 @@ function wbPlanMonthFor(startDate){
   const mo = wbShownMonth();
   const mm = String(mo.m + 1).padStart(2, '0');
   return mo.y + '-' + mm + '-01';
+}
+
+// Puts an aeroplane on a trip for a range of days.
+//
+// *** THE AIRCRAFT IS NO LONGER THE TAIL ON THE TRIP ROW. ***
+// One trip can carry two aeroplanes -- an aircraft goes AOG mid-trip and
+// another launches to recover it -- and each one's days must be its own, or the
+// grid shows an aeroplane working on days it never flew. So the days live here,
+// on the assignment, not on the trip.
+//
+// aircraft_busy_days source 3 reads this table as of migration 34. Writing
+// tail_number alone puts nothing on the aeroplane's row.
+async function wbAddTripAircraft(tripId, aircraftId, startDate, endDate, note){
+  if(!tripId || !aircraftId) return null;
+  const deptId = await getFlightDepartmentId();
+  const me = (typeof myUserId === 'function') ? myUserId() : null;
+  try {
+    // .select() for the same reason every other write here has it: an insert
+    // matching no policy comes back successful and empty.
+    const { data, error } = await sb.from('workbench_trip_aircraft')
+      .insert({
+        flight_department_id: deptId,
+        trip_id: tripId,
+        aircraft_id: aircraftId,
+        // Nullable on purpose. An aeroplane named for a trip before anyone
+        // knows the days claims nothing on the grid.
+        start_date: startDate || null,
+        end_date:   endDate   || null,
+        note: (note || '').trim() || null,
+        created_by: me
+      }).select().single();
+    if(error) throw error;
+    return data || null;
+  } catch(e){
+    console.error('wbAddTripAircraft', e);
+    showToast('Trip saved, but the aircraft could not be attached.');
+    return null;
+  }
 }
 
 async function saveWorkbenchTrip(trip){
@@ -22174,6 +22212,13 @@ async function schedEntryToWorkbench(){
 
   const saved = await saveWorkbenchTrip(seed);
   if(!saved) return;   // saveWorkbenchTrip has already said why.
+
+  // Dragged on an aircraft row, so that aeroplane is on the trip for exactly
+  // the days that were dragged. tail_number is still written by the save above
+  // and is now display only -- nothing derives days from it any more.
+  if(e.ownerKind === 'aircraft'){
+    await wbAddTripAircraft(saved.id, e.ownerId, start, end, null);
+  }
 
   closeSchedEntry();
   // The trip is real, so the cache must hold it before the workbench paints --
