@@ -1410,8 +1410,11 @@
      Scoped to .sched-months and not to the blank mode generally, because the
      aircraft rows ARE rows of that table and keep their columns. */
   .sched-months .sched-tnum-m,
-  .sched-months .sched-tnum-y{ background:transparent; }
-  .sched-months .sched-tgrp{ border-right:0; }
+  .sched-months .sched-tnum-y,
+  .sched-tally-top .sched-tnum-m,
+  .sched-tally-top .sched-tnum-y{ background:transparent; }
+  .sched-months .sched-tgrp,
+  .sched-tally-top .sched-tgrp{ border-right:0; }
   /* And the column's own left edge goes with them. It marks where the tally
      starts, which the heading row directly below already says in colour, so in
      the band it was a line doing no work -- and it sat a hair inboard of the
@@ -1763,20 +1766,18 @@
      and its sticky name and tally paint over anything drawn on the row box, so
      a border-top there would come out broken in two places. The heading is one
      full-width block with nothing over it. */
-  .sched-band{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
-    color:var(--fog-500); padding:12px 0 5px 2px; position:sticky; left:0;
-    border-bottom:1px solid var(--hairline); }
-  /* *** THE AIRCRAFT BAND IS A HEADER ROW, NOT A CAPTION. ***
+  /* .sched-band, the old caption rule, went with the last band that used one. */
+  /* *** EVERY BAND IS A HEADER ROW, NOT A CAPTION. ***
      Crew are counted in Duty / PTO / Home; a tail is counted in Away / Maint.
      Two different tables cannot share one row of labels, so the aircraft band
-     carries its own -- and once it does, it is a header and should look like the
-     one at the top of the grid rather than like the PILOTS caption with a block
-     pinned to the far right (Kyle, 4 Sep 2026: it read as an afterthought).
-     So it is a real .sched-row: sticky name cell holding the word, a filled
-     strip across the days, and the tally block built by the same function every
-     other row uses -- which is what keeps its width honest. Nothing is measured.
+     had to carry its own -- and once one band did, a caption above the others
+     read as an afterthought. Kyle, 4 Sep 2026: three distinct grids, three
+     headers, and the top row drops its labels so they are not printed twice.
+     Each is a real .sched-row: sticky name cell holding the word, a filled strip
+     across the days, and the tally block built by the same function every other
+     row uses -- which is what keeps its width honest. Nothing is measured.
      The strip carries no day numbers. They are already at the top of the grid
-     and repeating them here would say the aircraft rows are a separate table. */
+     and repeating them per band would be three answers to one question. */
   .sched-band-row{ margin-top:14px; }
   .sched-band-row .sched-name{ background:var(--panel-700);
     justify-content:flex-end; padding-bottom:4px; }
@@ -4263,7 +4264,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-05T04:05:00Z';
+const BUILD_VERSION = '2026-09-05T04:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -24684,11 +24685,22 @@ function renderScheduleView(){
   //   mode 'crew'  -- the numbers
   //   mode 'blank' -- the month band and the aircraft rows, which carry the
   //                   column and never a figure
-  //   mode 'ac'     -- an aircraft row: Away and Maint
-  //   mode 'achead' -- the labels for those, carried by the aircraft band
+  //   mode 'ac'       -- an aircraft row: Away and Maint
+  //   mode 'crewhead' -- the labels carried by a crew band (Pilots, Cabin crew)
+  //   mode 'achead'   -- the labels carried by the aircraft band
+  //
+  // *** THE TOP ROW NO LONGER CARRIES LABELS. ***
+  // Each band now heads its own table, so the top row's DUTY / PTO / HOME sat
+  // about thirty pixels above the identical set in the PILOTS band. It keeps its
+  // day numbers and it keeps the Duty / Ave button and chevron, which is the
+  // control for every band and does not move (Kyle, 4 Sep 2026). Its groups are
+  // emitted silent, because the block still has to be the width of every other
+  // block in the column.
   function tallyCellHTML(mode, id){
-    const isHead = (mode === 'head' || mode === 'achead');
-    const isAc   = (mode === 'ac'   || mode === 'achead');
+    const isBandHead = (mode === 'crewhead' || mode === 'achead');
+    const isHead     = isBandHead;
+    const isAc       = (mode === 'ac' || mode === 'achead');
+    const isTopHead  = (mode === 'head');
     const cy = (mode === 'crew') ? tallyYearCounts[id]
              : (mode === 'ac')   ? tallyAcYear[id]  : null;
     const cm = (mode === 'crew') ? tallyMonthCounts[id]
@@ -24740,7 +24752,10 @@ function renderScheduleView(){
              '</div>';
     };
     let x = '<div class="sched-tallyx">';
-    if(isAc){
+    if(isTopHead){
+      // Silent, and the width is the whole job. See the note above the function.
+      x += voidGrp() + voidGrp() + voidGrp();
+    } else if(isAc){
       x += grp('Away', 'away', 'away') +
            grp('Maint', 'maint', 'maint') +
            voidGrp();
@@ -24749,10 +24764,10 @@ function renderScheduleView(){
            grp('PTO', 'pto', 'pto') +
            grp('Home', 'home', 'home');
     }
-    if(tallySoft && isAc){
+    if(tallySoft && (isAc || isTopHead)){
       // The soft column is admin-only and belongs to people. When it is on, the
       // aircraft rows need a slot of the same width or the two bands part company
-      // for exactly the reason above.
+      // for exactly the reason above. The top row needs one for the same reason.
       x += '<div class="sched-tgrp sched-tgrp-void">' +
              '<div class="sched-tgrp-h"></div>' +
              '<div class="sched-tgrp-n">' +
@@ -24773,7 +24788,10 @@ function renderScheduleView(){
     // against. The aircraft header keeps the slot -- it is 44px of the shared
     // width -- and puts nothing in it. The chevron stays on the crew header,
     // which is the control for both bands.
-    const dev = (mode === 'head')
+    // The Duty / Ave button and its chevron stay in the top row and do not move
+    // into a band (Kyle, 4 Sep 2026). A band head keeps the 44px slot -- it is
+    // part of the shared width -- and puts nothing in it.
+    const dev = isTopHead
       ? '<span class="sched-tdev-l">Duty' +
           '<span class="sched-tchev" aria-hidden="true">&#9656;</span></span>' +
         '<span class="sched-tdev-l">Ave</span>'
@@ -24787,10 +24805,12 @@ function renderScheduleView(){
     // schedUpdateTallyMonth walks [data-tally-id] and writes crew figures into
     // it. An aircraft id in that list would find no entry in the crew counts and
     // every one of its numbers would be blanked on the first scroll.
-    return '<div class="sched-tally' + (isHead ? ' sched-tally-head' : '') + '"' +
+    return '<div class="sched-tally' + (isHead ? ' sched-tally-head' : '') +
+             (isTopHead ? ' sched-tally-top' : '') + '"' +
              ((mode === 'crew') ? ' data-tally-id="' + escapeHtml(String(id)) + '"' : '') +
              ((mode === 'ac')   ? ' data-tally-ac="' + escapeHtml(String(id)) + '"' : '') +
-             ' data-sched-tally' + (isHead ? ' aria-expanded="' + (tallyOpen ? 'true' : 'false') + '"' : '') + '>' +
+             ' data-sched-tally' +
+             ((isHead || isTopHead) ? ' aria-expanded="' + (tallyOpen ? 'true' : 'false') + '"' : '') + '>' +
              x + '<div class="sched-tdev">' + dev + '</div>' +
            '</div>';
   }
@@ -24869,20 +24889,18 @@ function renderScheduleView(){
 
   function bandHTML(label, rows, idx, kind, nameOf, subOf){
     if(!rows.length) return '';
-    let h;
-    if(kind === 'aircraft'){
-      // Same construction as every other row: sticky name, one cell per day,
-      // tail, tally. That is what guarantees the headings land over their own
-      // numbers -- there is no width stated here.
-      h = '<div class="sched-row sched-band-row">' +
-            '<div class="sched-name">' +
-              '<span class="sched-band-name-t">' + escapeHtml(label) + '</span>' +
-            '</div>';
-      days.forEach(function(){ h += '<div class="sched-bandcell"></div>'; });
-      h += '<div class="sched-tail"></div>' + tallyCellHTML('achead') + '</div>';
-    } else {
-      h = '<div class="sched-band">' + escapeHtml(label) + '</div>';
-    }
+    // *** EVERY BAND IS A HEADER ROW. ***
+    // Three tables, three headers (Kyle, 4 Sep 2026). Built exactly as any other
+    // row is -- sticky name, one cell per day, tail, tally -- which is what makes
+    // the headings land over their own numbers. No width is stated here.
+    // The strip carries no day numbers: they are already at the top of the grid.
+    let h = '<div class="sched-row sched-band-row">' +
+              '<div class="sched-name">' +
+                '<span class="sched-band-name-t">' + escapeHtml(label) + '</span>' +
+              '</div>';
+    days.forEach(function(){ h += '<div class="sched-bandcell"></div>'; });
+    h += '<div class="sched-tail"></div>' +
+         tallyCellHTML(kind === 'crew' ? 'crewhead' : 'achead') + '</div>';
     rows.forEach(function(r){
       // Crew only. An aircraft is not anybody's row, and matching an aircraft id
       // against a user id could only ever be a coincidence, but the kind check
@@ -25886,9 +25904,9 @@ document.addEventListener('click', async function(e){
     if(twrap){
       const nowOpen = !twrap.classList.contains('is-tally-open');
       twrap.classList.toggle('is-tally-open', nowOpen);
-      // Two headers now -- the crew one at the top and the aircraft band's --
-      // and they are one control, so they must not report different states.
-      twrap.querySelectorAll('.sched-tally-head[data-sched-tally]').forEach(function(th){
+      // Four headers now -- the top row and one per band -- and they are one
+      // control, so they must not report different states.
+      twrap.querySelectorAll('[data-sched-tally][aria-expanded]').forEach(function(th){
         th.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
       });
       schedSetTallyOpen(nowOpen);
