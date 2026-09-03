@@ -1284,7 +1284,7 @@
   .sched-tgrp{ flex:0 0 auto; display:flex; flex-direction:column;
     border-right:1px solid var(--hairline); }
   .sched-tgrp-h{ flex:0 0 auto; font-size:10px; letter-spacing:0.04em;
-    color:var(--paper-050); text-align:center; line-height:1.2; }
+    text-align:center; line-height:1.2; }
   .sched-tgrp-n{ flex:1 1 auto; display:flex; align-items:stretch; }
   .sched-tnum{ flex:1 1 0; min-width:var(--sched-tnum-w);
     display:flex; align-items:center; justify-content:center; line-height:1.2; }
@@ -1304,21 +1304,35 @@
        pto      #AB1E41 -> 171,30,65
        other    #9DB2EE -> 157,178,238
        soft_day #D87F26 -> 216,127,38 */
-  .sched-tgrp-duty{ --tgrp-rgb:36,204,120; }
-  .sched-tgrp-pto { --tgrp-rgb:171,30,65; }
-  .sched-tgrp-home{ --tgrp-rgb:157,178,238; }
-  .sched-tgrp-soft{ --tgrp-rgb:216,127,38; }
-  /* *** THE COLOUR IS THE BACKGROUND, NOT THE TEXT. ***
-     Setting the heading text to the raw category colour was the obvious build
-     and it fails on one of the four: #AB1E41 on --panel-700 measures 1.83:1,
-     which is not a readable label, it is a smudge. Tinting the band instead and
-     leaving the text --paper-050 gives the same colour code and cannot be
-     illegible at any hue -- the worst case here is 9.8:1. */
-  .sched-tgrp-h{ background:rgba(var(--tgrp-rgb), 0.30); }
-  /* Month is the LIGHTER of the two: it is the number being worked with today,
-     and the year behind it is context (Kyle, 4 Sep 2026). */
-  .sched-tnum-m{ background:rgba(var(--tgrp-rgb), 0.20); }
-  .sched-tnum-y{ background:rgba(var(--tgrp-rgb), 0.10); }
+     *** THE TEXT COLOUR IS FORCED BY THE FILL, NOT CHOSEN. ***
+     The grid never puts text on these colours -- its bars are bare -- so this
+     is a problem the header creates and has to solve. There is no single text
+     colour that survives all four fills. Measured against --paper-050 and
+     --ink-900 (WCAG relative luminance, both directions):
+       #24CC78  ink 8.30:1   paper 1.77:1  -> ink
+       #9DB2EE  ink 8.35:1   paper 1.95:1  -> ink
+       #D87F26  ink 5.81:1   paper 2.53:1  -> ink
+       #AB1E41  ink 2.50:1   paper 5.87:1  -> paper
+     Three light fills take dark text and the one dark fill takes light text.
+     That is not an inconsistency to tidy away -- it is what legibility costs
+     when the fill is fixed. If a SCHED_COLORS hex changes, re-measure. */
+  .sched-tgrp-duty{ --tgrp-rgb:36,204,120;  --tgrp-ink:var(--ink-900); }
+  .sched-tgrp-pto { --tgrp-rgb:171,30,65;   --tgrp-ink:var(--paper-050); }
+  .sched-tgrp-home{ --tgrp-rgb:157,178,238; --tgrp-ink:var(--ink-900); }
+  .sched-tgrp-soft{ --tgrp-rgb:216,127,38;  --tgrp-ink:var(--ink-900); }
+  /* *** THE HEADER IS THE GRID COLOUR AT FULL STRENGTH. ***
+     Kyle, 4 Sep 2026: the headers match the bars on the grid. An earlier build
+     washed these over the panel at 30/20/10 percent, which kept the hue and
+     lost it -- ten percent of that green over navy reads as slightly warm grey,
+     not green. The colour code only works if it is the same colour. */
+  .sched-tgrp-h{ background:rgb(var(--tgrp-rgb)); color:var(--tgrp-ink); }
+  /* *** THE NUMBERS ARE NEUTRAL; ONLY THE HEADER CARRIES THE CODE. ***
+     Month lighter, year darker, using the grid's own two panel steps rather
+     than a tint of the category colour -- a washed-out category colour was what
+     failed above, and repeating it under the figures would fail the same way.
+     Month is the number being worked with today; the year behind it recedes. */
+  .sched-tnum-m{ background:var(--panel-700); }
+  .sched-tnum-y{ background:var(--panel-800); }
   /* Soft days carry one figure, not two: the question is who leans on them over
      a season, not in a fortnight. The group needs no rule of its own -- one
      .sched-tnum instead of two makes it half width by itself. */
@@ -4054,7 +4068,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T14:25:00Z';
+const BUILD_VERSION = '2026-09-04T15:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
