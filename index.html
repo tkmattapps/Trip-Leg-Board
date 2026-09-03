@@ -1261,7 +1261,15 @@
      (184,196,217) over (29,51,80) composites to (54,74,102).
      Not on the month band, which was just made flat on purpose. */
   .sched-row:not(.sched-months) > .sched-tally > .sched-tdev{
-    background:var(--hairline); }
+    background:var(--hairline);
+    /* *** THE ROW LINES HAVE TO RUN DARK HERE, NOT LIGHT. ***
+       The lift above is --hairline over --panel-700, which composites to
+       (54,74,102) -- the exact colour a hairline already is. So the row
+       separators were still being drawn under this column and had nothing to
+       show against. Drawing them in --panel-700 instead puts the line one step
+       DOWN from the cell rather than one step up: same 1px separator, opposite
+       direction, because the cell is now lighter than the grid it sits in. */
+    border-bottom:1px solid var(--panel-700); }
   /* *** THE HEAD CELL IS A CONTROL AND SHOULD LOOK LIKE ONE. ***
      Two lines, "Duty" over "Ave" -- the column is 44px with 8px of padding each
      side, so "Duty Ave" on one line does not fit and widening it would take that
@@ -4136,7 +4144,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T20:10:00Z';
+const BUILD_VERSION = '2026-09-04T20:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
