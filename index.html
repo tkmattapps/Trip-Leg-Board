@@ -1379,6 +1379,11 @@
   .sched-months .sched-tnum-m,
   .sched-months .sched-tnum-y{ background:transparent; }
   .sched-months .sched-tgrp{ border-right:0; }
+  /* And the column's own left edge goes with them. It marks where the tally
+     starts, which the heading row directly below already says in colour, so in
+     the band it was a line doing no work -- and it sat a hair inboard of the
+     head row's edge, which is what drew attention to it (Kyle, 4 Sep 2026). */
+  .sched-months .sched-tally{ border-left:0; }
   /* Soft days carry one figure, not two: the question is who leans on them over
      a season, not in a fortnight. The group needs no rule of its own -- one
      .sched-tnum instead of two makes it half width by itself. */
@@ -4131,7 +4136,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T19:55:00Z';
+const BUILD_VERSION = '2026-09-04T20:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
