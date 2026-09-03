@@ -1758,6 +1758,25 @@
     background-image:linear-gradient(rgba(184,196,217,0.14), rgba(184,196,217,0.14)); }
   .sched-cell-today .sched-dnum{ color:#fff; font-weight:600; }
   .sched-cell-today .sched-dow{ color:var(--fog-300); }
+  /* *** THE CROSSHAIR: WHERE AM I, AND ON WHAT DAY. ***
+     A ring on a 30px square says which cell without saying whose row or which
+     date, and both of those are off at the edge of a wide grid. So the focused
+     cell lights its own name on the left and its own day number at the top, and
+     the eye reads the pair as crosshairs (Kyle, 4 Sep 2026).
+     *** BRIGHTER TEXT THAN HALO, OR IT READS AS BLUR, NOT LIGHT. ***
+     The recorded rule from the tagline and the month-trips button. The name is
+     already --paper-050, the brightest thing here, so it only needs the halo.
+     The day number is --fog-300 and is lifted to --paper-050 FIRST -- an amber
+     halo behind fog-grey has no edge to spill off and comes out muddy.
+     No tight core: the radius is scaled to the type (12px name, 11px figure ->
+     6px bloom) rather than reused from somewhere it happened to work.
+     Written at (0,3,0) and placed after .sched-col-on and .sched-cell-today,
+     both of which set this same colour and would otherwise win on order. */
+  .sched-name.sched-name-focus .sched-name-main{
+    text-shadow:0 0 6px var(--amber-700); }
+  .sched-hcell.sched-hcell-focus .sched-dnum{
+    color:var(--paper-050); text-shadow:0 0 6px var(--amber-700); }
+  .sched-hcell.sched-hcell-focus .sched-dow{ color:var(--fog-300); }
   /* THE VIOLATION, GIVEN A STRUCTURAL REGISTER RATHER THAN A COLOUR.
      With PTO already red, a trip landing on a protected day has nowhere louder
      to escalate chromatically -- the constraint and the breach would look
@@ -2113,8 +2132,19 @@
   /* Only an admin sees a cell as touchable. */
   .sched-can-edit .sched-cell{ cursor:pointer; }
   /* Not gated on .sched-can-edit any more: every viewer can OPEN a day to read
-     it, so every viewer gets the affordance saying so. */
-  .sched-cell:hover{ box-shadow:inset 0 0 0 1px var(--fog-500); }
+     it, so every viewer gets the affordance saying so.
+     *** THE RING IS A CLASS, NOT :hover. ***
+     It was :hover until 4 Sep 2026, when the name and the day number were asked
+     to light up with it. Neither of those is reachable from a :hover on the cell
+     -- the name is in the same row and could just be reached with :has(), but the
+     day number is in a different row entirely and no selector can say "the header
+     cell in this column". That needs script, and once script is setting the day
+     number it must also be what sets the ring, or the two can disagree: on iOS a
+     :hover sticks after a tap and clears on rules of its own, so the ring would
+     sit on one cell while the glow sat on another.
+     Written as .sched-cell.sched-cell-focus, matching the (0,2,0) weight the
+     :hover selector had, so nothing further down the sheet changes hands. */
+  .sched-cell.sched-cell-focus{ box-shadow:inset 0 0 0 1px var(--fog-500); }
   /* Quick note sheet. Borrows .chat-row wholesale -- same list, same question. */
   .qn-row-off{ opacity:0.5; }
   .qn-row-open{ border-bottom:none; }
@@ -4281,7 +4311,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-05T05:20:00Z';
+const BUILD_VERSION = '2026-09-05T05:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -23286,11 +23316,62 @@ let schedPressWasGridCell = false;
 // Mouse and touch both route through the same three calls. Touch needs
 // elementFromPoint because a touchmove keeps firing at the element the touch
 // STARTED on, not the one under the finger.
+// *** THE FOCUS CROSSHAIR. ***
+// One cell at a time carries the ring, and its name cell and its day header
+// light with it. Everything is found by walking from the cell that was actually
+// touched -- the row via closest(), the header via the ISO date -- so nothing
+// here counts columns or measures anything, and it cannot drift when the tally
+// opens or the window scrolls.
+//
+// Clearing is by class, not by remembering the last node: a re-render replaces
+// the DOM underneath us and a stale reference would leak a lit name into a grid
+// that no longer has that row.
+let schedFocusDay = null;
+function schedSetFocusCell(cell){
+  const day = cell ? cell.getAttribute('data-sched-day') : null;
+  if(day === schedFocusDay && cell && cell.classList.contains('sched-cell-focus')) return;
+  schedClearFocusCell();
+  if(!cell) return;
+  schedFocusDay = day;
+  cell.classList.add('sched-cell-focus');
+  const row = cell.closest ? cell.closest('.sched-row') : null;
+  const nm = row ? row.querySelector('.sched-name') : null;
+  if(nm) nm.classList.add('sched-name-focus');
+  if(day){
+    const h = document.querySelector('[data-sched-hday="' + day + '"]');
+    if(h) h.classList.add('sched-hcell-focus');
+  }
+}
+function schedClearFocusCell(){
+  schedFocusDay = null;
+  document.querySelectorAll('.sched-cell-focus, .sched-name-focus, .sched-hcell-focus')
+    .forEach(function(el){
+      el.classList.remove('sched-cell-focus');
+      el.classList.remove('sched-name-focus');
+      el.classList.remove('sched-hcell-focus');
+    });
+}
+// A mouse moving over the grid moves the focus; leaving the grid drops it.
+// A TAP DOES NOT DROP IT -- it stays on the last cell touched, which is what
+// makes the crosshair useful on a tablet at all (Kyle, 4 Sep 2026). mouseover
+// rather than mouseenter because it delegates; a touch device fires neither, so
+// this listener is simply inert there and the touchstart below does the work.
+document.addEventListener('mouseover', function(ev){
+  const t = ev.target;
+  if(!t || !t.closest) return;
+  const cell = t.closest('[data-sched-day]');
+  if(cell){ schedSetFocusCell(cell); return; }
+  // Still inside the grid -- over a name, the tally, the header -- so hold the
+  // last cell rather than flickering it off. Only leaving the grid clears it.
+  if(!t.closest('.sched-wrap')) schedClearFocusCell();
+});
+
 document.addEventListener('mousedown', function(ev){
   if(ev.button !== 0) return;
   const cell = ev.target && ev.target.closest ? ev.target.closest('[data-sched-day]') : null;
   schedPressWasGridCell = !!cell;
   if(!cell) return;
+  schedSetFocusCell(cell);
   schedDragBegin(cell);
 });
 document.addEventListener('mousemove', function(ev){
@@ -23308,6 +23389,10 @@ document.addEventListener('touchstart', function(ev){
   const cell = ev.target && ev.target.closest ? ev.target.closest('[data-sched-day]') : null;
   schedPressWasGridCell = !!cell;
   if(!cell) return;
+  // BEFORE the admin gate below. The crosshair is a reading aid, not an editing
+  // one -- a crew member scrolled out to November needs to know whose row and
+  // which date they are looking at just as much as an admin does.
+  schedSetFocusCell(cell);
   if(!rosterViewerIsAdmin()) return;   // no selection to arm; leave scrolling alone
   const t = ev.touches[0];
   if(!t) return;
@@ -24898,8 +24983,17 @@ function renderScheduleView(){
     // A line on the 1st: the month boundary survives any brightness choice.
     if(dt.getDate() === 1) cls += ' sched-cell-mstart';
     if(iso === todayISO) cls += ' sched-cell-today';
+    // data-sched-hday is what the focus crosshair matches on. NOT an index into
+    // days[]: the tally, the tail and the name cell are all siblings in this row
+    // too, so "the nth child" and "the nth day" are different numbers, and the
+    // day cells in a body row sit behind a different lead cell again. Matching
+    // an ISO date cannot be off by one. It is a separate attribute from
+    // data-sched-day because that one means "a cell you can drag and open", and
+    // three different handlers already resolve a gesture with closest() on it --
+    // a header cell answering to it would arm a drag on the date strip.
     head += '<div class="' + cls + '" data-sched-mkey="' +
-              dt.getFullYear() + '-' + dt.getMonth() + '">' +
+              dt.getFullYear() + '-' + dt.getMonth() + '"' +
+              ' data-sched-hday="' + iso + '">' +
               '<span class="sched-dow">' + 'SMTWTFS'.charAt(dow) + '</span>' +
               '<span class="sched-dnum">' + dt.getDate() + '</span>' +
             '</div>';
