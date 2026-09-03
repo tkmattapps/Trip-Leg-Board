@@ -4069,7 +4069,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T16:20:00Z';
+const BUILD_VERSION = '2026-09-04T17:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -21733,20 +21733,42 @@ function schedUpdateTripsBtn(y, m){
 // took anyone to look.
 function schedUpdateTallyMonth(y, m){
   if(!schedTallyLive) return;
-  const nodes = document.querySelectorAll('.sched-tallyx[data-tally-id]');
+  const nodes = document.querySelectorAll('.sched-tally[data-tally-id]');
   if(!nodes.length) return;
   // Day 0 of the next month is the last day of this one -- the same idiom
   // schedWindow uses, so month length is never counted by hand.
   const lo = schedISO(new Date(y, m, 1));
   const hi = schedISO(new Date(y, m + 1, 0));
-  const counts = tallyCountRange(schedTallyLive.idx, lo, hi,
-                                 schedTallyLive.hires, schedTallyLive.today);
+  // *** THE YEAR COLUMN IS CUMULATIVE TO THE MONTH IN FOCUS, NOT THE WHOLE YEAR. ***
+  // Kyle, 4 Sep 2026: in January the two columns read the same; in February the
+  // month stands alone and the year is January plus February. So Y is 1 January
+  // of the focused month's year up to the END of that month -- year to date as
+  // at the month you are looking at, not as at today.
+  //
+  // The year comes from the month in focus, not from the anchor. The strip runs
+  // from December of the previous year into January of the next, so scrolling
+  // off either end must take the year with it -- a December 2025 column counting
+  // from 1 January 2026 would run backwards and return nothing.
+  const yLo = y + '-01-01';
+  const mCounts = tallyCountRange(schedTallyLive.idx, lo, hi,
+                                  schedTallyLive.hires, schedTallyLive.today);
+  const yCounts = tallyCountRange(schedTallyLive.idx, yLo, hi,
+                                  schedTallyLive.hires, schedTallyLive.today);
+  // The deviation is a reading of the same year-to-date window, so it moves with
+  // it. Comparing a running total against an average taken over a different span
+  // would be the one thing this column must never do.
+  const devs = tallyDeviations(yCounts, schedTallyLive.people);
+  const put = function(sp, src, id){
+    const c = src[id];
+    const v = c ? c[sp.getAttribute('data-tm')] : null;
+    sp.textContent = (v == null) ? '' : String(v);
+  };
   nodes.forEach(function(box){
-    const c = counts[box.getAttribute('data-tally-id')];
-    box.querySelectorAll('.sched-tnum-m[data-tm]').forEach(function(sp){
-      const v = c ? c[sp.getAttribute('data-tm')] : null;
-      sp.textContent = (v == null) ? '' : String(v);
-    });
+    const id = box.getAttribute('data-tally-id');
+    box.querySelectorAll('.sched-tnum-m[data-tm]').forEach(function(sp){ put(sp, mCounts, id); });
+    box.querySelectorAll('.sched-tnum-y[data-tm]').forEach(function(sp){ put(sp, yCounts, id); });
+    const dev = box.querySelector('.sched-tdev');
+    if(dev) dev.textContent = tallyText(devs[id]);
   });
 }
 
@@ -22148,6 +22170,22 @@ function tallyCountRange(crewIdx, lo, hi, hireDatesById, today){
 // so a July hire with proportionally the same load reads near zero rather than
 // looking six months idle. Someone with no available days is left out of both
 // the average and the result -- they cannot be treated fairly or unfairly yet.
+// Sign ALWAYS shown on a non-zero value, both directions (Kyle, 4 Sep 2026):
+// +4 and -4 both carry one, zero reads as a bare 0. Null is a person who cannot
+// be compared -- no available days, or the only one of their job title -- and an
+// em dash says "not measurable" where 0 would say "exactly fair". Clamped at two
+// digits so an outlier cannot widen the column.
+//
+// At module scope because the deviation is written from two places now: once at
+// render, and again on every month change. Two copies of a formatter is two
+// places for the em dash to stop matching.
+function tallyText(dev){
+  if(dev == null) return '\u2014';
+  if(dev === 0) return '0';
+  const capped = Math.max(-99, Math.min(99, dev));
+  return (capped > 0 ? '+' : '\u2212') + Math.abs(capped);
+}
+
 function tallyDeviations(counts, peopleById){
   const groups = {};
   Object.keys(counts || {}).forEach(function(userId){
@@ -24248,32 +24286,27 @@ function renderScheduleView(){
     tallyPeople[p.id] = { title: p.title || '' };
   });
   const tallyToday = new Date();
+  // Year to date as at the month being shown, NOT the whole calendar year: in
+  // January the two columns read the same, and each month after that adds to the
+  // running total (Kyle, 4 Sep 2026). Ends on the same day the month column
+  // ends, so the first paint already agrees with what schedUpdateTallyMonth will
+  // write on the first scroll -- otherwise the figures would jump on the first
+  // month change for no reason the reader could see.
   const tallyYearCounts = tallyCountRange(crewIdx, tallyYear + '-01-01',
-                                          tallyYear + '-12-31', tallyHires, tallyToday);
+                                          schedISO(w.monthLast), tallyHires, tallyToday);
   // "Monthly" is the month the grid is SHOWING, not the calendar month -- the
   // panel describes what is on screen, the same way the deviation's year does.
   const tallyMonthCounts = tallyCountRange(crewIdx, schedISO(w.monthFirst),
                                            schedISO(w.monthLast), tallyHires, tallyToday);
   // The same three inputs, kept for schedUpdateTallyMonth. Set on every render so
   // a stale index cannot outlive the grid it was built from.
-  schedTallyLive = { idx: crewIdx, hires: tallyHires, today: tallyToday };
+  schedTallyLive = { idx: crewIdx, hires: tallyHires, today: tallyToday,
+                     people: tallyPeople };
   const tallyDevs = tallyDeviations(tallyYearCounts, tallyPeople);
   // Soft days are admin-only. A crew member seeing a count of their own requests
   // sitting in a fairness table would read it as a charge sheet, which is not
   // what it is for.
   const tallySoft = (typeof rosterViewerIsAdmin === 'function') ? rosterViewerIsAdmin() : false;
-
-  // Sign ALWAYS shown on a non-zero value, both directions (Kyle, 4 Sep 2026):
-  // +4 and -4 both carry one, zero reads as a bare 0. Null is a person who
-  // cannot be compared -- no available days, or the only one of their job title
-  // -- and an em dash says "not measurable" where 0 would say "exactly fair".
-  // Clamped at two digits so an outlier cannot widen the column.
-  function tallyText(dev){
-    if(dev == null) return '\u2014';
-    if(dev === 0) return '0';
-    const capped = Math.max(-99, Math.min(99, dev));
-    return (capped > 0 ? '+' : '\u2212') + Math.abs(capped);
-  }
 
   // *** ONE BUILDER FOR EVERY ROW. ***
   // The month band, the day header, each crew row and each aircraft row all end
@@ -24298,18 +24331,15 @@ function renderScheduleView(){
                '<div class="sched-tgrp-n">' +
                  '<span class="sched-tnum sched-tnum-m" data-tm="' + k + '">' +
                    (isHead ? 'M' : num(cm, k)) + '</span>' +
-                 '<span class="sched-tnum sched-tnum-y">' + (isHead ? 'Y' : num(cy, k)) + '</span>' +
+                 '<span class="sched-tnum sched-tnum-y" data-tm="' + k + '">' +
+                   (isHead ? 'Y' : num(cy, k)) + '</span>' +
                '</div>' +
              '</div>';
     };
     // The spreadsheet's own three headings, in its order. "Flt/Trg" rather than
     // "Duty" because the pinned column is already called Duty and two columns
     // with one name is worse than one abbreviation.
-    // The row is addressable so the month figures can be rewritten in place as
-    // the grid scrolls. Crew rows only -- the head and blank rows carry no id
-    // and hold no figure to update.
-    let x = '<div class="sched-tallyx"' +
-              ((mode === 'crew') ? ' data-tally-id="' + escapeHtml(String(id)) + '"' : '') + '>' +
+    let x = '<div class="sched-tallyx">' +
               grp('Flt/Trg', 'duty', 'duty') +
               grp('PTO', 'pto', 'pto') +
               grp('Home', 'home', 'home');
@@ -24317,7 +24347,8 @@ function renderScheduleView(){
       x += '<div class="sched-tgrp sched-tgrp-soft">' +
              '<div class="sched-tgrp-h">' + (isHead ? 'Soft' : '') + '</div>' +
              '<div class="sched-tgrp-n">' +
-               '<span class="sched-tnum sched-tnum-y">' + (isHead ? 'Y' : num(cy, 'soft')) + '</span>' +
+               '<span class="sched-tnum sched-tnum-y" data-tm="soft">' +
+                 (isHead ? 'Y' : num(cy, 'soft')) + '</span>' +
              '</div>' +
            '</div>';
     }
@@ -24327,7 +24358,11 @@ function renderScheduleView(){
       : ((mode === 'crew') ? tallyText(tallyDevs[id]) : '');
     // The WHOLE column opens it, header included, so the target is not per row
     // (Kyle, 4 Sep 2026).
+    // The id sits on the OUTER container, not on .sched-tallyx: the deviation is
+    // a SIBLING of the detail block, and an id on the inner one could not reach
+    // it. Crew rows only -- head and blank rows hold no figure to update.
     return '<div class="sched-tally' + (isHead ? ' sched-tally-head' : '') + '"' +
+             ((mode === 'crew') ? ' data-tally-id="' + escapeHtml(String(id)) + '"' : '') +
              ' data-sched-tally' + (isHead ? ' aria-expanded="' + (tallyOpen ? 'true' : 'false') + '"' : '') + '>' +
              x + '<div class="sched-tdev">' + dev + '</div>' +
            '</div>';
