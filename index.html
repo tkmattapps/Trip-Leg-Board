@@ -2194,27 +2194,6 @@
      which is what should happen to a crew that is not the normal one.
      The add buttons size to their own text here; 160px each would have put the
      wrap straight back. */
-  @media (max-width:520px){
-    /* *** THE PHONE SCROLLS. IT DOES NOT COMPRESS. ***
-       Every previous attempt here tried to fit tail, PIC, SIC and cabin crew
-       inside 390px, and each one bought the fit by making something narrower
-       than the row above or below it. Kyle's call, and it is the right one: the
-       rows matter more than the fold. The editor keeps the widths it has on the
-       Mac and the iPad and runs off the right-hand side, and the table it sits
-       in already scrolls sideways.
-       min-width is what forces that -- without it the editor shrinks to the
-       table's width and the wrapping starts again. 700px is the reserved
-       aircraft column plus three seats plus the gaps between them. */
-    .wb-edit{ min-width:700px; }
-    .wb-edit-half{ flex-wrap:nowrap; }
-    /* Delete drops below rather than adding its width to the scroll. */
-    .wb-edit-half-actions{
-      flex:1 1 100%; margin-left:0; align-self:auto;
-      justify-content:flex-end; align-items:flex-start;
-    }
-    .wb-ac-none-long{ display:none; }
-    .wb-ac-none-short{ display:inline; }
-  }
   /* align-self:stretch is what puts Delete on the BOTTOM edge -- without it the
      column is only as tall as the button and flex-end has nothing to push
      against. */
@@ -2330,6 +2309,37 @@
   .wb-crew-adds{ display:flex; gap:8px; flex-wrap:wrap; }
   .wb-edit-note{
     grid-column:1 / -1; font-size:12px; color:var(--fog-500);
+  }
+
+  /* *** PHONE ONLY -- 520px, below any iPad. THE PHONE SCROLLS, IT DOES NOT
+     COMPRESS. ***
+     This query MUST stay below .wb-edit-half-actions and .wb-ac-none-short.
+     It used to sit above them, and a media query adds no specificity -- so the
+     two base rules further down the sheet simply won, and both overrides in
+     here were dead. Delete never moved off the fields line, kept its width and
+     its auto margin, and squeezed the crew block down to two seats. That is why
+     cabin crew stayed under PIC through four pushes: the rule that was supposed
+     to free the width was never applied at all. If a rule in here appears to do
+     nothing, check what is defined after it before changing the value.
+
+     The widths, added up rather than estimated -- border-box, so padding counts:
+       24  .wb-edit padding, 12 each side
+      160  reserved aircraft column
+       12  gap to the crew block
+      496  three 160px seats with two 8px gaps
+      ---
+      692  minimum to keep tail, PIC, SIC and cabin crew on one line
+     720 is that with a little headroom. A fourth seat still wraps, which is
+     right -- an ACM or a second cabin crew is not the normal shape of a crew. */
+  @media (max-width:520px){
+    .wb-edit{ min-width:720px; }
+    /* Delete drops to its own line instead of adding its width to the scroll. */
+    .wb-edit-half-actions{
+      flex:1 1 100%; margin-left:0; align-self:auto;
+      justify-content:flex-end; align-items:flex-start;
+    }
+    .wb-ac-none-long{ display:none; }
+    .wb-ac-none-short{ display:inline; }
   }
 
   @media (min-width:821px){
@@ -3885,7 +3895,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T03:40:00Z';
+const BUILD_VERSION = '2026-09-04T04:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
