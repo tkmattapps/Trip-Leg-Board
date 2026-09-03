@@ -2234,8 +2234,9 @@
     font-size:10px; font-weight:600; letter-spacing:0.06em;
     text-transform:uppercase; color:var(--fog-500);
   }
-  .wb-ac-none{ font-size:13px; color:var(--fog-500); }
-  .wb-ac-none-short{ display:none; }
+  /* The 'No aircraft on this trip yet.' sentence and its short phone variant
+     are gone -- the tail field is permanent now and shows an em dash instead,
+     matching an empty PIC or SIC seat. */
   /* One aeroplane is one field, so one track. It used to be three tracks plus
      an auto for the cross, which is why an unsplit row put its cross a whole
      empty column away from the select it belonged to. Dates only appear when
@@ -2292,6 +2293,12 @@
     width:160px; flex:0 0 auto; text-align:center;
   }
   .wb-ac-add:hover{ border-color:var(--amber-500); }
+  /* Visible but inert, the way an admin-gated control is. It says a second
+     aircraft is possible without pretending it is available yet. */
+  .wb-ac-add:disabled{
+    opacity:0.45; cursor:default; border-color:var(--hairline);
+  }
+  .wb-ac-add:disabled:hover{ border-color:var(--hairline); }
   .wb-field-date{ max-width:170px; }
   .wb-ac-row-split .wb-field:first-child{ max-width:200px; }
   .wb-crew-block{ grid-column:1 / -1; display:flex; flex-direction:column; gap:8px; }
@@ -2313,7 +2320,7 @@
 
   /* *** PHONE ONLY -- 520px, below any iPad. THE PHONE SCROLLS, IT DOES NOT
      COMPRESS. ***
-     This query MUST stay below .wb-edit-half-actions and .wb-ac-none-short.
+     This query MUST stay below .wb-edit-half-actions.
      It used to sit above them, and a media query adds no specificity -- so the
      two base rules further down the sheet simply won, and both overrides in
      here were dead. Delete never moved off the fields line, kept its width and
@@ -2338,8 +2345,6 @@
       flex:1 1 100%; margin-left:0; align-self:auto;
       justify-content:flex-end; align-items:flex-start;
     }
-    .wb-ac-none-long{ display:none; }
-    .wb-ac-none-short{ display:inline; }
   }
 
   @media (min-width:821px){
@@ -3895,7 +3900,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T04:20:00Z';
+const BUILD_VERSION = '2026-09-04T05:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12287,15 +12292,30 @@ function wbAircraftEditHTML(t){
   let h = '<div class="wb-ac-block">'
     + '<div class="wb-ac-head">Aircraft</div>';
 
+  // *** THE TAIL FIELD IS PERMANENT. ***
+  // It used to be replaced by the sentence 'No aircraft on this trip yet.', so
+  // a trip with no aeroplane had no aircraft field at all -- while an empty PIC
+  // or SIC still showed its select with an em dash in it. Two empty things, two
+  // different shapes. The field now always exists and reads the same way a
+  // vacant seat does.
+  //
+  // It carries data-wb-acnew rather than data-wb-acfield: there is no
+  // workbench_trip_aircraft row behind it yet, so choosing a tail has to create
+  // one. That is the same wiring the '+ Aircraft' picker uses, and the existing
+  // change handler already ignores the empty value.
+  //
+  // No 'Take off this trip' option here -- there is nothing on the trip to take
+  // off, and the field is not allowed to disappear.
   if(!rows.length){
-    // Two wordings, one shown at a time by the phone media query. The full
-    // sentence wraps to two lines in the 104px column a phone gives this block,
-    // and those two lines push + Aircraft out of line with everything beside
-    // it -- so the block changed height depending on whether the trip had an
-    // aeroplane on it yet.
-    h += '<div class="wb-ac-none">'
-      + '<span class="wb-ac-none-long">No aircraft on this trip yet.</span>'
-      + '<span class="wb-ac-none-short">None yet.</span>'
+    let opts = '<option value="">&mdash;</option>';
+    fleet.forEach(function(a){
+      opts += '<option value="' + escHtml(a.id) + '">' + escHtml(a.tail_number || '') + '</option>';
+    });
+    h += '<div class="wb-ac-row" data-wb-ac="new">'
+      + '<div class="wb-field">'
+        + '<label>Tail</label>'
+        + '<select data-wb-acnew="' + escHtml(t.id || '') + '">' + opts + '</select>'
+      + '</div>'
       + '</div>';
   }
 
@@ -12351,7 +12371,17 @@ function wbAircraftEditHTML(t){
       + '</div>';
   });
 
-  if(wbPendingAircraft && wbPendingAircraft === t.id){
+  // Three states for the tail of the block, and the order matters.
+  //
+  // With no aircraft on the trip the permanent field above IS the empty picker,
+  // so '+ Aircraft' would only add a second identical one below it. It stays on
+  // screen and greyed rather than vanishing -- the control should be visible so
+  // it is obvious a second tail is possible once the first is chosen.
+  if(!rows.length){
+    h += '<button type="button" class="wb-ac-add" disabled '
+      + 'title="Choose a tail above before adding a second aircraft.">'
+      + '+ Aircraft</button>';
+  } else if(wbPendingAircraft && wbPendingAircraft === t.id){
     let opts = '<option value="">Choose an aircraft</option>';
     fleet.forEach(function(a){
       opts += '<option value="' + escHtml(a.id) + '">' + escHtml(a.tail_number || '') + '</option>';
