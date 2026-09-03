@@ -4153,7 +4153,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T23:10:00Z';
+const BUILD_VERSION = '2026-09-04T23:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -22712,9 +22712,13 @@ function schedRunLabel(e, dayRuns){
 }
 
 function schedRunText(run){
-  // A one-day run gets NO number. "1" is noise -- the cell is already exactly
-  // one day wide and says so by being that wide.
-  if(!run || run.len < 2) return '';
+  // EVERY run carries its length, one-day runs included (Kyle, 4 Sep 2026).
+  // The earlier rule suppressed "1" as noise on the grounds that a one-day cell
+  // already says one day by being one cell wide. It reads better the other way:
+  // with a figure on every block the eye reads a row of numbers rather than a
+  // mix of numbers and blanks, and a lone day stops looking like a bar whose
+  // label failed to render.
+  if(!run) return '';
   // Only the FIRST day carries the figure: the bar is one object, one figure.
   if(!run.isFirst) return '';
   return String(run.len);
