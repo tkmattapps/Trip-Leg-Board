@@ -1278,15 +1278,21 @@
      there today -- so that line is known to fit rather than predicted to. "Ave"
      is shorter than "Duty", so line two fits by the same evidence.
      Two lines at 10px/1.2 = 24px in a 34px head cell.
-     *** SCOPED TO THE TOP ROW, NOT TO .sched-tally-head. *** It was on the head
-     class until 4 Sep 2026, when the top row stopped being a head -- the band
-     rows took that class and the top row kept the control. The stacking has to
-     follow the chevron, or "Duty Ave" goes back onto one line and overflows. */
-  .sched-tally-top .sched-tdev{ flex-direction:column; gap:0; padding:0 4px; }
+     *** THIS FOLLOWS THE WORDS, NOT THE CHEVRON. *** It was scoped to the top
+     row for one build, while the top row held "Duty Ave". The words are now in
+     the crew band heads and the stacking went with them. */
+  .sched-tally-head .sched-tdev{ flex-direction:column; gap:0; padding:0 4px; }
   .sched-tdev-l{ display:flex; align-items:center; gap:3px; line-height:1.2; }
   /* Lifted from --fog-500, which measured 2.75:1 against the new background and
      is not a label at that ratio. --fog-300 measures 5.13:1. */
-  .sched-tally-top .sched-tdev{ color:var(--fog-300); }
+  .sched-tally-head .sched-tdev{ color:var(--fog-300); }
+  /* *** THE TOP SQUARE IS NOW ONLY A CONTROL. ***
+     With the words gone it holds one glyph and nothing else, so it is centred
+     both ways and the chevron is sized to be seen rather than to sit beside
+     10px text. 34px cell, 18px glyph, line-height 1 -- 8px clear top and bottom.
+     Kyle, 4 Sep 2026: "Duty Ave" plus a small chevron did not read as an action. */
+  .sched-tally-top .sched-tdev{ justify-content:center; align-items:center;
+    padding:0; }
   /* Plain text, no colour coding (Kyle, 4 Sep 2026). The grid already spends
      seven colours on kinds, and red-for-high would import a judgement the number
      does not make: the tally says UNEVEN is worth a look, not that duty is bad. */
@@ -1434,6 +1440,12 @@
     color:var(--fog-500); transition:transform 0.15s ease, color 0.15s ease; }
   .sched-wrap.is-tally-open .sched-tchev{ transform:rotate(90deg);
     color:var(--amber-500); }
+  /* *** AFTER .sched-tchev ON PURPOSE. ***
+     Both are single-class selectors, so they carry identical specificity and the
+     later one wins. Written above, this rule would set 18px and .sched-tchev
+     would quietly put it back to 11px -- the same failure as a value changed
+     inside a media query that something below already overrides. */
+  .sched-tchev-big{ font-size:18px; }
   /* *** THE DATES MUST SURVIVE A VERTICAL SCROLL. ***
      The vertical counterpart of the sticky name column: scrolled down to the
      aircraft band or the legend, an unlabelled row of squares is as unreadable
@@ -4269,7 +4281,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-05T04:55:00Z';
+const BUILD_VERSION = '2026-09-05T05:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -24793,14 +24805,20 @@ function renderScheduleView(){
     // against. The aircraft header keeps the slot -- it is 44px of the shared
     // width -- and puts nothing in it. The chevron stays on the crew header,
     // which is the control for both bands.
-    // The Duty / Ave button and its chevron stay in the top row and do not move
-    // into a band (Kyle, 4 Sep 2026). A band head keeps the 44px slot -- it is
-    // part of the shared width -- and puts nothing in it.
+    // *** THE LABEL SAT WITH THE CONTROL AND SHOULD NOT HAVE. ***
+    // "Duty Ave" named a figure that belongs to a band -- crew have an average,
+    // a tail does not -- while the chevron opens every band at once. Putting
+    // both in the top square made the square look like a caption, and a caption
+    // is not something anyone taps. So the words move down to the two crew band
+    // headers, over their own columns, and the top square keeps nothing but the
+    // chevron, at a size that reads as a button (Kyle, 4 Sep 2026).
+    // The aircraft band keeps its 44px of the shared width and puts nothing in
+    // it: there is no average to head.
     const dev = isTopHead
-      ? '<span class="sched-tdev-l">Duty' +
-          '<span class="sched-tchev" aria-hidden="true">&#9656;</span></span>' +
-        '<span class="sched-tdev-l">Ave</span>'
-      : ((mode === 'crew') ? tallyText(tallyDevs[id]) : '');
+      ? '<span class="sched-tchev sched-tchev-big" aria-hidden="true">&#9656;</span>'
+      : (mode === 'crewhead')
+        ? '<span class="sched-tdev-l">Duty</span><span class="sched-tdev-l">Ave</span>'
+        : ((mode === 'crew') ? tallyText(tallyDevs[id]) : '');
     // The WHOLE column opens it, header included, so the target is not per row
     // (Kyle, 4 Sep 2026).
     // The id sits on the OUTER container, not on .sched-tallyx: the deviation is
