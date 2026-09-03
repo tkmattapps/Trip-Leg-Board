@@ -2161,8 +2161,14 @@
     flex:1 1 auto; min-width:0; display:flex; gap:12px;
     align-items:flex-start; flex-wrap:wrap;
   }
-  .wb-edit-half > .wb-ac-block,
-  .wb-edit-half > .wb-crew-block{ flex:0 1 auto; min-width:0; }
+  /* The aircraft column is reserved: exactly the width of the tail field, and
+     it neither grows nor shrinks. Everything in it -- the select, the subtext,
+     + Aircraft -- is that width, and a second or third tail stacks downward
+     inside it rather than pushing the crew about. The crew takes whatever is
+     left, so PIC, SIC and cabin crew start at the same place on every trip
+     whether or not an aeroplane has been chosen yet. */
+  .wb-edit-half > .wb-ac-block{ flex:0 0 160px; min-width:0; }
+  .wb-edit-half > .wb-crew-block{ flex:1 1 auto; min-width:0; }
   /* *** auto-fit CANNOT COUNT IN AN AUTO-WIDTH BOX. ***
      The crew block sizes to its content, so the grid's available width is
      indefinite -- and repeat(auto-fit,...) against an indefinite width resolves
@@ -2189,16 +2195,25 @@
      The add buttons size to their own text here; 160px each would have put the
      wrap straight back. */
   @media (max-width:520px){
-    .wb-edit-half{ flex-wrap:nowrap; gap:8px; }
-    .wb-edit-half > .wb-ac-block{ flex:0 0 110px; }
-    .wb-edit-half > .wb-crew-block{ flex:1 1 0; min-width:0; }
-    .wb-ac-row{ grid-template-columns:minmax(0,1fr); }
-    .wb-edit-half .wb-crew-grid > .wb-field{
-      flex:0 0 calc(33.333% - 6px); max-width:calc(33.333% - 6px); min-width:0;
+    /* *** THE PHONE SCROLLS. IT DOES NOT COMPRESS. ***
+       Every previous attempt here tried to fit tail, PIC, SIC and cabin crew
+       inside 390px, and each one bought the fit by making something narrower
+       than the row above or below it. Kyle's call, and it is the right one: the
+       rows matter more than the fold. The editor keeps the widths it has on the
+       Mac and the iPad and runs off the right-hand side, and the table it sits
+       in already scrolls sideways.
+       min-width is what forces that -- without it the editor shrinks to the
+       table's width and the wrapping starts again. 700px is the reserved
+       aircraft column plus three seats plus the gaps between them. */
+    .wb-edit{ min-width:700px; }
+    .wb-edit-half{ flex-wrap:nowrap; }
+    /* Delete drops below rather than adding its width to the scroll. */
+    .wb-edit-half-actions{
+      flex:1 1 100%; margin-left:0; align-self:auto;
+      justify-content:flex-end; align-items:flex-start;
     }
-    /* Three selects across a phone cannot afford desktop padding. */
-    .wb-edit-half .wb-field select{ padding-left:6px; padding-right:4px; font-size:13px; }
-    .wb-ac-add{ width:auto; }
+    .wb-ac-none-long{ display:none; }
+    .wb-ac-none-short{ display:inline; }
   }
   /* align-self:stretch is what puts Delete on the BOTTOM edge -- without it the
      column is only as tall as the button and flex-end has nothing to push
@@ -2241,6 +2256,7 @@
     text-transform:uppercase; color:var(--fog-500);
   }
   .wb-ac-none{ font-size:13px; color:var(--fog-500); }
+  .wb-ac-none-short{ display:none; }
   /* One aeroplane is one field, so one track. It used to be three tracks plus
      an auto for the cross, which is why an unsplit row put its cross a whole
      empty column away from the select it belonged to. Dates only appear when
@@ -3869,7 +3885,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T02:45:00Z';
+const BUILD_VERSION = '2026-09-04T03:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12262,7 +12278,15 @@ function wbAircraftEditHTML(t){
     + '<div class="wb-ac-head">Aircraft</div>';
 
   if(!rows.length){
-    h += '<div class="wb-ac-none">No aircraft on this trip yet.</div>';
+    // Two wordings, one shown at a time by the phone media query. The full
+    // sentence wraps to two lines in the 104px column a phone gives this block,
+    // and those two lines push + Aircraft out of line with everything beside
+    // it -- so the block changed height depending on whether the trip had an
+    // aeroplane on it yet.
+    h += '<div class="wb-ac-none">'
+      + '<span class="wb-ac-none-long">No aircraft on this trip yet.</span>'
+      + '<span class="wb-ac-none-short">None yet.</span>'
+      + '</div>';
   }
 
   rows.forEach(function(r){
