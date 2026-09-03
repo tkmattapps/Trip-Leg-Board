@@ -1576,6 +1576,16 @@
   }
   .sched-wbbtn .wb-btn-sizer{ visibility:hidden; }
   .sched-wbbtn .wb-btn-lbl{ position:absolute; inset:0; }
+  /* GLOW, NOT A BORDER. This button sits next to three bare chevrons and a
+     pilled year, so a box here would be the second box in the row -- the same
+     reason the border was left off in the first place. The glow lifts it off
+     the header without adding an edge. It goes on .wb-btn-lbl rather than the
+     button so it lands on the visible layer only; .wb-btn-sizer is
+     visibility:hidden and must stay unpainted. Bloom only, no tight core: a
+     near shadow sits on the letter edges and reads as fuzz (see the home
+     tagline). 10px against 12px/10px text, scaled down from the tagline's 18px
+     against 16px. Colour is --amber-500 (#F2A93B) in rgba to carry an alpha. */
+  .sched-wbbtn .wb-btn-lbl{ text-shadow:0 0 10px rgba(242,169,59,0.35); }
   /* "trips" is the constant half of the label, so it carries less information
      than the month and is set back accordingly. */
   .sched-wbbtn .wb-btn-word{ font-size:12px; font-weight:600; }
@@ -3927,7 +3937,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T08:05:00Z';
+const BUILD_VERSION = '2026-09-04T08:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
