@@ -1584,8 +1584,13 @@
      visibility:hidden and must stay unpainted. Bloom only, no tight core: a
      near shadow sits on the letter edges and reads as fuzz (see the home
      tagline). 10px against 12px/10px text, scaled down from the tagline's 18px
-     against 16px. Colour is --amber-500 (#F2A93B) in rgba to carry an alpha. */
-  .sched-wbbtn .wb-btn-lbl{ text-shadow:0 0 10px rgba(242,169,59,0.35); }
+     against 16px. The halo is --amber-700 (#C97F1E), NOT --amber-500: the label
+     itself is amber-500, and a halo of the same colour has no brightness
+     difference from the glyphs, which reads as blur rather than light. Darker
+     halo puts the three tones in order -- panel darkest, glow between, letters
+     brightest -- which is the same fix the home tagline needed. rgba form so it
+     can carry an alpha. */
+  .sched-wbbtn .wb-btn-lbl{ text-shadow:0 0 10px rgba(201,127,30,0.45); }
   /* "trips" is the constant half of the label, so it carries less information
      than the month and is set back accordingly. */
   .sched-wbbtn .wb-btn-word{ font-size:12px; font-weight:600; }
@@ -3937,7 +3942,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T08:40:00Z';
+const BUILD_VERSION = '2026-09-04T09:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
