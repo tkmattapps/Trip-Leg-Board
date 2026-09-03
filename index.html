@@ -1763,20 +1763,30 @@
      date, and both of those are off at the edge of a wide grid. So the focused
      cell lights its own name on the left and its own day number at the top, and
      the eye reads the pair as crosshairs (Kyle, 4 Sep 2026).
-     *** BRIGHTER TEXT THAN HALO, OR IT READS AS BLUR, NOT LIGHT. ***
-     The recorded rule from the tagline and the month-trips button. The name is
-     already --paper-050, the brightest thing here, so it only needs the halo.
-     The day number is --fog-300 and is lifted to --paper-050 FIRST -- an amber
-     halo behind fog-grey has no edge to spill off and comes out muddy.
-     No tight core: the radius is scaled to the type (12px name, 11px figure ->
-     6px bloom) rather than reused from somewhere it happened to work.
+     *** THIS WAS AN AMBER GLOW FOR ONE BUILD AND IT CAME OUT MUDDY. ***
+     Two faults, and the second is the one that mattered. --amber-700 is #C97F1E,
+     a dark ochre: on a navy panel there is nothing for it to be brighter THAN,
+     so the bloom read as smear rather than as light -- the recorded halo rule
+     again, from the wrong end. And amber is already twice spoken for on this
+     grid, by the sticky edge on your own row and by the info-only outline, so a
+     third amber signal competed with them instead of standing clear.
+     A LIFT INSTEAD OF A GLOW. It is what the grid already uses to say "lit" --
+     the same rgba(184,196,217) wash as the working month -- so it costs no new
+     colour, and a flat wash has no blur in it to go muddy.
+     THE VALUES ARE FIXED BY WHAT THEY HAVE TO BEAT, not chosen by eye: the
+     header cell of a focused day that is ALSO today and ALSO in the lit month
+     already carries 0.14, so focus takes 0.22 and replaces it. The name cell
+     competes with nothing and sits on --panel-800, one step darker, so 0.12
+     there is the same visible step. background-image REPLACES, it does not add.
      Written at (0,3,0) and placed after .sched-col-on and .sched-cell-today,
-     both of which set this same colour and would otherwise win on order. */
-  .sched-name.sched-name-focus .sched-name-main{
-    text-shadow:0 0 6px var(--amber-700); }
-  .sched-hcell.sched-hcell-focus .sched-dnum{
-    color:var(--paper-050); text-shadow:0 0 6px var(--amber-700); }
+     which are (0,3,0) too and would otherwise win on order. */
+  .sched-head .sched-hcell.sched-hcell-focus{
+    background-image:linear-gradient(rgba(184,196,217,0.22), rgba(184,196,217,0.22)); }
+  .sched-hcell.sched-hcell-focus .sched-dnum{ color:var(--paper-050); }
   .sched-hcell.sched-hcell-focus .sched-dow{ color:var(--fog-300); }
+  .sched-name.sched-name-focus{
+    background-image:linear-gradient(rgba(184,196,217,0.12), rgba(184,196,217,0.12)); }
+  .sched-name.sched-name-focus .sched-name-sub{ color:var(--fog-300); }
   /* THE VIOLATION, GIVEN A STRUCTURAL REGISTER RATHER THAN A COLOUR.
      With PTO already red, a trip landing on a protected day has nowhere louder
      to escalate chromatically -- the constraint and the breach would look
@@ -4311,7 +4321,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-05T05:45:00Z';
+const BUILD_VERSION = '2026-09-05T06:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
