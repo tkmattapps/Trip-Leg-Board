@@ -1348,6 +1348,20 @@
      lost it -- ten percent of that green over navy reads as slightly warm grey,
      not green. The colour code only works if it is the same colour. */
   .sched-tgrp-h{ background:rgb(var(--tgrp-rgb)); color:var(--tgrp-ink); }
+  /* *** EVERY ROW CARRIES THE SAME LABEL TEXT, AND ONLY THE HEAD SHOWS IT. ***
+     The open column is width:auto, so each row is as wide as its own contents.
+     The head row was the only one holding label text, and "Flt/Trg" is a little
+     wider than the two 32px columns under it -- so the head row's block was a
+     few pixels wider than every other row's. Pinned to the right, that extra
+     width hangs off the LEFT, which is why the month band's edge sat inboard of
+     the head's by a hair (Kyle, 4 Sep 2026).
+     Sizing every row off the same string removes the comparison rather than
+     correcting it: height:0 with overflow:hidden shows nothing while still
+     contributing the text's width, so the rows cannot disagree. Do NOT replace
+     this with a fixed group width -- that would be a number to get right, and
+     it would clip the label the day one gets longer. */
+  .sched-tally:not(.sched-tally-head) .sched-tgrp-h{
+    height:0; overflow:hidden; background:transparent; }
   /* *** THE NUMBERS ARE NEUTRAL; ONLY THE HEADER CARRIES THE CODE. ***
      Month lighter, year darker, using the grid's own two panel steps rather
      than a tint of the category colour -- a washed-out category colour was what
@@ -1634,8 +1648,14 @@
   }
   .sched-key-clash{ width:10px; height:10px; border-radius:2px; flex:0 0 auto;
     box-shadow:inset 0 0 0 2px var(--alert-600); }
+  /* The rule under the heading is the top edge of that group's rows. On the
+     heading rather than on the first row: a row's cells carry their own borders
+     and its sticky name and tally paint over anything drawn on the row box, so
+     a border-top there would come out broken in two places. The heading is one
+     full-width block with nothing over it. */
   .sched-band{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
-    color:var(--fog-500); padding:12px 0 5px 2px; position:sticky; left:0; }
+    color:var(--fog-500); padding:12px 0 5px 2px; position:sticky; left:0;
+    border-bottom:1px solid var(--hairline); }
   .sched-keywrap{ display:flex; flex-direction:column; align-items:center; }
   /* The handle: full width so it is easy to hit, with a short visible grip bar
      centred in it. Generous vertical padding because this is a touch target on
@@ -4111,7 +4131,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T19:20:00Z';
+const BUILD_VERSION = '2026-09-04T19:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -24377,7 +24397,7 @@ function renderScheduleView(){
     };
     const grp = function(label, k, tint){
       return '<div class="sched-tgrp sched-tgrp-' + tint + '">' +
-               '<div class="sched-tgrp-h">' + (isHead ? escapeHtml(label) : '') + '</div>' +
+               '<div class="sched-tgrp-h">' + escapeHtml(label) + '</div>' +
                '<div class="sched-tgrp-n">' +
                  '<span class="sched-tnum sched-tnum-m" data-tm="' + k + '">' +
                    (isHead ? 'M' : num(cm, k)) + '</span>' +
@@ -24395,7 +24415,7 @@ function renderScheduleView(){
               grp('Home', 'home', 'home');
     if(tallySoft){
       x += '<div class="sched-tgrp sched-tgrp-soft">' +
-             '<div class="sched-tgrp-h">' + (isHead ? 'Soft' : '') + '</div>' +
+             '<div class="sched-tgrp-h">Soft</div>' +
              '<div class="sched-tgrp-n">' +
                '<span class="sched-tnum sched-tnum-y" data-tm="soft">' +
                  (isHead ? 'Y' : num(cy, 'soft')) + '</span>' +
