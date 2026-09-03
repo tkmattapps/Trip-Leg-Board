@@ -2174,6 +2174,21 @@
     display:flex; flex-wrap:wrap; gap:8px;
   }
   .wb-edit-half .wb-crew-grid > .wb-field{ flex:0 0 160px; }
+  /* *** PHONE ONLY -- 520px, below any iPad. ***
+     A normal trip is tail, PIC, SIC and one cabin crew, and on a phone the
+     160px seats fitted three of those before cabin crew dropped to a line of
+     its own under PIC. Narrower boxes fit the fourth. The values are four
+     characters and the tail is six, so nothing is being cramped -- and this
+     touches nothing on the Mac or the iPad, which are already right.
+     Anything beyond a normal crew still wraps, which is correct: an extra ACM
+     or second cabin crew is the exception and can have its own line.
+     The add buttons go back to sizing on their own text here -- 160px each
+     would have reintroduced the wrap this rule exists to remove. */
+  @media (max-width:520px){
+    .wb-edit-half .wb-crew-grid > .wb-field{ flex:0 0 110px; }
+    .wb-ac-row{ grid-template-columns:130px; }
+    .wb-ac-add{ width:auto; }
+  }
   /* align-self:stretch is what puts Delete on the BOTTOM edge -- without it the
      column is only as tall as the button and flex-end has nothing to push
      against. */
@@ -3843,7 +3858,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T01:55:00Z';
+const BUILD_VERSION = '2026-09-04T02:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
