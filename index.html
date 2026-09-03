@@ -1178,10 +1178,18 @@
      Applied to .sched-row rather than to .sched-scroll because trailing padding
      on a horizontally overflowing flex container is unreliable across engines;
      on the row it becomes part of max-content and is honoured everywhere. Every
-     row carries it, so the columns stay in step. */
+     row carries it, so the columns stay in step.
+
+     *** IT IS A SPACER ELEMENT NOW, NOT padding-right. ***
+     A sticky element cannot travel outside its containing block's CONTENT box,
+     and padding is outside it. With the tail as padding, .sched-tally pinned to
+     right:0 ran out of room 90px early and parked short of the visible edge at
+     maximum scroll -- visible only at the very end of the scroll, which is the
+     worst place to find it. As a real element the tail is content, so the tally
+     can reach the true edge with no number subtracted anywhere. */
   .sched-wrap{ --sched-tail:90px; }
-  .sched-row{ display:flex; align-items:stretch; min-width:max-content;
-    padding-right:var(--sched-tail); }
+  .sched-row{ display:flex; align-items:stretch; min-width:max-content; }
+  .sched-tail{ flex:0 0 auto; width:var(--sched-tail); }
   /* The name column is STICKY: scrolled twenty days into a month, an unlabelled
      row of colour is unreadable. */
   /* 88px, down from 152 via 104. Sized to a LONG COMMON FIRST NAME -- Christopher,
@@ -1216,6 +1224,34 @@
   .sched-name-sub{ font-size:10px; color:var(--fog-500); letter-spacing:0.04em; }
   .sched-name-head{ background:var(--panel-700); }
   .sched-head .sched-name{ background:var(--panel-700); }
+  /* *** THE TALLY IS THE NAME COLUMN'S MIRROR. ***
+     Pinned right instead of left, and sticky against HORIZONTAL scroll only --
+     it rides its own row vertically, the way the name does. It is not a floating
+     panel: the number belongs to KMAT or EJOH, and a panel that stayed put while
+     the rows moved under it would break that pairing.
+
+     44px = 1px border + 8px padding + 26px of digits + 9px slack. Sized for a
+     SIGN AND TWO DIGITS at 12px, because +12 is exactly the case the tally
+     exists to catch -- sizing for one digit would hide the interesting numbers.
+     Anything wider is clamped by the formatter rather than allowed to widen the
+     column. */
+  .sched-wrap{ --sched-tally-w:44px; }
+  .sched-tally{ position:sticky; right:0; z-index:2; flex:0 0 auto;
+    width:var(--sched-tally-w);
+    display:flex; align-items:center; justify-content:center;
+    padding:0 8px; background:var(--panel-800);
+    border-left:1px solid var(--hairline); border-bottom:1px solid var(--hairline);
+    font-size:12px; color:var(--paper-050);
+    font-variant-numeric:tabular-nums; white-space:nowrap; }
+  /* Plain text, no colour coding (Kyle, 4 Sep 2026). The grid already spends
+     seven colours on kinds, and red-for-high would import a judgement the number
+     does not make: the tally says UNEVEN is worth a look, not that duty is bad. */
+  .sched-tally-head{ background:var(--panel-700); color:var(--fog-500);
+    font-size:10px; letter-spacing:0.04em; }
+  .sched-head .sched-tally{ background:var(--panel-700); }
+  /* An aircraft has no fairness deviation, but every row must carry the column
+     or the grid stops lining up. Empty, not absent. */
+  .sched-tally-empty{ color:transparent; }
   /* *** THE DATES MUST SURVIVE A VERTICAL SCROLL. ***
      The vertical counterpart of the sticky name column: scrolled down to the
      aircraft band or the legend, an unlabelled row of squares is as unreadable
@@ -3942,7 +3978,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T11:05:00Z';
+const BUILD_VERSION = '2026-09-04T11:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -24041,6 +24077,35 @@ function renderScheduleView(){
   // repositioned.
   const acIdx   = fillAway(indexBusyDays(schedData.aircraft, 'aircraft_id', 'status'));
 
+  // *** THE TALLY READS THE RENDERED INDEX, NOT THE RPC. ***
+  // crewIdx is post-fillAway and post-smart-gate, so the tally counts exactly
+  // the days the grid draws and cannot disagree with what is on screen. In
+  // manual mode `flight` never arrived and away days were never made, so duty
+  // is lower and home is higher -- the tally says nothing about which mode it
+  // is in (Kyle, 4 Sep 2026); everyone is counted the same way, so the
+  // comparison stays honest either way.
+  const tallyYear = w.year;
+  const tallyHires = {};
+  const tallyPeople = {};
+  (rosterCache || []).forEach(function(p){
+    tallyHires[p.id] = p.hireDate || null;
+    tallyPeople[p.id] = { title: p.title || '' };
+  });
+  const tallyCounts = tallyCountDays(crewIdx, tallyYear, tallyHires, new Date());
+  const tallyDevs = tallyDeviations(tallyCounts, tallyPeople);
+
+  // Sign ALWAYS shown on a non-zero value, both directions (Kyle, 4 Sep 2026):
+  // +4 and -4 both carry one, zero reads as a bare 0. Null is a person who
+  // cannot be compared -- no available days, or the only one of their job title
+  // -- and an em dash says "not measurable" where 0 would say "exactly fair".
+  // Clamped at two digits so an outlier cannot widen the column.
+  function tallyText(dev){
+    if(dev == null) return '\u2014';
+    if(dev === 0) return '0';
+    const capped = Math.max(-99, Math.min(99, dev));
+    return (capped > 0 ? '+' : '\u2212') + Math.abs(capped);
+  }
+
   // Column headers: weekday letter over day number, so a week is scannable
   // without counting. The month boundary is drawn rather than trimmed -- the
   // overhang days are what make a straddling trip visible.
@@ -24087,7 +24152,11 @@ function renderScheduleView(){
               '</div>';
     runStart = i + 1;
   });
-  months += '</div>';
+  // Every row ends the same way -- spacer, then the pinned tally -- or the
+  // columns stop lining up. The month band has no label of its own to give.
+  months += '<div class="sched-tail"></div>' +
+            '<div class="sched-tally sched-tally-head"></div>' +
+            '</div>';
 
   let head = '<div class="sched-row sched-head"><div class="sched-name sched-name-head"></div>';
   days.forEach(function(dt){
@@ -24105,7 +24174,13 @@ function renderScheduleView(){
               '<span class="sched-dnum">' + dt.getDate() + '</span>' +
             '</div>';
   });
-  head += '</div>';
+  // "Duty" names the quantity and lets the sign carry the rest -- a reader
+  // seeing +4 under Duty does not take it for an absolute count. "Ave Duty" was
+  // considered and dropped: it names the number the deviation is measured
+  // AGAINST, so +4 underneath it invites exactly the wrong reading.
+  head += '<div class="sched-tail"></div>' +
+          '<div class="sched-tally sched-tally-head">Duty</div>' +
+          '</div>';
 
   function bandHTML(label, rows, idx, kind, nameOf, subOf){
     if(!rows.length) return '';
@@ -24138,7 +24213,14 @@ function renderScheduleView(){
         h += schedCellHTML(owned[iso], iso, r.id, kind, iso === todayISO,
                            dow === 0 || dow === 6, isMe, rowRuns[iso], rowVisible[iso]);
       });
-      h += '</div>';
+      // An aircraft carries the column but never a number: a tail has no job
+      // title to be averaged against, and leaving the cell out would put the
+      // aircraft band half a column out of step with the crew above it.
+      const tallyCls = (kind === 'crew') ? 'sched-tally' : 'sched-tally sched-tally-empty';
+      const tallyVal = (kind === 'crew') ? tallyText(tallyDevs[r.id]) : '';
+      h += '<div class="sched-tail"></div>' +
+           '<div class="' + tallyCls + '">' + tallyVal + '</div>' +
+           '</div>';
     });
     return h;
   }
