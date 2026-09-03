@@ -4153,7 +4153,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T21:45:00Z';
+const BUILD_VERSION = '2026-09-04T23:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -22317,7 +22317,15 @@ function tallyDeviations(counts, peopleById){
   return out;
 }
 
-const SCHED_AC_TRIP_KINDS = { flight: 1, away_on_trip: 1, flight_assigned: 1 };
+// flight_historical joined this list on 4 Sep 2026, when the master spreadsheet
+// was imported. Migration 51 lets aircraft_availability carry that status,
+// because the sheet's purple "away from BDL" runs are the same fact Beacon calls
+// away on trip and the trips they came from no longer exist to derive it from.
+// Without it here, an imported day on a TAIL row would be described in crew
+// wording -- "Flight duty -- before Beacon" -- and an aircraft does not fly duty.
+const SCHED_AC_TRIP_KINDS = {
+  flight: 1, away_on_trip: 1, flight_assigned: 1, flight_historical: 1
+};
 
 function schedKindColor(kind, ownerKind){
   // ONE TRIP, ONE COLOUR -- PER BAND. A crew trip reads as one unbroken green
@@ -22341,9 +22349,12 @@ function schedKindColor(kind, ownerKind){
 // trip" alone does not. "not flying" means a derived parked day between legs;
 // "assigned" means a workbench trip that has not been built into legs yet.
 const SCHED_AC_TRIP_LABELS = {
-  flight:          'Away on trip',
-  away_on_trip:    'Away on trip \u2014 not flying',
-  flight_assigned: 'Away on trip \u2014 assigned'
+  flight:            'Away on trip',
+  away_on_trip:      'Away on trip \u2014 not flying',
+  flight_assigned:   'Away on trip \u2014 assigned',
+  // Mirrors the crew wording: the qualifier says where the day CAME FROM, and
+  // "before Beacon" is the same qualifier SCHED_LABELS puts on the crew side.
+  flight_historical: 'Away on trip \u2014 before Beacon'
 };
 
 function schedKindLabel(kind, ownerKind){
