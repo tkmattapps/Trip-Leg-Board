@@ -2167,8 +2167,17 @@
      inside it rather than pushing the crew about. The crew takes whatever is
      left, so PIC, SIC and cabin crew start at the same place on every trip
      whether or not an aeroplane has been chosen yet. */
-  .wb-edit-half > .wb-ac-block{ flex:0 0 160px; min-width:0; }
-  .wb-edit-half > .wb-crew-block{ flex:1 1 auto; min-width:0; }
+  /* align-self:stretch is doing real work here, not tidying. The half is
+     align-items:flex-start, so each block was only as tall as its own contents
+     and the two button rows landed wherever their column happened to end. The
+     crew block carries a 'Not yet seated' line the aircraft block has no
+     equivalent of, so + ACM sat a line below + Aircraft -- and the offset would
+     change again the moment a trip had two tails on it. Stretched to a common
+     height, with margin-top:auto on each button row below, the buttons sit on
+     one line no matter what is above them. Nothing here depends on measuring
+     any of it. */
+  .wb-edit-half > .wb-ac-block{ flex:0 0 160px; min-width:0; align-self:stretch; }
+  .wb-edit-half > .wb-crew-block{ flex:1 1 auto; min-width:0; align-self:stretch; }
   /* *** auto-fit CANNOT COUNT IN AN AUTO-WIDTH BOX. ***
      The crew block sizes to its content, so the grid's available width is
      indefinite -- and repeat(auto-fit,...) against an indefinite width resolves
@@ -2293,6 +2302,9 @@
     width:160px; flex:0 0 auto; text-align:center;
   }
   .wb-ac-add:hover{ border-color:var(--amber-500); }
+  /* Only the aircraft one -- the crew buttons are inside .wb-crew-adds, which
+     carries its own margin-top:auto. Direct child, so this cannot reach them. */
+  .wb-ac-block > .wb-ac-add{ margin-top:auto; }
   /* Visible but inert, the way an admin-gated control is. It says a second
      aircraft is possible without pretending it is available yet. */
   .wb-ac-add:disabled{
@@ -2313,7 +2325,8 @@
   }
   .wb-crew-grid select:focus{ outline:none; border-color:var(--amber-500); }
   .wb-crew-un{ font-size:12px; color:var(--amber-500); }
-  .wb-crew-adds{ display:flex; gap:8px; flex-wrap:wrap; }
+  /* Bottom of the column, so it lines up with + Aircraft opposite. */
+  .wb-crew-adds{ display:flex; gap:8px; flex-wrap:wrap; margin-top:auto; }
   .wb-edit-note{
     grid-column:1 / -1; font-size:12px; color:var(--fog-500);
   }
@@ -3900,7 +3913,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T05:05:00Z';
+const BUILD_VERSION = '2026-09-04T05:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
