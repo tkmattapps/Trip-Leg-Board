@@ -3942,7 +3942,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T09:10:00Z';
+const BUILD_VERSION = '2026-09-04T10:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13322,8 +13322,8 @@ async function loadRoster(){
     // the query is retried without it. The grid then falls back to the
     // alphabetical sort below, which is exactly what a department that has
     // never set an order gets anyway.
-    const _base = 'user_id, membership_role, is_admin, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname)';
-    const _withOrder = 'user_id, membership_role, is_admin, roster_order, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname)';
+    const _base = 'user_id, membership_role, is_admin, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname, hire_date)';
+    const _withOrder = 'user_id, membership_role, is_admin, roster_order, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname, hire_date)';
     function _rosterQuery(cols){
       return sb.from('memberships')
         .select(cols)
@@ -13352,6 +13352,11 @@ async function loadRoster(){
         // roster is where they get filled in.
         given: m.users.legal_given_name || '',
         surname: m.users.legal_surname || '',
+        // Day they joined the COMPANY, not the day they got a login -- that is
+        // memberships.starts_on and it is years later for everyone here. Null
+        // means on staff before the year being counted, which is the common
+        // case; the fairness tally reads it as available from 1 January.
+        hireDate: m.users.hire_date || '',
         membershipRole: m.membership_role || 'member',
         isAdmin: !!m.is_admin,
         // The department's own row order for the schedule grid. Null until set.
@@ -13925,6 +13930,16 @@ function personEditBodyHTML(p){
       '<div class="sheet-note">As printed on trip documents. This is how extracted crew are matched to accounts.</div>' +
     '</div>' +
     '<div class="sheet-slot">' +
+      '<div class="sheet-slot-label">Hire date</div>' +
+      // -webkit-appearance:none plus a fixed height, same as every other date
+      // input in this build: iOS otherwise renders the native control at its
+      // own height and the slot grows by ~10px against its neighbours.
+      '<input id="peHire" type="date" style="-webkit-appearance:none; height:38px;" ' +
+        'value="' + escapeHtml(p.hireDate || '') + '" />' +
+      '<div class="sheet-note">Only needed for someone hired during the year being counted. ' +
+        'Left empty means they were already on staff, and the fairness tally counts them from 1 January.</div>' +
+    '</div>' +
+    '<div class="sheet-slot">' +
       '<div class="sheet-slot-label">Job title</div>' +
       '<div class="sheet-readonly">' + escapeHtml(titleLabel) + '</div>' +
       '<div class="sheet-note">Read-only. Titles decide who appears in each crew slot, so they are changed in Supabase.</div>' +
@@ -14065,12 +14080,16 @@ async function savePersonEdit(){
   const abbEl = document.getElementById('peAbbrev');
   const givEl = document.getElementById('peGiven');
   const surEl = document.getElementById('peSurname');
-  if(!nameEl || !abbEl || !givEl || !surEl) return;
+  const hireEl = document.getElementById('peHire');
+  if(!nameEl || !abbEl || !givEl || !surEl || !hireEl) return;
 
   const name = String(nameEl.value || '').trim();
   const abbrev = normalizeAbbrev(abbEl.value);
   const given = String(givEl.value || '').trim();
   const surname = String(surEl.value || '').trim();
+  // A date input reports '' when empty, and '' is not a date -- Postgres would
+  // refuse it. Null is the value that means "no hire date recorded".
+  const hire = String(hireEl.value || '').trim() || null;
 
   // Blank is allowed: crew_abbrev is deliberately NOT NULL-free for now,
   // because the invite flow that would enforce it does not exist yet. But a
@@ -14105,7 +14124,8 @@ async function savePersonEdit(){
         display_name: name || null,
         crew_abbrev: abbrev || null,
         legal_given_name: given || null,
-        legal_surname: surname || null
+        legal_surname: surname || null,
+        hire_date: hire
       })
       .eq('id', p.id)
       .select('id');
