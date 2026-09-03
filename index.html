@@ -1235,23 +1235,66 @@
      exists to catch -- sizing for one digit would hide the interesting numbers.
      Anything wider is clamped by the formatter rather than allowed to widen the
      column. */
-  .sched-wrap{ --sched-tally-w:44px; }
+  .sched-wrap{ --sched-tally-w:44px; --sched-tnum-w:32px; }
+  /* --panel-700, one step lighter than the name column's --panel-800 and two
+     above the --ink-900 the day cells sit on. THE LIFT IS THE AFFORDANCE: this
+     column opens and the name column does not, so they should not look alike.
+     The head cell no longer needs its own background override, and neither does
+     .sched-head .sched-tally -- both were setting the value the base rule now
+     carries, and a rule that changes nothing is a rule that hides a change. */
   .sched-tally{ position:sticky; right:0; z-index:2; flex:0 0 auto;
     width:var(--sched-tally-w);
-    display:flex; align-items:center; justify-content:center;
-    padding:0 8px; background:var(--panel-800);
+    display:flex; align-items:stretch;
+    background:var(--panel-700);
     border-left:1px solid var(--hairline); border-bottom:1px solid var(--hairline);
     font-size:12px; color:var(--paper-050);
-    font-variant-numeric:tabular-nums; white-space:nowrap; }
+    font-variant-numeric:tabular-nums; white-space:nowrap; cursor:pointer; }
+  /* The deviation itself -- the part that is pinned whether the panel is open or
+     shut. Kyle, 4 Sep 2026: the column slides out to the LEFT and this stays put. */
+  .sched-tdev{ flex:0 0 auto; width:var(--sched-tally-w);
+    display:flex; align-items:center; justify-content:center; gap:3px;
+    padding:0 8px; }
   /* Plain text, no colour coding (Kyle, 4 Sep 2026). The grid already spends
      seven colours on kinds, and red-for-high would import a judgement the number
      does not make: the tally says UNEVEN is worth a look, not that duty is bad. */
-  .sched-tally-head{ background:var(--panel-700); color:var(--fog-500);
-    font-size:10px; letter-spacing:0.04em; }
-  .sched-head .sched-tally{ background:var(--panel-700); }
-  /* An aircraft has no fairness deviation, but every row must carry the column
-     or the grid stops lining up. Empty, not absent. */
-  .sched-tally-empty{ color:transparent; }
+  .sched-tally-head{ color:var(--fog-500); font-size:10px; letter-spacing:0.04em; }
+
+  /* *** THE DETAIL IS ALWAYS IN THE MARKUP AND HIDDEN BY CSS. ***
+     Not built on open. Re-rendering the grid to fold a column out would re-fetch
+     and reset the horizontal scroll, which is the same machinery the key toggle
+     already declines to use for the same reason. The numbers cost nothing to
+     compute and a few divs per row to carry. */
+  .sched-tallyx{ display:none; }
+  .sched-wrap.is-tally-open .sched-tallyx{ display:flex; align-items:stretch; }
+  /* *** NO WIDTH ARITHMETIC ANYWHERE. ***
+     Open, the column is width:auto and sizes to its children. The alternative
+     was to state the sum -- 3 groups x 64px + 32px soft + 44px deviation = 268 --
+     in a place where changing one child width would silently make it wrong.
+     The sum is written here so it can be checked, and nowhere that it can rot. */
+  .sched-wrap.is-tally-open .sched-tally{ width:auto; }
+  /* A group is one column of the spreadsheet: a heading over its numbers.
+     64px = two .sched-tnum at 32px. The children take that width by flex:1, so
+     the split cannot drift from the total. 32px holds three digits at 12px
+     tabular plus padding, and no count here can exceed 366. */
+  .sched-tgrp{ flex:0 0 auto; display:flex; flex-direction:column;
+    justify-content:center; border-right:1px solid var(--hairline); }
+  .sched-tgrp-h{ font-size:10px; letter-spacing:0.04em; color:var(--fog-500);
+    text-align:center; line-height:1.2; }
+  .sched-tgrp-n{ display:flex; align-items:center; }
+  .sched-tnum{ flex:1 1 0; min-width:var(--sched-tnum-w); text-align:center;
+    line-height:1.2; }
+  /* Head row only: the M / Y sub-tier is a label, not a number. */
+  .sched-tally-head .sched-tnum{ font-size:10px; letter-spacing:0.04em;
+    color:var(--fog-500); }
+  /* Soft days carry one figure, not two: the question is who leans on them over
+     a season, not in a fortnight. The group needs no rule of its own -- one
+     .sched-tnum instead of two makes it half width by itself. */
+  /* inline-block because a transform does nothing to an inline element -- the
+     same reason .wb-chev carries it. */
+  .sched-tchev{ display:inline-block; font-size:11px; line-height:1;
+    color:var(--fog-500); transition:transform 0.15s ease, color 0.15s ease; }
+  .sched-wrap.is-tally-open .sched-tchev{ transform:rotate(90deg);
+    color:var(--amber-500); }
   /* *** THE DATES MUST SURVIVE A VERTICAL SCROLL. ***
      The vertical counterpart of the sticky name column: scrolled down to the
      aircraft band or the legend, an unlabelled row of squares is as unreadable
@@ -3978,7 +4021,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T11:55:00Z';
+const BUILD_VERSION = '2026-09-04T13:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -21936,40 +21979,47 @@ const TALLY_DUTY_KINDS = {
 const TALLY_PTO_KINDS  = { pto: 1 };
 const TALLY_SOFT_KINDS = { soft_day: 1 };
 
-// Days the person could have been rostered, within the year being viewed.
-// Returns 0 for someone hired after the year ended -- a zero denominator, which
-// the caller must not divide by.
-function tallyAvailableDays(hireDate, year, today){
-  const jan1 = new Date(year, 0, 1);
-  const dec31 = new Date(year, 11, 31);
-  let from = jan1;
+// Local midnight from a bare ISO date. NOT new Date(string), which reads
+// '2026-01-01' as UTC and lands on 31 December for anyone west of Greenwich.
+function tallyDay(iso){
+  return new Date(String(iso).slice(0, 10) + 'T00:00:00');
+}
+
+// Days the person could have been rostered, within an ISO date range.
+// Returns 0 for someone hired after the range ended, or for a range that has
+// not started yet -- a zero denominator, which the caller must not divide by.
+//
+// *** THE RANGE IS EXPLICIT, NOT A YEAR. *** The detail panel counts the
+// VISIBLE MONTH by the same rules as the year, and two counting functions
+// would be two places for those rules to drift apart.
+function tallyAvailableRange(hireDate, lo, hi, today){
+  let from = tallyDay(lo);
+  const end = tallyDay(hi);
   if(hireDate){
-    // Parsed at local midnight, not through Date(string), which reads a bare
-    // ISO date as UTC and lands on 31 December for anyone west of Greenwich.
-    const h = new Date(String(hireDate).slice(0, 10) + 'T00:00:00');
+    const h = tallyDay(hireDate);
     if(!isNaN(h) && h > from) from = h;
   }
-  // A year in progress is counted to today, not to 31 December. Counting a
+  // A range in progress is counted to today, not to its last day. Counting a
   // whole year in September would divide four months of work by twelve months
-  // of opportunity and report the entire department as under-worked.
-  const to = (today < dec31) ? today : dec31;
+  // of opportunity and report the entire department as under-worked -- and the
+  // same is true of the current month on its 3rd.
+  const to = (today < end) ? today : end;
   if(to < from) return 0;
   return Math.round((to - from) / 86400000) + 1;
 }
 
-// Per-person day counts for one year, read out of the SAME index the grid
-// renders from. Returns { userId: {duty, pto, home, soft, available} }.
-function tallyCountDays(crewIdx, year, hireDatesById, today){
+// Per-person day counts for an ISO date range, read out of the SAME index the
+// grid renders from. Returns { userId: {duty, pto, home, soft, available} }.
+function tallyCountRange(crewIdx, lo, hi, hireDatesById, today){
   const out = {};
-  const lo = year + '-01-01';
-  const hi = year + '-12-31';
   Object.keys(crewIdx || {}).forEach(function(userId){
     const byDay = crewIdx[userId] || {};
     let duty = 0, pto = 0, soft = 0;
     Object.keys(byDay).forEach(function(day){
-      // *** THE WINDOW IS WIDER THAN THE YEAR. *** schedWindow loads a lead and
-      // trail month either side, so December 2025 and January 2027 are sitting
-      // in this index. Without this clip they would land in the 2026 count.
+      // *** THE WINDOW IS WIDER THAN THE RANGE. *** schedWindow loads a full
+      // year plus a lead and trail month, so December 2025 and January 2027 are
+      // sitting in this index -- and for a monthly range, eleven other months
+      // are too. Without this clip they would all land in the count.
       if(day < lo || day > hi) return;
       const entries = byDay[day] || [];
       let isDuty = false, isPto = false, isSoft = false;
@@ -21993,7 +22043,7 @@ function tallyCountDays(crewIdx, year, hireDatesById, today){
   // in crewIdx at all and would otherwise vanish from a fairness comparison.
   Object.keys(hireDatesById || {}).forEach(function(userId){
     if(!out[userId]) out[userId] = { duty: 0, pto: 0, soft: 0, home: 0, available: 0 };
-    const avail = tallyAvailableDays(hireDatesById[userId], year, today);
+    const avail = tallyAvailableRange(hireDatesById[userId], lo, hi, today);
     out[userId].available = avail;
     out[userId].home = Math.max(0, avail - out[userId].duty - out[userId].pto);
   });
@@ -23965,6 +24015,21 @@ function schedSetKeyOpen(open){
   catch(e){ /* preference only -- not worth telling anyone about */ }
 }
 
+// Same treatment for the fairness detail: a per-device preference about this
+// screen. Default CLOSED -- the deviation is the everyday reading and the split
+// is what you open when it looks wrong.
+const SCHED_TALLY_OPEN_KEY = 'tlb_sched_tally_open';
+
+function schedTallyIsOpen(){
+  try { return localStorage.getItem(SCHED_TALLY_OPEN_KEY) === '1'; }
+  catch(e){ return false; }
+}
+
+function schedSetTallyOpen(open){
+  try { localStorage.setItem(SCHED_TALLY_OPEN_KEY, open ? '1' : '0'); }
+  catch(e){ /* preference only */ }
+}
+
 function renderScheduleView(){
   const main = document.getElementById('mainPanel');
   if(!main) return;
@@ -24085,14 +24150,25 @@ function renderScheduleView(){
   // is in (Kyle, 4 Sep 2026); everyone is counted the same way, so the
   // comparison stays honest either way.
   const tallyYear = w.year;
+  const tallyOpen = schedTallyIsOpen();
   const tallyHires = {};
   const tallyPeople = {};
   (rosterCache || []).forEach(function(p){
     tallyHires[p.id] = p.hireDate || null;
     tallyPeople[p.id] = { title: p.title || '' };
   });
-  const tallyCounts = tallyCountDays(crewIdx, tallyYear, tallyHires, new Date());
-  const tallyDevs = tallyDeviations(tallyCounts, tallyPeople);
+  const tallyToday = new Date();
+  const tallyYearCounts = tallyCountRange(crewIdx, tallyYear + '-01-01',
+                                          tallyYear + '-12-31', tallyHires, tallyToday);
+  // "Monthly" is the month the grid is SHOWING, not the calendar month -- the
+  // panel describes what is on screen, the same way the deviation's year does.
+  const tallyMonthCounts = tallyCountRange(crewIdx, schedISO(w.monthFirst),
+                                           schedISO(w.monthLast), tallyHires, tallyToday);
+  const tallyDevs = tallyDeviations(tallyYearCounts, tallyPeople);
+  // Soft days are admin-only. A crew member seeing a count of their own requests
+  // sitting in a fairness table would read it as a charge sheet, which is not
+  // what it is for.
+  const tallySoft = (typeof rosterViewerIsAdmin === 'function') ? rosterViewerIsAdmin() : false;
 
   // Sign ALWAYS shown on a non-zero value, both directions (Kyle, 4 Sep 2026):
   // +4 and -4 both carry one, zero reads as a bare 0. Null is a person who
@@ -24104,6 +24180,59 @@ function renderScheduleView(){
     if(dev === 0) return '0';
     const capped = Math.max(-99, Math.min(99, dev));
     return (capped > 0 ? '+' : '\u2212') + Math.abs(capped);
+  }
+
+  // *** ONE BUILDER FOR EVERY ROW. ***
+  // The month band, the day header, each crew row and each aircraft row all end
+  // with this block. Emitting it from four places is how the columns stop lining
+  // up: the content differs, the structure and the widths must not.
+  //   mode 'head'  -- the labels
+  //   mode 'crew'  -- the numbers
+  //   mode 'blank' -- the month band and the aircraft rows, which carry the
+  //                   column and never a figure
+  function tallyCellHTML(mode, id){
+    const isHead = mode === 'head';
+    const cy = (mode === 'crew') ? tallyYearCounts[id] : null;
+    const cm = (mode === 'crew') ? tallyMonthCounts[id] : null;
+    const num = function(src, k){
+      if(!src) return '';
+      const v = src[k];
+      return (v == null) ? '' : String(v);
+    };
+    const grp = function(label, k){
+      return '<div class="sched-tgrp">' +
+               '<div class="sched-tgrp-h">' + (isHead ? escapeHtml(label) : '') + '</div>' +
+               '<div class="sched-tgrp-n">' +
+                 '<span class="sched-tnum">' + (isHead ? 'M' : num(cm, k)) + '</span>' +
+                 '<span class="sched-tnum">' + (isHead ? 'Y' : num(cy, k)) + '</span>' +
+               '</div>' +
+             '</div>';
+    };
+    // The spreadsheet's own three headings, in its order. "Flt/Trg" rather than
+    // "Duty" because the pinned column is already called Duty and two columns
+    // with one name is worse than one abbreviation.
+    let x = '<div class="sched-tallyx">' +
+              grp('Flt/Trg', 'duty') +
+              grp('PTO', 'pto') +
+              grp('Home', 'home');
+    if(tallySoft){
+      x += '<div class="sched-tgrp">' +
+             '<div class="sched-tgrp-h">' + (isHead ? 'Soft' : '') + '</div>' +
+             '<div class="sched-tgrp-n">' +
+               '<span class="sched-tnum">' + (isHead ? 'Y' : num(cy, 'soft')) + '</span>' +
+             '</div>' +
+           '</div>';
+    }
+    x += '</div>';
+    const dev = isHead
+      ? 'Duty<span class="sched-tchev" aria-hidden="true">&#9656;</span>'
+      : ((mode === 'crew') ? tallyText(tallyDevs[id]) : '');
+    // The WHOLE column opens it, header included, so the target is not per row
+    // (Kyle, 4 Sep 2026).
+    return '<div class="sched-tally' + (isHead ? ' sched-tally-head' : '') + '"' +
+             ' data-sched-tally' + (isHead ? ' aria-expanded="' + (tallyOpen ? 'true' : 'false') + '"' : '') + '>' +
+             x + '<div class="sched-tdev">' + dev + '</div>' +
+           '</div>';
   }
 
   // Column headers: weekday letter over day number, so a week is scannable
@@ -24154,9 +24283,7 @@ function renderScheduleView(){
   });
   // Every row ends the same way -- spacer, then the pinned tally -- or the
   // columns stop lining up. The month band has no label of its own to give.
-  months += '<div class="sched-tail"></div>' +
-            '<div class="sched-tally sched-tally-head"></div>' +
-            '</div>';
+  months += '<div class="sched-tail"></div>' + tallyCellHTML('blank') + '</div>';
 
   let head = '<div class="sched-row sched-head"><div class="sched-name sched-name-head"></div>';
   days.forEach(function(dt){
@@ -24178,9 +24305,7 @@ function renderScheduleView(){
   // seeing +4 under Duty does not take it for an absolute count. "Ave Duty" was
   // considered and dropped: it names the number the deviation is measured
   // AGAINST, so +4 underneath it invites exactly the wrong reading.
-  head += '<div class="sched-tail"></div>' +
-          '<div class="sched-tally sched-tally-head">Duty</div>' +
-          '</div>';
+  head += '<div class="sched-tail"></div>' + tallyCellHTML('head') + '</div>';
 
   function bandHTML(label, rows, idx, kind, nameOf, subOf){
     if(!rows.length) return '';
@@ -24216,10 +24341,8 @@ function renderScheduleView(){
       // An aircraft carries the column but never a number: a tail has no job
       // title to be averaged against, and leaving the cell out would put the
       // aircraft band half a column out of step with the crew above it.
-      const tallyCls = (kind === 'crew') ? 'sched-tally' : 'sched-tally sched-tally-empty';
-      const tallyVal = (kind === 'crew') ? tallyText(tallyDevs[r.id]) : '';
       h += '<div class="sched-tail"></div>' +
-           '<div class="' + tallyCls + '">' + tallyVal + '</div>' +
+           tallyCellHTML(kind === 'crew' ? 'crew' : 'blank', r.id) +
            '</div>';
     });
     return h;
@@ -24361,7 +24484,8 @@ function renderScheduleView(){
   // The state lives on the OUTER wrapper, not on the key itself, because the
   // grid's max-height has to respond to it -- hiding the legend without giving
   // the freed space to the grid would be a fold that gains nothing.
-  main.innerHTML = '<div class="sched-wrap' + editCls + (keyOpen ? '' : ' is-key-closed') + '">' +
+  main.innerHTML = '<div class="sched-wrap' + editCls + (keyOpen ? '' : ' is-key-closed') +
+                   (tallyOpen ? ' is-tally-open' : '') + '">' +
       '<div class="sched-scroll">' + months + head + body + '</div>' +
       key +
     '</div>';
@@ -25162,6 +25286,21 @@ document.addEventListener('click', async function(e){
     if(schedDragMoved){ schedDragMoved = false; return; }
     openSchedEntry(schedCell.getAttribute('data-sched-owner'), schedCell.getAttribute('data-sched-kind'),
                    schedCell.getAttribute('data-sched-day'));
+    return;
+  }
+
+  // Toggled in place, like the key: the detail is already in the DOM, so this is
+  // a class on the wrapper. A re-render would reset the horizontal scroll and
+  // throw the reader back to December for the sake of opening a column.
+  if(t.closest('[data-sched-tally]')){
+    const twrap = document.querySelector('.sched-wrap');
+    if(twrap){
+      const nowOpen = !twrap.classList.contains('is-tally-open');
+      twrap.classList.toggle('is-tally-open', nowOpen);
+      const th = twrap.querySelector('.sched-tally-head[data-sched-tally]');
+      if(th) th.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+      schedSetTallyOpen(nowOpen);
+    }
     return;
   }
 
