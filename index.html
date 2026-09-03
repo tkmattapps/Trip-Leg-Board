@@ -1456,9 +1456,59 @@
     border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
   .sched-dow{ font-size:9px; color:var(--fog-500); }
   .sched-dnum{ font-size:11px; color:var(--fog-300); }
+  /* position:relative is for the INFO RING below. .sched-cell-clash already set
+     it on the cells that clash, so this only widens a positioning context that
+     was already proven harmless there. The only absolutely positioned thing
+     inside a cell is .sched-run-n, and that is contained by
+     .sched-blk-run-first{position:relative} -- a nearer ancestor -- so nothing
+     changes which box it measures against. */
   .sched-cell{ flex:0 0 auto; width:30px; min-height:30px; display:flex;
     flex-direction:column; gap:1px; padding:2px; box-sizing:border-box;
+    position:relative;
     border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
+
+  /* *** INFO ONLY IS A RING ROUND THE DAYS, NOT A BAR IN THEM. ***
+     Every other category is a commitment and gets a filled block. This one is a
+     note that commits nobody -- Kyle, 4 Sep 2026: "that person MIGHT be free.
+     The information is there to remind the person building the schedule that
+     the person might have another obligation on those days so check before
+     confirming a schedule." A fill would say the day is spoken for, which is
+     the opposite of what it means, and it would have to fight for height with
+     whatever else is in the cell.
+
+     So it is an OVERLAY, and that is why it is an element rather than a
+     box-shadow on the cell. box-shadow:inset has no per-side control, so every
+     day of a span would get its own closed box and the run would read as a row
+     of squares -- exactly what Kyle asked not to happen ("just outline the
+     whole tap and drag row rather than individual days"). Sides are conditional
+     here: left on the first day, right on the last, top and bottom always.
+
+     An overlay also composes with .sched-cell-clash, which owns the cell's own
+     box-shadow. Two rings, both visible, neither overwriting the other.
+
+     GEOMETRY, NOT MEASUREMENT. inset 0 pins the ring to the cell at whatever
+     size the cell turns out to be, so there is no number here that can be
+     wrong. right:-1px is the one exception and it is arithmetic, not a guess:
+     .sched-cell carries border-right:1px, an absolute child is positioned
+     against the PADDING box, so right:0 stops 1px short of the next cell and
+     the top and bottom lines would come out dashed. -1px bridges exactly that
+     border. The last day pulls back to 0 so the run closes on the cell edge. */
+  .sched-info-ring{ position:absolute; top:0; bottom:0; left:0; right:-1px;
+    pointer-events:none;
+    border-top:2px solid var(--amber-500);
+    border-bottom:2px solid var(--amber-500); }
+  .sched-info-ring.sched-info-first{ border-left:2px solid var(--amber-500);
+    border-top-left-radius:3px; border-bottom-left-radius:3px; }
+  .sched-info-ring.sched-info-last{ right:0;
+    border-right:2px solid var(--amber-500);
+    border-top-right-radius:3px; border-bottom-right-radius:3px; }
+
+  /* The key's swatch for it, and the same mark on the Add button that creates
+     one. Hollow for the same reason .sched-key-clash is hollow: the thing it
+     stands for sits ON TOP of whatever the day already holds rather than
+     replacing it, so a filled dot would misdescribe it. */
+  .sched-key-ring{ width:10px; height:10px; border-radius:2px; flex:0 0 auto;
+    box-shadow:inset 0 0 0 2px var(--amber-500); }
   /* Two blocks in one cell IS the collision the grid exists to show, so they
      stack rather than merging or overwriting each other. */
   .sched-blk{ flex:1 1 auto; min-height:9px; border-radius:2px; display:flex;
@@ -4153,7 +4203,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T23:30:00Z';
+const BUILD_VERSION = '2026-09-05T01:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -21720,7 +21770,11 @@ const SCHED_LABELS = {
   quarterly_call: 'Quarterly call',
   soft_day:       'Soft day',
   other:          'Other',
-  maintenance:    'In maintenance'
+  maintenance:    'In maintenance',
+  // Reads the same on a crew row and a tail row, which is deliberate -- see the
+  // note beside SCHED_CREW_CATS. Display only; the stored value is 'info_only'
+  // and does not change.
+  info_only:      'Info only'
 };
 // NOTE: there is no 'away_from_base' label any more. The category was removed
 // on 3 Sep 2026 and the database will not accept it. SCHED_COLORS still has a
@@ -22711,6 +22765,29 @@ function schedRunLabel(e, dayRuns){
   return '<span class="sched-run-n" style="--run-w:' + w + 'px">' + escapeHtml(txt) + '</span>';
 }
 
+// The ring for an info_only span. Same run map as every bar -- schedRunKeyFor
+// buckets a hand-entered category on kind plus reason, so two markers with
+// different text on adjacent days stay two rings rather than merging into one
+// longer obligation that was never entered.
+//
+// NO NUMBER. [Kyle, 4 Sep 2026: "just create the ring. no number required."]
+// The figure on a bar says how many days of duty it represents, and this
+// represents none.
+//
+// NO title EITHER, and that is not an oversight: the ring is pointer-events:none
+// so a tooltip on it could never fire. The reason is read by tapping the day,
+// which is the path Kyle described.
+//
+// A run that is not found in the map draws closed on both sides, which is the
+// correct fallback -- a one-day ring, never an open-ended one.
+function schedInfoRingHTML(e, dayRuns){
+  const r = schedRunAt(e, dayRuns);
+  let c = 'sched-info-ring';
+  if(!r || r.isFirst) c += ' sched-info-first';
+  if(!r || r.isLast)  c += ' sched-info-last';
+  return '<span class="' + c + '" aria-hidden="true"></span>';
+}
+
 function schedRunText(run){
   // EVERY run carries its length, one-day runs included (Kyle, 4 Sep 2026).
   // The earlier rule suppressed "1" as noise on the grounds that a one-day cell
@@ -22800,7 +22877,25 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   //
   // Fall back to the raw per-day rule if a caller has not been updated -- worse
   // than the span rule, but never worse than drawing nothing.
-  (visible || schedSuppressEntries(entries)).forEach(function(e){ shown.push(e); });
+  // *** info_only NEVER BECOMES A BLOCK. *** It is drawn as a ring around the
+  // cell instead, so it is pulled out here rather than mapped with the rest.
+  // Everything upstream still sees it: it is in `entries`, so the day panel
+  // lists it, and it is in the run map, so the ring knows where its span ends.
+  //
+  // ONE RING PER CELL. Two overlapping markers on the same day would nest, and
+  // nested rings inside 30px are unreadable. The first draws; both are still in
+  // the day panel. If overlapping markers turn out to be common this is where
+  // to revisit it.
+  const info = [];
+  (visible || schedSuppressEntries(entries)).forEach(function(e){
+    if(e.kind === 'info_only') info.push(e); else shown.push(e);
+  });
+  const ring = info.length ? schedInfoRingHTML(info[0], dayRuns) : '';
+  // A day holding ONLY a marker is not a filled cell -- nothing is committed on
+  // it -- so it keeps the empty cell's styling and just wears the ring.
+  if(!shown.length){
+    return '<div class="' + cls + '"' + attrs + '>' + ring + '</div>';
+  }
   const blocks = shown.map(function(e){
     const col = schedKindColor(e.kind, ownerKind);
     const label = schedKindLabel(e.kind, ownerKind);
@@ -22857,7 +22952,7 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
     const qcls = ' sched-blk-lighttext';
     return '<span class="sched-blk' + qcls + schedRunCls(e, dayRuns) + '" style="background:' + col + '" title="' + escapeHtml(title) + '">' + short + '</span>';
   }).join('');
-  return '<div class="' + cls + ' sched-cell-filled"' + attrs + '>' + blocks + '</div>';
+  return '<div class="' + cls + ' sched-cell-filled"' + attrs + '>' + ring + blocks + '</div>';
 }
 
 // ---- SCHEDULE ENTRY -------------------------------------------------------
@@ -22876,7 +22971,17 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
 // Kyle: "it really just doesn't have any place to live... something that we'll
 // never build upon in the future." 'other' already covers anything flying-shaped
 // that is not a trip, and its reason field is mandatory, so nothing is lost.
-const SCHED_CREW_CATS = ['training','pto','quarterly_call','soft_day','other'];
+// *** info_only IS LAST BECAUSE IT IS NOT A DUTY. *** Everything above it in
+// this list commits the person to something. This one only says there may be
+// something to ask about, so it sits after the commitments rather than among
+// them.
+//
+// It is the same option on both bands and means the same thing on both: on a
+// crew row, the person may have another obligation; on a tail row, the aircraft
+// may. That is NOT a repeat of the old amber collision (see the palette notes),
+// where one colour meant maintenance on a tail and a soft day on a crew member.
+// One concept, two things it can be attached to.
+const SCHED_CREW_CATS = ['training','pto','quarterly_call','soft_day','other','info_only'];
 // A tail has TWO hand-entered states: maintenance, and other with a reason.
 // 'away_from_base' was removed on 3 Sep 2026 -- it never said anything the
 // reason field was not already saying, and it collided in colour with a tail
@@ -22884,7 +22989,7 @@ const SCHED_CREW_CATS = ['training','pto','quarterly_call','soft_day','other'];
 // CHECK on aircraft_availability.status no longer accepts it (migration 38),
 // so this list and the constraint have to stay in step: adding it back here
 // would produce a save the database rejects.
-const SCHED_AC_CATS   = ['maintenance','other'];
+const SCHED_AC_CATS   = ['maintenance','other','info_only'];
 
 let schedEntry = null;   // { ownerId, ownerKind, ownerLabel, category, start, end, reason }
 
@@ -23750,7 +23855,10 @@ function renderSchedEntry(){
   // 'other' REQUIRES a reason, enforced by a BEFORE trigger on the table. The
   // form says so out loud rather than letting the database refuse a save the
   // person thought was fine -- but the trigger remains the rule, not this note.
-  const needsReason = e.category === 'other';
+  // Both categories that mean nothing without their text. 'other' is enforced by
+  // a BEFORE trigger; info_only by a CHECK constraint added in migration 53. The
+  // form says so out loud either way rather than letting the save be refused.
+  const needsReason = e.category === 'other' || e.category === 'info_only';
   let h = '<div class="sched-entry-who">' + escapeHtml(e.ownerLabel) + '</div>';
   h += '<div class="sched-entry-day">' + escapeHtml(schedPrettyDay(e.day)) + '</div>';
   h += schedExistingHTML(e);
@@ -23788,9 +23896,15 @@ function renderSchedEntry(){
        '</button>';
   cats.forEach(function(c){
     const on = c === e.category;
+    // The mark matches what the grid will actually draw. info_only has no fill
+    // colour by design, so a dot here would be background:undefined -- a
+    // swatch that renders as nothing and tells the person the category has no
+    // appearance. It gets the same hollow ring the key gives it.
+    const mark = c === 'info_only'
+      ? '<span class="sched-key-ring" aria-hidden="true"></span>'
+      : '<span class="sched-key-dot" style="background:' + SCHED_COLORS[c] + '"></span>';
     h += '<button type="button" class="sched-cat' + (on ? ' sched-cat-on' : '') + '" data-sched-cat="' + c + '">' +
-           '<span class="sched-key-dot" style="background:' + SCHED_COLORS[c] + '"></span>' +
-           escapeHtml(SCHED_LABELS[c]) +
+           mark + escapeHtml(SCHED_LABELS[c]) +
          '</button>';
   });
   h += '</div>';
@@ -23807,10 +23921,21 @@ function renderSchedEntry(){
        '</div>';
   // The example has to be an example of the right KIND of thing. "FAA medical"
   // on a tail row is a crew reason offered to someone entering an aircraft one.
-  const reasonEg = e.ownerKind === 'aircraft' ? 'e.g. scheduled inspection' : 'e.g. FAA medical';
+  let reasonEg = e.ownerKind === 'aircraft' ? 'e.g. scheduled inspection' : 'e.g. FAA medical';
+  // An info marker's reason IS the marker -- there is nothing else to it -- so
+  // the example shows the shape of a whole note rather than a two-word label.
+  if(e.category === 'info_only'){
+    reasonEg = e.ownerKind === 'aircraft'
+      ? 'e.g. delivery period \u2014 check before scheduling'
+      : 'e.g. responsible for N675BB delivery';
+  }
+  // Named rather than hard-coded to 'Other': the placeholder now has two
+  // categories to speak for and naming the wrong one is worse than saying
+  // nothing.
+  const reasonReq = 'Required for ' + (SCHED_LABELS[e.category] || 'this');
   h += '<div class="field"><label>Reason' + (needsReason ? '' : ' (optional)') + '</label>' +
          '<input type="text" id="schedReason" maxlength="120" value="' + escapeHtml(e.reason) + '" ' +
-         'placeholder="' + (needsReason ? 'Required for Other' : reasonEg) + '">' +
+         'placeholder="' + escapeHtml(needsReason ? reasonReq : reasonEg) + '">' +
        '</div>';
   h += '<div class="sched-entry-span" id="schedSpan"></div>';
   body.innerHTML = h;
@@ -24182,7 +24307,13 @@ async function saveSchedEntry(){
   if(!e.category){ showToast('Pick a category first'); return; }
   if(!start || !end){ showToast('A start and an end date are needed'); return; }
   if(end < start){ showToast('The end date is before the start date'); return; }
+  // The database refuses both of these -- 'other' by trigger, info_only by the
+  // CHECK from migration 53. Caught here so the person gets a sentence rather
+  // than a constraint violation.
   if(e.category === 'other' && !reason){ showToast('Other needs a reason'); return; }
+  if(e.category === 'info_only' && !reason){
+    showToast('An info marker needs something written in it'); return;
+  }
 
   const deptId = await getFlightDepartmentId();
   const prof = currentUserProfile || await loadCurrentUserProfile();
@@ -24702,7 +24833,9 @@ function renderScheduleView(){
       // Same row as the categories it can strike, different mark.
       const swatch = it.clash
         ? '<span class="sched-key-clash" aria-hidden="true"></span>'
-        : '<span class="sched-key-dot" style="background:' + it.color + '"></span>';
+        : it.ring
+          ? '<span class="sched-key-ring" aria-hidden="true"></span>'
+          : '<span class="sched-key-dot" style="background:' + it.color + '"></span>';
       r += '<span class="sched-key-item">' + swatch + escapeHtml(it.label) + '</span>';
     });
     return r + '</div>';
@@ -24715,8 +24848,18 @@ function renderScheduleView(){
   // true on an aircraft row. It sat on its own line until the key had bands at
   // all -- being a state rather than a category is a reason to mark it
   // differently, not a reason to file it away from the band it belongs to.
+  // info_only is an item literal rather than a kindItem: it has no entry in
+  // SCHED_COLORS and must not be given one. A fill colour in that table is what
+  // schedCellHTML paints a BLOCK with, and the whole point of this category is
+  // that it never draws a block.
+  //
+  // It appears in BOTH bands, which the key already supports -- an entry belongs
+  // to whichever bands it belongs to. Same wording both times, because it is the
+  // same fact wherever it is attached.
+  const infoItem = { ring: true, label: SCHED_LABELS.info_only };
+
   key += keyRow('Crew', ['flight','training','pto','quarterly_call','soft_day','other'].map(kindItem)
-                .concat([{ clash: true, label: 'Flying on a protected day' }]));
+                .concat([infoItem, { clash: true, label: 'Flying on a protected day' }]));
 
   // "Away on trip" is NOT a stored kind and must not be added to SCHED_LABELS.
   // It is the AIRCRAFT reading of flight / away_on_trip / flight_assigned, all
@@ -24728,7 +24871,8 @@ function renderScheduleView(){
   key += keyRow('Aircraft', [
     { color: SCHED_COLORS.away_from_base, label: 'Away on trip' },
     kindItem('maintenance'),
-    kindItem('other')
+    kindItem('other'),
+    infoItem
   ]);
 
   // The note is part of the same explanation, so it folds with it rather than
