@@ -1342,12 +1342,18 @@
        #24CC78  ink 8.30:1   paper 1.77:1  -> ink
        #9DB2EE  ink 8.35:1   paper 1.95:1  -> ink
        #D87F26  ink 5.81:1   paper 2.53:1  -> ink
-       #AB1E41  ink 2.50:1   paper 5.87:1  -> paper
-     Three light fills take dark text and the one dark fill takes light text.
-     That is not an inconsistency to tidy away -- it is what legibility costs
-     when the fill is fixed. If a SCHED_COLORS hex changes, re-measure. */
+       #AB1E41  ink 2.50:1   paper 5.87:1  -> ink, see the note on that rule
+     Three of the four are comfortable either way round. The PTO red is the only
+     fill dark enough to argue about, and it is now dark text like the rest by
+     choice. If a SCHED_COLORS hex changes, re-measure. */
   .sched-tgrp-duty{ --tgrp-rgb:36,204,120;  --tgrp-ink:var(--ink-900); }
-  .sched-tgrp-pto { --tgrp-rgb:171,30,65;   --tgrp-ink:var(--paper-050); }
+  /* Kyle, 4 Sep 2026: PTO was the only header in light text and it stood out
+     for that rather than for what it says, so all four now run dark. THIS ONE
+     IS BELOW THE RATIO THE OTHERS CLEAR -- 2.50:1, against 5.81 to 8.35 -- and
+     it is a deliberate call to try it, not an oversight. If it reads muddy the
+     fix is to lighten the FILL rather than the text: the label has to match the
+     others, so the only variable left is what it sits on. */
+  .sched-tgrp-pto { --tgrp-rgb:171,30,65;   --tgrp-ink:var(--ink-900); }
   /* *** HOME IS THE ONE GROUP WITH NO CATEGORY BEHIND IT. ***
      It borrowed the violet that `other` wears, which was a colour standing for
      a kind the panel does not count -- so it read as a claim it was not making
@@ -4150,7 +4156,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T20:40:00Z';
+const BUILD_VERSION = '2026-09-04T20:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
