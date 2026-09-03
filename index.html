@@ -3942,7 +3942,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T10:20:00Z';
+const BUILD_VERSION = '2026-09-04T11:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -21852,6 +21852,153 @@ function schedFillAwayDays(idx){
 // DECLARED ABOVE BOTH CONSUMERS ON PURPOSE. A const is not hoisted the way a
 // function is; schedKindColor sits below this line and would hit a temporal
 // dead zone if anything ever called it during script evaluation.
+/* ---- Fairness tally ---------------------------------------------------
+   WHAT IT ANSWERS: is the work split evenly. Not "how many days did I fly" --
+   that is a number nobody can act on without a baseline in their head. The
+   tally's output is a DEVIATION from the average of the person's own job
+   title, so a reader who holds nothing in their head still sees who is high
+   and who is low.
+
+   *** ONE DAY IS ONE DAY. *** crew_busy_days returns one row per record per
+   day, so a person flying and training on the same date arrives as two rows.
+   Every day therefore resolves to exactly ONE bucket, in this order:
+
+     duty  -> pto -> home
+
+   Duty wins a contested day (Kyle, 4 Sep 2026). Without that ordering, duty
+   plus pto could exceed the days available and home would go negative -- which
+   is the visible symptom of double-counting, and the reason the order is fixed
+   here rather than left to whichever row the index happened to hold first.
+
+   HOME IS THE LEFTOVER, deliberately. Every available day that is not duty and
+   not pto is home, whether or not anything is written on it. That keeps
+   duty + pto + home == available exactly, which is what makes home a
+   COMPLETENESS CHECK: two pilots on eighteen duty days look identical until one
+   has forty home days and the other has ten because nobody finished entering
+   his month.
+
+   WHY THIS READS THE INDEX AND NOT THE RPC: away_on_trip does not exist in
+   crew_busy_days. It is derived client-side by schedFillAwayDays, and Kyle
+   confirmed those days count as duty. A tally written against the RPC would
+   have silently dropped every between-legs day. Reading the same index the grid
+   draws from also means the tally cannot disagree with what is on screen.
+
+   AVAILABILITY, NOT THE CALENDAR: someone hired in July has a low duty count
+   for a reason that is not unfairness. Days available run from the later of
+   1 January and their hire date, to the earlier of 31 December and today.
+   Null hire date means on staff before the year began -- the common case.
+------------------------------------------------------------------------- */
+
+// Duty is the four greens plus training and other. quarterly_call is NOT duty
+// (Kyle, 4 Sep 2026) and falls through to home; soft_day is counted separately
+// and is admin-only, because it is a subjective request rather than a company
+// obligation and the point of showing it is to see who leans on it.
+const TALLY_DUTY_KINDS = {
+  flight: 1, flight_historical: 1, flight_assigned: 1, away_on_trip: 1,
+  training: 1, other: 1
+};
+const TALLY_PTO_KINDS  = { pto: 1 };
+const TALLY_SOFT_KINDS = { soft_day: 1 };
+
+// Days the person could have been rostered, within the year being viewed.
+// Returns 0 for someone hired after the year ended -- a zero denominator, which
+// the caller must not divide by.
+function tallyAvailableDays(hireDate, year, today){
+  const jan1 = new Date(year, 0, 1);
+  const dec31 = new Date(year, 11, 31);
+  let from = jan1;
+  if(hireDate){
+    // Parsed at local midnight, not through Date(string), which reads a bare
+    // ISO date as UTC and lands on 31 December for anyone west of Greenwich.
+    const h = new Date(String(hireDate).slice(0, 10) + 'T00:00:00');
+    if(!isNaN(h) && h > from) from = h;
+  }
+  // A year in progress is counted to today, not to 31 December. Counting a
+  // whole year in September would divide four months of work by twelve months
+  // of opportunity and report the entire department as under-worked.
+  const to = (today < dec31) ? today : dec31;
+  if(to < from) return 0;
+  return Math.round((to - from) / 86400000) + 1;
+}
+
+// Per-person day counts for one year, read out of the SAME index the grid
+// renders from. Returns { userId: {duty, pto, home, soft, available} }.
+function tallyCountDays(crewIdx, year, hireDatesById, today){
+  const out = {};
+  const lo = year + '-01-01';
+  const hi = year + '-12-31';
+  Object.keys(crewIdx || {}).forEach(function(userId){
+    const byDay = crewIdx[userId] || {};
+    let duty = 0, pto = 0, soft = 0;
+    Object.keys(byDay).forEach(function(day){
+      // *** THE WINDOW IS WIDER THAN THE YEAR. *** schedWindow loads a lead and
+      // trail month either side, so December 2025 and January 2027 are sitting
+      // in this index. Without this clip they would land in the 2026 count.
+      if(day < lo || day > hi) return;
+      const entries = byDay[day] || [];
+      let isDuty = false, isPto = false, isSoft = false;
+      entries.forEach(function(e){
+        if(TALLY_DUTY_KINDS[e.kind]) isDuty = true;
+        if(TALLY_PTO_KINDS[e.kind])  isPto  = true;
+        if(TALLY_SOFT_KINDS[e.kind]) isSoft = true;
+      });
+      // Soft days are tallied ALONGSIDE, not instead. A soft day off is not
+      // duty and not pto, so it lands in home like any other non-duty day --
+      // this count exists to answer "who is asking for more of them", which is
+      // a different question from where the day itself belongs.
+      if(isSoft) soft++;
+      if(isDuty) duty++;
+      else if(isPto) pto++;
+    });
+    out[userId] = { duty: duty, pto: pto, soft: soft, home: 0, available: 0 };
+  });
+  // Availability and home are per PERSON, not per day, so they are filled from
+  // the roster rather than the index -- somebody with an empty year has no key
+  // in crewIdx at all and would otherwise vanish from a fairness comparison.
+  Object.keys(hireDatesById || {}).forEach(function(userId){
+    if(!out[userId]) out[userId] = { duty: 0, pto: 0, soft: 0, home: 0, available: 0 };
+    const avail = tallyAvailableDays(hireDatesById[userId], year, today);
+    out[userId].available = avail;
+    out[userId].home = Math.max(0, avail - out[userId].duty - out[userId].pto);
+  });
+  return out;
+}
+
+// Deviation from the average duty days of the person's OWN job title. Pilots
+// and flight attendants do not fly the same pattern, so one department-wide
+// average would make every deviation slightly wrong (Kyle, 4 Sep 2026).
+//
+// Compared PER AVAILABLE DAY and then scaled back to the average person's year,
+// so a July hire with proportionally the same load reads near zero rather than
+// looking six months idle. Someone with no available days is left out of both
+// the average and the result -- they cannot be treated fairly or unfairly yet.
+function tallyDeviations(counts, peopleById){
+  const groups = {};
+  Object.keys(counts || {}).forEach(function(userId){
+    const p = peopleById[userId];
+    const c = counts[userId];
+    if(!p || !c || !c.available) return;
+    const title = p.title || '';
+    if(!groups[title]) groups[title] = [];
+    groups[title].push({ id: userId, rate: c.duty / c.available, available: c.available });
+  });
+  const out = {};
+  Object.keys(groups).forEach(function(title){
+    const g = groups[title];
+    // A group of one has no one to be compared against. Reporting zero would
+    // read as "exactly fair" when the truth is "not measurable".
+    if(g.length < 2){ g.forEach(function(m){ out[m.id] = null; }); return; }
+    let rateSum = 0, availSum = 0;
+    g.forEach(function(m){ rateSum += m.rate; availSum += m.available; });
+    const avgRate = rateSum / g.length;
+    const avgAvail = availSum / g.length;
+    g.forEach(function(m){
+      out[m.id] = Math.round((m.rate - avgRate) * avgAvail);
+    });
+  });
+  return out;
+}
+
 const SCHED_AC_TRIP_KINDS = { flight: 1, away_on_trip: 1, flight_assigned: 1 };
 
 function schedKindColor(kind, ownerKind){
