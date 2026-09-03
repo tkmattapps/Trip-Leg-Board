@@ -1359,6 +1359,17 @@
      the grid. #7E8FAC -> 126,143,172. --ink-900 on it measures 5.33:1. */
   .sched-tgrp-home{ --tgrp-rgb:126,143,172; --tgrp-ink:var(--paper-050); }
   .sched-tgrp-soft{ --tgrp-rgb:216,127,38;  --tgrp-ink:var(--paper-050); }
+  /* Aircraft. Away reuses the duty green because it IS the same green on the
+     grid -- a tail away on a trip and a person on duty are drawn with one
+     colour, and the tally must not invent a second. Maint is the grid's
+     maintenance violet, #5059A2 -> 80,89,162.
+     The void group is the third slot an aircraft row does not fill. It takes
+     --panel-700 so the header band reads as absent rather than as an unlabelled
+     category, and it exists ONLY to hold the column width -- see the note on
+     .sched-band-ac. */
+  .sched-tgrp-away { --tgrp-rgb:36,204,120;  --tgrp-ink:var(--paper-050); }
+  .sched-tgrp-maint{ --tgrp-rgb:80,89,162;   --tgrp-ink:var(--paper-050); }
+  .sched-tgrp-void { --tgrp-rgb:29,51,80;    --tgrp-ink:var(--fog-500); }
   /* *** THE HEADER IS THE GRID COLOUR AT FULL STRENGTH. ***
      Kyle, 4 Sep 2026: the headers match the bars on the grid. An earlier build
      washed these over the panel at 30/20/10 percent, which kept the hue and
@@ -1750,6 +1761,24 @@
   .sched-band{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
     color:var(--fog-500); padding:12px 0 5px 2px; position:sticky; left:0;
     border-bottom:1px solid var(--hairline); }
+  /* *** THE AIRCRAFT BAND CARRIES ITS OWN TALLY HEADINGS. ***
+     Crew are counted in Duty / PTO / Home; a tail is counted in Away / Maint.
+     Two different tables cannot share one row of labels, so the aircraft band
+     heading doubles as the header for the rows beneath it (Kyle, 4 Sep 2026 --
+     the break between the crew bands and the aircraft band is wanted, not a
+     compromise).
+     The band is a block inside .sched-scroll, so it is as wide as the VIEWPORT
+     rather than as wide as the grid -- which is why it is sticky in the first
+     place. A .sched-tally inside it therefore pins to the same right edge the
+     row tallies pin to, with no width stated anywhere: the block is built by
+     the same function as every other tally, so it cannot be a different size.
+     Padding-bottom goes to 0 because the tally block brings its own. */
+  .sched-band-ac{ display:flex; align-items:stretch; justify-content:space-between;
+    padding-bottom:0; }
+  .sched-band-ac .sched-band-label{ display:flex; align-items:flex-end;
+    padding-bottom:5px; }
+  /* The heading row's own border would double with the tally block's. */
+  .sched-band-ac .sched-tally{ border-bottom:0; }
   .sched-keywrap{ display:flex; flex-direction:column; align-items:center; }
   /* The handle: full width so it is easy to hit, with a short visible grip bar
      centred in it. Generous vertical padding because this is a touch target on
@@ -4225,7 +4254,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-05T01:55:00Z';
+const BUILD_VERSION = '2026-09-05T03:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -21938,6 +21967,18 @@ function schedUpdateTallyMonth(y, m){
     const dev = box.querySelector('.sched-tdev');
     if(dev) dev.textContent = tallyText(devs[id]);
   });
+  // The aircraft band reads the same two windows. Walked separately because its
+  // figures come from a different function over a different index -- see the
+  // note on data-tally-ac.
+  const acNodes = document.querySelectorAll('.sched-tally[data-tally-ac]');
+  if(!acNodes.length) return;
+  const acM = tallyAircraftRange(schedTallyLive.acIdx, lo, hi);
+  const acY = tallyAircraftRange(schedTallyLive.acIdx, yLo, hi);
+  acNodes.forEach(function(box){
+    const id = box.getAttribute('data-tally-ac');
+    box.querySelectorAll('.sched-tnum-m[data-tm]').forEach(function(sp){ put(sp, acM, id); });
+    box.querySelectorAll('.sched-tnum-y[data-tm]').forEach(function(sp){ put(sp, acY, id); });
+  });
 }
 
 function schedWindow(){
@@ -22338,6 +22379,42 @@ function tallyCountRange(crewIdx, lo, hi, hireDatesById, today){
     // So the completeness check is now duty + home == available exactly, and
     // pto <= home rather than adding to it.
     out[userId].home = Math.max(0, avail - out[userId].duty);
+  });
+  return out;
+}
+
+// *** A TAIL IS NOT COUNTED THE WAY A PERSON IS. ***
+// tallyCountRange is built around a hire date and an availability window,
+// because the crew figures exist to be compared between people. Neither applies
+// to an aircraft: a tail has no start date to be fair from and nothing to be
+// fair against. So this is its own function rather than a mode of that one --
+// two counts, no availability, no deviation (Kyle, 4 Sep 2026).
+//
+// The index shape is the same, {id: {day: [entries]}}, so the clip below is the
+// same clip and for the same reason: schedWindow loads a year plus a lead and a
+// trail month, and for a monthly range eleven other months are sitting in here.
+function tallyAircraftRange(acIdx, lo, hi){
+  const out = {};
+  Object.keys(acIdx || {}).forEach(function(acId){
+    const byDay = acIdx[acId] || {};
+    let away = 0, maint = 0;
+    Object.keys(byDay).forEach(function(day){
+      if(day < lo || day > hi) return;
+      const entries = byDay[day] || [];
+      let isAway = false, isMaint = false;
+      entries.forEach(function(e){
+        if(SCHED_AC_TRIP_KINDS[e.kind]) isAway  = true;
+        if(e.kind === 'maintenance')    isMaint = true;
+      });
+      // *** ONE DAY IS COUNTED ONCE. ***
+      // A tail can carry a trip and a maintenance entry on the same date. Away
+      // wins, the same way duty wins over pto above: the aeroplane was away.
+      // Counting both would let Away + Maint exceed the days in the month,
+      // which reads as a fault in the figures rather than as two facts.
+      if(isAway) away++;
+      else if(isMaint) maint++;
+    });
+    out[acId] = { away: away, maint: maint };
   });
   return out;
 }
@@ -24576,8 +24653,14 @@ function renderScheduleView(){
                                            schedISO(w.monthLast), tallyHires, tallyToday);
   // The same three inputs, kept for schedUpdateTallyMonth. Set on every render so
   // a stale index cannot outlive the grid it was built from.
+  // The aircraft pair, over exactly the same two windows as the crew figures so
+  // the M and Y columns mean the same thing in both bands.
+  const tallyAcYear  = tallyAircraftRange(acIdx, tallyYear + '-01-01',
+                                          schedISO(w.monthLast));
+  const tallyAcMonth = tallyAircraftRange(acIdx, schedISO(w.monthFirst),
+                                          schedISO(w.monthLast));
   schedTallyLive = { idx: crewIdx, hires: tallyHires, today: tallyToday,
-                     people: tallyPeople };
+                     people: tallyPeople, acIdx: acIdx };
   const tallyDevs = tallyDeviations(tallyYearCounts, tallyPeople);
   // Soft days are admin-only. A crew member seeing a count of their own requests
   // sitting in a fairness table would read it as a charge sheet, which is not
@@ -24592,10 +24675,15 @@ function renderScheduleView(){
   //   mode 'crew'  -- the numbers
   //   mode 'blank' -- the month band and the aircraft rows, which carry the
   //                   column and never a figure
+  //   mode 'ac'     -- an aircraft row: Away and Maint
+  //   mode 'achead' -- the labels for those, carried by the aircraft band
   function tallyCellHTML(mode, id){
-    const isHead = mode === 'head';
-    const cy = (mode === 'crew') ? tallyYearCounts[id] : null;
-    const cm = (mode === 'crew') ? tallyMonthCounts[id] : null;
+    const isHead = (mode === 'head' || mode === 'achead');
+    const isAc   = (mode === 'ac'   || mode === 'achead');
+    const cy = (mode === 'crew') ? tallyYearCounts[id]
+             : (mode === 'ac')   ? tallyAcYear[id]  : null;
+    const cm = (mode === 'crew') ? tallyMonthCounts[id]
+             : (mode === 'ac')   ? tallyAcMonth[id] : null;
     const num = function(src, k){
       if(!src) return '';
       const v = src[k];
@@ -24621,11 +24709,38 @@ function renderScheduleView(){
     // made the group sound like it counted only flying and training. It counts
     // every day the person was obligated -- flying, training and `other` too --
     // and "Duty" is what that is.
-    let x = '<div class="sched-tallyx">' +
-              grp('Duty', 'duty', 'duty') +
-              grp('PTO', 'pto', 'pto') +
-              grp('Home', 'home', 'home');
-    if(tallySoft){
+    // *** THE AIRCRAFT COLUMN IS ONE GROUP SHORT, AND THAT SHORTFALL IS HELD. ***
+    // The tally is pinned right and every row sizes to its own contents, so a
+    // two-group aircraft block would be narrower than the three-group crew block
+    // above it -- the numbers would stop lining up and the pinned edge would step
+    // inward at the aircraft band. The empty third group takes its width by the
+    // same flex rule as every other group, so nothing is measured and nothing can
+    // drift. Kyle, 4 Sep 2026: two numbers only, not three.
+    let x = '<div class="sched-tallyx">';
+    if(isAc){
+      x += grp('Away', 'away', 'away') +
+           grp('Maint', 'maint', 'maint') +
+           grp('', 'void', 'void');
+    } else {
+      x += grp('Duty', 'duty', 'duty') +
+           grp('PTO', 'pto', 'pto') +
+           grp('Home', 'home', 'home');
+    }
+    if(tallySoft && isAc){
+      // The soft column is admin-only and belongs to people. When it is on, the
+      // aircraft rows need a slot of the same width or the two bands part company
+      // for exactly the reason above.
+      // No label: the head row SHOWS its labels, and "Soft" printed over an
+      // aircraft would name a count that does not exist for a tail. The width
+      // comes from the 32px number slot, not from the word, so dropping the text
+      // costs nothing -- see .sched-tnum's min-width.
+      x += '<div class="sched-tgrp sched-tgrp-void">' +
+             '<div class="sched-tgrp-h"></div>' +
+             '<div class="sched-tgrp-n">' +
+               '<span class="sched-tnum sched-tnum-y"></span>' +
+             '</div>' +
+           '</div>';
+    } else if(tallySoft){
       x += '<div class="sched-tgrp sched-tgrp-soft">' +
              '<div class="sched-tgrp-h">Soft</div>' +
              '<div class="sched-tgrp-n">' +
@@ -24635,7 +24750,11 @@ function renderScheduleView(){
            '</div>';
     }
     x += '</div>';
-    const dev = isHead
+    // The deviation is a crew idea: a tail has no job title to be averaged
+    // against. The aircraft header keeps the slot -- it is 44px of the shared
+    // width -- and puts nothing in it. The chevron stays on the crew header,
+    // which is the control for both bands.
+    const dev = (mode === 'head')
       ? '<span class="sched-tdev-l">Duty' +
           '<span class="sched-tchev" aria-hidden="true">&#9656;</span></span>' +
         '<span class="sched-tdev-l">Ave</span>'
@@ -24645,8 +24764,13 @@ function renderScheduleView(){
     // The id sits on the OUTER container, not on .sched-tallyx: the deviation is
     // a SIBLING of the detail block, and an id on the inner one could not reach
     // it. Crew rows only -- head and blank rows hold no figure to update.
+    // *** THE AIRCRAFT HOOK IS A DIFFERENT ATTRIBUTE ON PURPOSE. ***
+    // schedUpdateTallyMonth walks [data-tally-id] and writes crew figures into
+    // it. An aircraft id in that list would find no entry in the crew counts and
+    // every one of its numbers would be blanked on the first scroll.
     return '<div class="sched-tally' + (isHead ? ' sched-tally-head' : '') + '"' +
              ((mode === 'crew') ? ' data-tally-id="' + escapeHtml(String(id)) + '"' : '') +
+             ((mode === 'ac')   ? ' data-tally-ac="' + escapeHtml(String(id)) + '"' : '') +
              ' data-sched-tally' + (isHead ? ' aria-expanded="' + (tallyOpen ? 'true' : 'false') + '"' : '') + '>' +
              x + '<div class="sched-tdev">' + dev + '</div>' +
            '</div>';
@@ -24726,7 +24850,15 @@ function renderScheduleView(){
 
   function bandHTML(label, rows, idx, kind, nameOf, subOf){
     if(!rows.length) return '';
-    let h = '<div class="sched-band">' + escapeHtml(label) + '</div>';
+    // The aircraft band heading doubles as the header for its own two counts.
+    // Built by tallyCellHTML in head mode so it is the same block, the same
+    // width, as the rows below it -- see .sched-band-ac.
+    let h = (kind === 'aircraft')
+      ? '<div class="sched-band sched-band-ac">' +
+          '<span class="sched-band-label">' + escapeHtml(label) + '</span>' +
+          tallyCellHTML('achead') +
+        '</div>'
+      : '<div class="sched-band">' + escapeHtml(label) + '</div>';
     rows.forEach(function(r){
       // Crew only. An aircraft is not anybody's row, and matching an aircraft id
       // against a user id could only ever be a coincidence, but the kind check
@@ -24755,11 +24887,11 @@ function renderScheduleView(){
         h += schedCellHTML(owned[iso], iso, r.id, kind, iso === todayISO,
                            dow === 0 || dow === 6, isMe, rowRuns[iso], rowVisible[iso]);
       });
-      // An aircraft carries the column but never a number: a tail has no job
-      // title to be averaged against, and leaving the cell out would put the
-      // aircraft band half a column out of step with the crew above it.
+      // An aircraft carries the column but never a DEVIATION: a tail has no job
+      // title to be averaged against. It does now carry two counts of its own --
+      // days away and days in maintenance (Kyle, 4 Sep 2026).
       h += '<div class="sched-tail"></div>' +
-           tallyCellHTML(kind === 'crew' ? 'crew' : 'blank', r.id) +
+           tallyCellHTML(kind === 'crew' ? 'crew' : 'ac', r.id) +
            '</div>';
     });
     return h;
@@ -25730,8 +25862,11 @@ document.addEventListener('click', async function(e){
     if(twrap){
       const nowOpen = !twrap.classList.contains('is-tally-open');
       twrap.classList.toggle('is-tally-open', nowOpen);
-      const th = twrap.querySelector('.sched-tally-head[data-sched-tally]');
-      if(th) th.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+      // Two headers now -- the crew one at the top and the aircraft band's --
+      // and they are one control, so they must not report different states.
+      twrap.querySelectorAll('.sched-tally-head[data-sched-tally]').forEach(function(th){
+        th.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+      });
       schedSetTallyOpen(nowOpen);
     }
     return;
