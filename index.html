@@ -2545,7 +2545,10 @@
   .sheet-slot input::placeholder{ color:var(--fog-500); letter-spacing:0; }
   .sheet-slot input.is-abbrev{ text-transform:uppercase; letter-spacing:0.14em; font-weight:600; }
   .sheet-readonly{ font-family:system-ui,'Inter',sans-serif; font-size:15px; color:var(--fog-300); padding:9px 0 2px; }
-  .sheet-err{ font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--alert-600); line-height:1.5; margin-top:10px; }
+  /* Sits between the scrolling body and the footer, so it carries the body's
+     horizontal padding itself -- it is no longer inside it. */
+  .sheet-err{ font-family:system-ui,'Inter',sans-serif; font-size:12px;
+    color:var(--alert-600); line-height:1.5; padding:10px 20px 0; }
   /* Removal is separated from the editable fields by a rule, not by colour
      alone: the fields above are routine, these two are not.
 
@@ -3850,6 +3853,14 @@ a.chat-open{ text-decoration:none; display:inline-block; }
     <button type="button" class="sheet-close" id="personEditCloseBtn" aria-label="Close">&times;</button>
   </div>
   <div class="sheet-body" id="personEditBody"></div>
+  <!-- *** THE FAILURE MESSAGE BELONGS WHERE THE EYE IS. ***
+       This used to be the last element inside .sheet-body, which scrolls. On a
+       person with a Remove block the message therefore rendered below the fold,
+       so a refused save looked exactly like a dead Save button: no toast, no
+       error, nothing. A grant refusal went undiagnosed for a full session on
+       that basis (4 Sep 2026). Outside the scroller and directly above Save, it
+       cannot be off screen when the button that caused it is on screen. -->
+  <div class="sheet-err" id="peErr" hidden></div>
   <div class="sheet-foot">
     <button type="button" class="btn" id="personEditCancelBtn">Cancel</button>
     <button type="button" class="btn btn-primary" id="personEditSaveBtn">Save</button>
@@ -4069,7 +4080,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T17:25:00Z';
+const BUILD_VERSION = '2026-09-04T18:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13844,8 +13855,7 @@ function personCreateBodyHTML(){
       '<input id="pcSurname" type="text" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="60" placeholder="Mattison" />' +
       '<div class="sheet-note">As printed on trip documents. Both legal names are required: they are the key ' +
         'that matches extracted crew to real accounts, and a missing one fails silently.</div>' +
-    '</div>' +
-    '<div class="sheet-err" id="peErr" hidden></div>';
+    '</div>';
 }
 
 // Shown after a create or a reset. Replaces the form entirely -- there is
@@ -13872,6 +13882,7 @@ function showPasswordReveal(who, password, isNew){
   const cancel = document.getElementById('personEditCancelBtn');
   if(title) title.textContent = isNew ? 'Account created' : 'Password reset';
   if(sub) sub.textContent = 'Shown once';
+  setPersonEditError('');
   if(body) body.innerHTML = passwordRevealHTML(who, password, isNew);
   if(save){ save.hidden = true; }
   if(cancel){ cancel.textContent = 'Done'; }
@@ -13902,6 +13913,7 @@ function openPersonCreateSheet(){
   const cancel = document.getElementById('personEditCancelBtn');
   if(title) title.textContent = 'Add person';
   if(sub) sub.textContent = 'New account in this department';
+  setPersonEditError('');
   if(body) body.innerHTML = personCreateBodyHTML();
   if(save){ save.hidden = false; save.disabled = false; save.textContent = 'Create account'; }
   if(cancel) cancel.textContent = 'Cancel';
@@ -13982,6 +13994,7 @@ async function resetPersonPassword(id){
   const cancel = document.getElementById('personEditCancelBtn');
   if(title) title.textContent = 'Resetting\u2026';
   if(sub) sub.textContent = who;
+  setPersonEditError('');
   if(body) body.innerHTML = '<div class="set-empty">Generating a new password\u2026</div>';
   if(save) save.hidden = true;
   if(cancel) cancel.textContent = 'Cancel';
@@ -14004,8 +14017,10 @@ async function resetPersonPassword(id){
 }
 
 /* ---- Person edit sheet ------------------------------------------------
-   Admin-only editing of the four columns migration 6 made writable:
-   display_name, legal_given_name, legal_surname, crew_abbrev. Everything
+   Admin-only editing of the five columns granted to authenticated:
+   display_name, legal_given_name, legal_surname, crew_abbrev (migration 6)
+   and hire_date (migration 45 -- 41 added the column and the guard but not
+   the grant, and every save here failed for a week on that). Everything
    else on the row is shown as plain text.
 
    WHY LEGAL NAMES MATTER HERE: three layers of this app speak different
@@ -14089,8 +14104,7 @@ function personEditBodyHTML(p){
             'Crew already recorded on past legs is not affected.</div>' +
           '<div class="sheet-note">Only the account holder can delete the account itself.</div>' +
         '</div>'
-      : '') +
-    '<div class="sheet-err" id="peErr" hidden></div>';
+      : '');
 }
 
 // ---- ADMIN ACCESS ----------------------------------------------------------
@@ -14172,6 +14186,10 @@ function openPersonEditSheet(id){
   const body = document.getElementById('personEditBody');
   if(title) title.textContent = p.name || p.email || 'Edit person';
   if(sub) sub.textContent = 'Department roster';
+  // *** THE ERROR IS NO LONGER PART OF THE BODY, SO REBUILDING THE BODY NO
+  // LONGER CLEARS IT. *** Every entry point clears it explicitly; otherwise a
+  // refusal on one person follows you onto the next one you open.
+  setPersonEditError('');
   if(body) body.innerHTML = personEditBodyHTML(p);
   const save = document.getElementById('personEditSaveBtn');
   // The sheet is shared by three modes, and the password reveal HIDES Save and
@@ -14189,6 +14207,7 @@ function openPersonEditSheet(id){
 
 function closePersonEditSheet(){
   personEditState = null;
+  setPersonEditError('');
   const bd = document.getElementById('personEditBackdrop');
   const sh = document.getElementById('personEditSheet');
   if(bd) bd.classList.remove('open');
