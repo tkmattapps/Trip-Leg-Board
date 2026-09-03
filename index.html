@@ -4069,7 +4069,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T15:40:00Z';
+const BUILD_VERSION = '2026-09-04T16:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -21717,6 +21717,39 @@ function schedUpdateTripsBtn(y, m){
   if(btn) btn.setAttribute('aria-label', 'Open ' + schedTripsBtnLabel(y, m));
 }
 
+// *** THE MONTH FIGURES FOLLOW THE GRID, NOT THE ANCHOR. ***
+// Same problem as the button above and the same answer: the panel names the
+// month the grid is SHOWING, and scrolling must not re-render. So the numbers
+// are rewritten in place from the same key that lights the band and renames the
+// button -- three things off one variable, which is why they cannot disagree.
+//
+// Before this, the month column was computed once from schedAnchor at render
+// time and then never touched, so scrolling to July left September's figures
+// sitting under a July grid with nothing to say they were not July's.
+//
+// Runs whether the column is open or shut. The spans exist either way (the
+// detail is hidden by CSS, not built on open), it is a few dozen writes, and
+// figures that were only corrected on open would be wrong for as long as it
+// took anyone to look.
+function schedUpdateTallyMonth(y, m){
+  if(!schedTallyLive) return;
+  const nodes = document.querySelectorAll('.sched-tallyx[data-tally-id]');
+  if(!nodes.length) return;
+  // Day 0 of the next month is the last day of this one -- the same idiom
+  // schedWindow uses, so month length is never counted by hand.
+  const lo = schedISO(new Date(y, m, 1));
+  const hi = schedISO(new Date(y, m + 1, 0));
+  const counts = tallyCountRange(schedTallyLive.idx, lo, hi,
+                                 schedTallyLive.hires, schedTallyLive.today);
+  nodes.forEach(function(box){
+    const c = counts[box.getAttribute('data-tally-id')];
+    box.querySelectorAll('.sched-tnum-m[data-tm]').forEach(function(sp){
+      const v = c ? c[sp.getAttribute('data-tm')] : null;
+      sp.textContent = (v == null) ? '' : String(v);
+    });
+  });
+}
+
 function schedWindow(){
   const first = schedAnchor || schedMonthStart(new Date());
   const year  = first.getFullYear();
@@ -22058,6 +22091,15 @@ function tallyAvailableRange(hireDate, lo, hi, today){
 
 // Per-person day counts for an ISO date range, read out of the SAME index the
 // grid renders from. Returns { userId: {duty, pto, home, soft, available} }.
+// *** WHAT THE MONTH RECOUNT NEEDS, KEPT WHERE IT CAN REACH IT. ***
+// The month figures have to change as the grid scrolls, and scrolling
+// deliberately does NOT re-render -- so the recount runs outside
+// renderScheduleView and needs the three things that only exist inside it.
+// Stashed rather than recomputed: crewIdx is post-fillAway and post-smart-gate,
+// and rebuilding it here would be a second copy of that logic, free to drift
+// from the one the grid actually drew.
+let schedTallyLive = null;
+
 function tallyCountRange(crewIdx, lo, hi, hireDatesById, today){
   const out = {};
   Object.keys(crewIdx || {}).forEach(function(userId){
@@ -24212,6 +24254,9 @@ function renderScheduleView(){
   // panel describes what is on screen, the same way the deviation's year does.
   const tallyMonthCounts = tallyCountRange(crewIdx, schedISO(w.monthFirst),
                                            schedISO(w.monthLast), tallyHires, tallyToday);
+  // The same three inputs, kept for schedUpdateTallyMonth. Set on every render so
+  // a stale index cannot outlive the grid it was built from.
+  schedTallyLive = { idx: crewIdx, hires: tallyHires, today: tallyToday };
   const tallyDevs = tallyDeviations(tallyYearCounts, tallyPeople);
   // Soft days are admin-only. A crew member seeing a count of their own requests
   // sitting in a fairness table would read it as a charge sheet, which is not
@@ -24251,7 +24296,8 @@ function renderScheduleView(){
       return '<div class="sched-tgrp sched-tgrp-' + tint + '">' +
                '<div class="sched-tgrp-h">' + (isHead ? escapeHtml(label) : '') + '</div>' +
                '<div class="sched-tgrp-n">' +
-                 '<span class="sched-tnum sched-tnum-m">' + (isHead ? 'M' : num(cm, k)) + '</span>' +
+                 '<span class="sched-tnum sched-tnum-m" data-tm="' + k + '">' +
+                   (isHead ? 'M' : num(cm, k)) + '</span>' +
                  '<span class="sched-tnum sched-tnum-y">' + (isHead ? 'Y' : num(cy, k)) + '</span>' +
                '</div>' +
              '</div>';
@@ -24259,7 +24305,11 @@ function renderScheduleView(){
     // The spreadsheet's own three headings, in its order. "Flt/Trg" rather than
     // "Duty" because the pinned column is already called Duty and two columns
     // with one name is worse than one abbreviation.
-    let x = '<div class="sched-tallyx">' +
+    // The row is addressable so the month figures can be rewritten in place as
+    // the grid scrolls. Crew rows only -- the head and blank rows carry no id
+    // and hold no figure to update.
+    let x = '<div class="sched-tallyx"' +
+              ((mode === 'crew') ? ' data-tally-id="' + escapeHtml(String(id)) + '"' : '') + '>' +
               grp('Flt/Trg', 'duty', 'duty') +
               grp('PTO', 'pto', 'pto') +
               grp('Home', 'home', 'home');
@@ -24755,6 +24805,9 @@ function schedSyncMonthToScroll(){
   // NOT from schedAnchor: the anchor's year is deliberately left alone above, so
   // during a cross-year hold it would name a month the grid is not lighting.
   schedUpdateTripsBtn(kY, kM);
+  // The tally's month column names the same month, off the same kY/kM, for the
+  // same reason.
+  schedUpdateTallyMonth(kY, kM);
 }
 
 // *** SMOOTH MONTH STEPS. ***
