@@ -1254,6 +1254,27 @@
   .sched-tdev{ flex:0 0 auto; width:var(--sched-tally-w);
     display:flex; align-items:center; justify-content:center; gap:3px;
     padding:0 8px; }
+  /* *** THE PINNED COLUMN READS AS ITS OWN THING. ***
+     Kyle, 4 Sep 2026: it should not look like a fifth column of the tally, so it
+     is lifted one step off --panel-700 rather than tinted. --hairline over
+     --panel-700 IS the lift -- no new colour, and no new variable: 0.16 of
+     (184,196,217) over (29,51,80) composites to (54,74,102).
+     Not on the month band, which was just made flat on purpose. */
+  .sched-row:not(.sched-months) > .sched-tally > .sched-tdev{
+    background:var(--hairline); }
+  /* *** THE HEAD CELL IS A CONTROL AND SHOULD LOOK LIKE ONE. ***
+     Two lines, "Duty" over "Ave" -- the column is 44px with 8px of padding each
+     side, so "Duty Ave" on one line does not fit and widening it would take that
+     width off the day cells for good, open or shut.
+     The CHEVRON STAYS ON LINE ONE beside "Duty", which is exactly what renders
+     there today -- so that line is known to fit rather than predicted to. "Ave"
+     is shorter than "Duty", so line two fits by the same evidence.
+     Two lines at 10px/1.2 = 24px in a 34px head cell. */
+  .sched-tally-head .sched-tdev{ flex-direction:column; gap:0; padding:0 4px; }
+  .sched-tdev-l{ display:flex; align-items:center; gap:3px; line-height:1.2; }
+  /* Lifted from --fog-500, which measured 2.75:1 against the new background and
+     is not a label at that ratio. --fog-300 measures 5.13:1. */
+  .sched-tally-head .sched-tdev{ color:var(--fog-300); }
   /* Plain text, no colour coding (Kyle, 4 Sep 2026). The grid already spends
      seven colours on kinds, and red-for-high would import a judgement the number
      does not make: the tally says UNEVEN is worth a look, not that duty is bad. */
@@ -1334,6 +1355,16 @@
      Month is the number being worked with today; the year behind it recedes. */
   .sched-tnum-m{ background:var(--panel-700); }
   .sched-tnum-y{ background:var(--panel-800); }
+  /* *** THE MONTH BAND CARRIES NO COLUMNS. ***
+     The band is one continuous strip naming the month, and the tally's shading
+     was bleeding into it as vertical stripes above the headings -- structure
+     from a table the band is not part of (Kyle, 4 Sep 2026). The group divider
+     goes with them: a border is a stripe too.
+     Scoped to .sched-months and not to the blank mode generally, because the
+     aircraft rows ARE rows of that table and keep their columns. */
+  .sched-months .sched-tnum-m,
+  .sched-months .sched-tnum-y{ background:transparent; }
+  .sched-months .sched-tgrp{ border-right:0; }
   /* Soft days carry one figure, not two: the question is who leans on them over
      a season, not in a fortnight. The group needs no rule of its own -- one
      .sched-tnum instead of two makes it half width by itself. */
@@ -4080,7 +4111,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T18:30:00Z';
+const BUILD_VERSION = '2026-09-04T19:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -24373,7 +24404,9 @@ function renderScheduleView(){
     }
     x += '</div>';
     const dev = isHead
-      ? 'Duty<span class="sched-tchev" aria-hidden="true">&#9656;</span>'
+      ? '<span class="sched-tdev-l">Duty' +
+          '<span class="sched-tchev" aria-hidden="true">&#9656;</span></span>' +
+        '<span class="sched-tdev-l">Ave</span>'
       : ((mode === 'crew') ? tallyText(tallyDevs[id]) : '');
     // The WHOLE column opens it, header included, so the target is not per row
     // (Kyle, 4 Sep 2026).
