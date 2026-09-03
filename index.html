@@ -372,12 +372,15 @@
   /* The block shrinks to its widest child, which is the stretched first line.
      align-items:center then centres "In focus" on it with nothing measured. */
   .home-sub-block{ display:flex; flex-direction:column; align-items:center; margin-top:12px; position:relative; z-index:1; }
-  /* Stage-light glow. Two shadows: a tight core that reads as the lit edge of
-     the letters, and a wider bloom behind it. Colour is --amber-500 (#F2A93B)
-     in rgba form so it can carry an alpha; text-shadow does not affect the
-     layout box, so the letter-spacing measurement in layoutHomeLogo is unchanged. */
-  .home-subtitle{ font-size:16px; color:var(--fog-300); text-shadow:0 0 6px rgba(242,169,59,0.45), 0 0 18px rgba(242,169,59,0.25); }
-  .home-subtitle2{ font-size:16px; color:var(--fog-300); margin-top:6px; text-shadow:0 0 6px rgba(242,169,59,0.45), 0 0 18px rgba(242,169,59,0.25); }
+  /* Stage-light glow. The tight 6px core was what read as fuzz — a near shadow
+     sits right on the letter edges and softens them. Only the wide bloom is left,
+     lifted slightly to compensate, and the text is paper-050 rather than fog-300
+     so the letters are brighter than their halo. That is what makes a glow read
+     as spill coming off lit text instead of haze sitting over grey text. Colour
+     is --amber-500 (#F2A93B) in rgba so it can carry an alpha; text-shadow does
+     not affect the layout box, so layoutHomeLogo's measurement is unchanged. */
+  .home-subtitle{ font-size:16px; color:var(--paper-050); text-shadow:0 0 18px rgba(242,169,59,0.30); }
+  .home-subtitle2{ font-size:16px; color:var(--paper-050); margin-top:6px; text-shadow:0 0 18px rgba(242,169,59,0.30); }
   .home-watermark-img{ position:absolute; top:50%; left:50%; width:510px; height:510px; transform:translate(-50%, calc(-50% + 69.5px)); opacity:0.08; pointer-events:none; z-index:0; }
   @media (min-width: 701px){
     .home-brand-mark{ transform:translate(40px, 40px); }
@@ -3924,7 +3927,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T07:30:00Z';
+const BUILD_VERSION = '2026-09-04T08:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
