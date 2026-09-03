@@ -1312,8 +1312,13 @@
      as floating stripes rather than columns. */
   .sched-tgrp{ flex:0 0 auto; display:flex; flex-direction:column;
     border-right:1px solid var(--hairline); }
-  .sched-tgrp-h{ flex:0 0 auto; font-size:10px; letter-spacing:0.04em;
-    text-align:center; line-height:1.2; }
+  /* Caps across every group heading. AWAY and MAINT were uppercase only because
+     they sat inside the band's text-transform, and the two sets of labels looked
+     like different furniture. Kyle, 4 Sep 2026: caps everywhere. Setting it here
+     rather than changing the strings keeps the labels readable in the source and
+     leaves the data-tm keys alone. */
+  .sched-tgrp-h{ flex:0 0 auto; font-size:10px; letter-spacing:0.06em;
+    text-transform:uppercase; text-align:center; line-height:1.2; }
   .sched-tgrp-n{ flex:1 1 auto; display:flex; align-items:stretch; }
   .sched-tnum{ flex:1 1 0; min-width:var(--sched-tnum-w);
     display:flex; align-items:center; justify-content:center; line-height:1.2; }
@@ -1366,7 +1371,7 @@
      The void group is the third slot an aircraft row does not fill. It takes
      --panel-700 so the header band reads as absent rather than as an unlabelled
      category, and it exists ONLY to hold the column width -- see the note on
-     .sched-band-ac. */
+     .sched-band-row. */
   .sched-tgrp-away { --tgrp-rgb:36,204,120;  --tgrp-ink:var(--paper-050); }
   .sched-tgrp-maint{ --tgrp-rgb:80,89,162;   --tgrp-ink:var(--paper-050); }
   .sched-tgrp-void { --tgrp-rgb:29,51,80;    --tgrp-ink:var(--fog-500); }
@@ -1761,24 +1766,28 @@
   .sched-band{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
     color:var(--fog-500); padding:12px 0 5px 2px; position:sticky; left:0;
     border-bottom:1px solid var(--hairline); }
-  /* *** THE AIRCRAFT BAND CARRIES ITS OWN TALLY HEADINGS. ***
+  /* *** THE AIRCRAFT BAND IS A HEADER ROW, NOT A CAPTION. ***
      Crew are counted in Duty / PTO / Home; a tail is counted in Away / Maint.
      Two different tables cannot share one row of labels, so the aircraft band
-     heading doubles as the header for the rows beneath it (Kyle, 4 Sep 2026 --
-     the break between the crew bands and the aircraft band is wanted, not a
-     compromise).
-     The band is a block inside .sched-scroll, so it is as wide as the VIEWPORT
-     rather than as wide as the grid -- which is why it is sticky in the first
-     place. A .sched-tally inside it therefore pins to the same right edge the
-     row tallies pin to, with no width stated anywhere: the block is built by
-     the same function as every other tally, so it cannot be a different size.
-     Padding-bottom goes to 0 because the tally block brings its own. */
-  .sched-band-ac{ display:flex; align-items:stretch; justify-content:space-between;
-    padding-bottom:0; }
-  .sched-band-ac .sched-band-label{ display:flex; align-items:flex-end;
-    padding-bottom:5px; }
-  /* The heading row's own border would double with the tally block's. */
-  .sched-band-ac .sched-tally{ border-bottom:0; }
+     carries its own -- and once it does, it is a header and should look like the
+     one at the top of the grid rather than like the PILOTS caption with a block
+     pinned to the far right (Kyle, 4 Sep 2026: it read as an afterthought).
+     So it is a real .sched-row: sticky name cell holding the word, a filled
+     strip across the days, and the tally block built by the same function every
+     other row uses -- which is what keeps its width honest. Nothing is measured.
+     The strip carries no day numbers. They are already at the top of the grid
+     and repeating them here would say the aircraft rows are a separate table. */
+  .sched-band-row{ margin-top:14px; }
+  .sched-band-row .sched-name{ background:var(--panel-700);
+    justify-content:flex-end; padding-bottom:4px; }
+  .sched-band-name-t{ font-size:11px; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--fog-500); }
+  .sched-bandcell{ flex:0 0 auto; width:30px; height:34px;
+    background:var(--panel-700); border-bottom:1px solid var(--hairline); }
+  /* The strip has to reach the tally, so the tail spacer is filled too --
+     otherwise the band breaks for 90px just before its own headings. */
+  .sched-band-row .sched-tail{ background:var(--panel-700);
+    border-bottom:1px solid var(--hairline); }
   .sched-keywrap{ display:flex; flex-direction:column; align-items:center; }
   /* The handle: full width so it is easy to hit, with a short visible grip bar
      centred in it. Generous vertical padding because this is a touch target on
@@ -4254,7 +4263,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-05T03:20:00Z';
+const BUILD_VERSION = '2026-09-05T04:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -24716,11 +24725,25 @@ function renderScheduleView(){
     // inward at the aircraft band. The empty third group takes its width by the
     // same flex rule as every other group, so nothing is measured and nothing can
     // drift. Kyle, 4 Sep 2026: two numbers only, not three.
+    // *** THE EMPTY SLOT IS SILENT. ***
+    // It went through grp() and so printed M and Y over nothing, which reads as
+    // a column that failed to load rather than as reserved space (Kyle, 4 Sep
+    // 2026). It still carries its width: the 32px minimum on .sched-tnum does
+    // that, not the text inside it.
+    const voidGrp = function(){
+      return '<div class="sched-tgrp sched-tgrp-void">' +
+               '<div class="sched-tgrp-h"></div>' +
+               '<div class="sched-tgrp-n">' +
+                 '<span class="sched-tnum sched-tnum-m"></span>' +
+                 '<span class="sched-tnum sched-tnum-y"></span>' +
+               '</div>' +
+             '</div>';
+    };
     let x = '<div class="sched-tallyx">';
     if(isAc){
       x += grp('Away', 'away', 'away') +
            grp('Maint', 'maint', 'maint') +
-           grp('', 'void', 'void');
+           voidGrp();
     } else {
       x += grp('Duty', 'duty', 'duty') +
            grp('PTO', 'pto', 'pto') +
@@ -24730,10 +24753,6 @@ function renderScheduleView(){
       // The soft column is admin-only and belongs to people. When it is on, the
       // aircraft rows need a slot of the same width or the two bands part company
       // for exactly the reason above.
-      // No label: the head row SHOWS its labels, and "Soft" printed over an
-      // aircraft would name a count that does not exist for a tail. The width
-      // comes from the 32px number slot, not from the word, so dropping the text
-      // costs nothing -- see .sched-tnum's min-width.
       x += '<div class="sched-tgrp sched-tgrp-void">' +
              '<div class="sched-tgrp-h"></div>' +
              '<div class="sched-tgrp-n">' +
@@ -24850,15 +24869,20 @@ function renderScheduleView(){
 
   function bandHTML(label, rows, idx, kind, nameOf, subOf){
     if(!rows.length) return '';
-    // The aircraft band heading doubles as the header for its own two counts.
-    // Built by tallyCellHTML in head mode so it is the same block, the same
-    // width, as the rows below it -- see .sched-band-ac.
-    let h = (kind === 'aircraft')
-      ? '<div class="sched-band sched-band-ac">' +
-          '<span class="sched-band-label">' + escapeHtml(label) + '</span>' +
-          tallyCellHTML('achead') +
-        '</div>'
-      : '<div class="sched-band">' + escapeHtml(label) + '</div>';
+    let h;
+    if(kind === 'aircraft'){
+      // Same construction as every other row: sticky name, one cell per day,
+      // tail, tally. That is what guarantees the headings land over their own
+      // numbers -- there is no width stated here.
+      h = '<div class="sched-row sched-band-row">' +
+            '<div class="sched-name">' +
+              '<span class="sched-band-name-t">' + escapeHtml(label) + '</span>' +
+            '</div>';
+      days.forEach(function(){ h += '<div class="sched-bandcell"></div>'; });
+      h += '<div class="sched-tail"></div>' + tallyCellHTML('achead') + '</div>';
+    } else {
+      h = '<div class="sched-band">' + escapeHtml(label) + '</div>';
+    }
     rows.forEach(function(r){
       // Crew only. An aircraft is not anybody's row, and matching an aircraft id
       // against a user id could only ever be a coincidence, but the kind check
