@@ -3920,7 +3920,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-04T06:20:00Z';
+const BUILD_VERSION = '2026-09-04T06:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11188,6 +11188,17 @@ function layoutHomeLogo(scope){
   // than the glyphs. Pull that gap back so .home-sub-block is exactly the width of
   // the visible text and "In focus" centres on the letters, not on the empty gap.
   subtitle.style.marginRight = (-ls) + 'px';
+
+  // The second line carries the SAME per-gap spacing, so both lines share the
+  // wordmark's tracking. It is not stretched to the same width — it is shorter,
+  // so it stays narrower and .home-sub-block (align-items:center) centres it on
+  // the line above. Same trailing-gap pull-back so it centres on its glyphs.
+  const subtitle2 = root.querySelector('.home-subtitle2');
+  if(subtitle2){
+    subtitle2.style.letterSpacing = ls + 'px';
+    subtitle2.style.wordSpacing   = 'normal';
+    subtitle2.style.marginRight   = (-ls) + 'px';
+  }
 
   // 2) Size the watermark proportionally, then center it on the subtitle.
   //    getBoundingClientRect() already includes any breakpoint transforms, so
