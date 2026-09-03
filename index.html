@@ -1456,16 +1456,33 @@
     border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
   .sched-dow{ font-size:9px; color:var(--fog-500); }
   .sched-dnum{ font-size:11px; color:var(--fog-300); }
-  /* position:relative is for the INFO RING below. .sched-cell-clash already set
-     it on the cells that clash, so this only widens a positioning context that
-     was already proven harmless there. The only absolutely positioned thing
-     inside a cell is .sched-run-n, and that is contained by
-     .sched-blk-run-first{position:relative} -- a nearer ancestor -- so nothing
-     changes which box it measures against. */
+  /* *** .sched-cell MUST NOT BE position:relative. *** It was, for one build, so
+     the info ring would have a containing block. It wiped every run number off
+     the grid.
+
+     The reasoning that put it there was sound and incomplete. It asked which box
+     .sched-run-n would measure against, saw that .sched-blk-run-first is a nearer
+     positioned ancestor, and concluded nothing moved. Correct -- and irrelevant,
+     because the failure was not in LAYOUT, it was in PAINT ORDER.
+
+     The run number deliberately overflows its cell: a five-day bar sets
+     --run-w to 147px on a figure that starts inside a 30px block, so it lies
+     across the next four cells. While those cells were static, the number won
+     simply by being positioned -- positioned elements paint above non-positioned
+     content. Making every cell relative made the NEIGHBOURS positioned too, and
+     positioned siblings at the same z-index paint in DOM order, so cells 2..5
+     painted over the figure belonging to cell 1. Every multi-day bar lost its
+     number. One-day runs kept theirs, because that figure renders inline inside
+     its own cell and never overflows -- which is exactly the shape of the
+     symptom Kyle reported.
+
+     So: only the cells that actually carry a ring are positioned, via the class
+     below, and the number is lifted to z-index 1 so it outranks a positioned
+     cell without reaching the sticky name and tally columns, which sit at 2. */
   .sched-cell{ flex:0 0 auto; width:30px; min-height:30px; display:flex;
     flex-direction:column; gap:1px; padding:2px; box-sizing:border-box;
-    position:relative;
     border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
+  .sched-cell-info{ position:relative; }
 
   /* *** INFO ONLY IS A RING ROUND THE DAYS, NOT A BAR IN THEM. ***
      Every other category is a commitment and gets a filled block. This one is a
@@ -1565,7 +1582,12 @@
 
      A first attempt centred it inside the first cell only; on long runs the
      number sat visibly off to the left and read as belonging to that one day. */
-  .sched-blk-run-first{ overflow:visible; white-space:nowrap; position:relative; }
+  /* z-index 1 so the overflowing figure paints above any positioned cell it
+     lies across -- a ring cell, or a clash cell, both of which are relative.
+     Deliberately 1 and not more: .sched-name and .sched-tally are sticky at 2
+     and the number must still slide underneath them. */
+  .sched-blk-run-first{ overflow:visible; white-space:nowrap; position:relative;
+    z-index:1; }
   .sched-blk-run-first > .sched-run-n{
     position:absolute; top:50%; left:0; transform:translateY(-50%);
     width:var(--run-w, 30px); text-align:center; pointer-events:none;
@@ -4203,7 +4225,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-05T01:15:00Z';
+const BUILD_VERSION = '2026-09-05T01:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -22890,7 +22912,11 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   (visible || schedSuppressEntries(entries)).forEach(function(e){
     if(e.kind === 'info_only') info.push(e); else shown.push(e);
   });
+  // The ring is absolutely positioned, so its cell -- and ONLY its cell -- needs
+  // to be a containing block. See the .sched-cell note in the stylesheet for
+  // what putting this on every cell cost.
   const ring = info.length ? schedInfoRingHTML(info[0], dayRuns) : '';
+  if(ring) cls += ' sched-cell-info';
   // A day holding ONLY a marker is not a filled cell -- nothing is committed on
   // it -- so it keeps the empty cell's styling and just wears the ring.
   if(!shown.length){
