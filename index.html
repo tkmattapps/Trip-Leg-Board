@@ -4321,7 +4321,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-05T06:05:00Z';
+const BUILD_VERSION = '2026-09-05T07:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11770,6 +11770,19 @@ let aircraftCache = null;
 // than borrowing schedData.smart, because Settings can be opened without the
 // schedule ever having been loaded.
 let schedSmartCache = null;
+// The AI extraction flag. Same three states as schedSmartCache and read the
+// same way, but the DEFAULT IS THE OPPOSITE and that is the whole point.
+//
+// schedSmartCache treats anything that is not false as ON, because a failed
+// read there must not strip trips off the schedule. This flag gates sending a
+// department's documents to a third-party AI service, which some departments
+// need company approval for before anyone may use it. So it is ON only on an
+// explicit true: `=== true`, never `!== false`. A department that has never
+// set it, a column that did not come back, and a read that threw all land on
+// OFF. The database says the same thing from the other side -- the column is
+// NOT NULL DEFAULT false (migration 55) -- so the two agree rather than one
+// covering for the other.
+let aiExtractCache = null;
 // Workbench trips. Two states only, unlike schedSmartCache: null = not read
 // yet, array = a real answer including the empty one. A failed read leaves []
 // and toasts, because an empty workbench and a broken workbench look the same
@@ -11786,6 +11799,7 @@ function openSettingsView(){
   loadRoster();
   loadArchivedTrips();
   loadSchedSmart();
+  loadAiExtraction();
 }
 
 // Settings' own read of the department's smart-features flag.
@@ -11811,6 +11825,31 @@ async function loadSchedSmart(){
     schedSmartCache = 'unknown';
   }
   if(state.view === 'settings') renderSettingsView();
+}
+
+// The extraction flag's own read. Called from Settings AND from the import
+// view, because the import view is reachable without Settings ever having been
+// opened -- it is one tap from the home screen.
+//
+// A failed read leaves 'unknown', and 'unknown' is treated as OFF at the gate.
+// That differs from loadSchedSmart, where 'unknown' only suppresses the switch:
+// there the cost of guessing is a mispainted control, here it is a document
+// leaving for an AI service the department may not have approved yet. When the
+// answer is not known, the answer is no.
+async function loadAiExtraction(){
+  try {
+    const deptId = await getFlightDepartmentId();
+    const { data, error } = await sb.from('flight_departments')
+      .select('ai_extraction_enabled')
+      .eq('id', deptId)
+      .maybeSingle();
+    if(error) throw error;
+    aiExtractCache = data ? (data.ai_extraction_enabled === true) : 'unknown';
+  } catch(e){
+    aiExtractCache = 'unknown';
+  }
+  if(state.view === 'settings') renderSettingsView();
+  if(state.view === 'importPreview') renderImportPreviewView();
 }
 
 // ---- Workbench trips -----------------------------------------------------
@@ -13475,6 +13514,56 @@ function smartScheduleHTML(){
     '</div>' + info;
 }
 
+// The extraction switch. Deliberately NOT folded into Smart schedule: that flag
+// is a preference about how the schedule is drawn, this one is a permission a
+// department may not have yet. Collapsing them would mean a department turning
+// smart features on had also just authorised sending documents to an AI.
+//
+// Department-scoped, both directions, admin-only -- another department under no
+// such restriction turns it on and leaves it on, and nothing here is app-wide.
+function aiExtractionHTML(){
+  if(aiExtractCache === null) return '<div class="set-empty">Loading\u2026</div>';
+  if(aiExtractCache === 'unknown'){
+    return '<div class="set-empty">Could not read this setting. Reopen Settings to try again.</div>';
+  }
+
+  const on = aiExtractCache === true;
+  const isAdmin = rosterViewerIsAdmin();
+
+  // Both positions explained, same reasoning as the smart-schedule box: the
+  // question being asked is "what changes if I flip this", and someone reading
+  // it while switched off needs that answered more, not less.
+  const info = on
+    ? '<div class="set-smart-info"><strong>Reading paperwork is on.</strong> ' +
+        'Read Trip Paperwork sends the PDF you choose to Claude, which returns a draft trip ' +
+        'for someone to check. Nothing is saved until a person confirms it.' +
+        '<br><br>Attaching a document to a trip is not affected either way \u2014 those files are ' +
+        'stored and never read by AI.</div>'
+    : '<div class="set-smart-info"><strong>Reading paperwork is off.</strong> ' +
+        'No document leaves Beacon for AI. Read Trip Paperwork still appears on the home ' +
+        'screen and explains that it is awaiting approval, so nobody is left wondering ' +
+        'whether it is broken. Trips are built by hand in the meantime.' +
+        '<br><br>Attaching a document to a trip still works \u2014 those files are stored and ' +
+        'never read by AI.</div>';
+
+  return '<div class="set-switch-row">' +
+      '<div class="set-switch-main">' +
+        '<div class="set-switch-name">' + (on ? 'On' : 'Off') + '</div>' +
+        '<div class="set-switch-sub">' +
+          (isAdmin
+            ? 'Applies to everyone in the department.'
+            : 'Set by a department admin.') +
+        '</div>' +
+      '</div>' +
+      '<label class="set-switch">' +
+        '<input type="checkbox" id="aiExtractToggle"' + (on ? ' checked' : '') +
+          (isAdmin ? '' : ' disabled') + ' aria-label="Read trip paperwork with AI" />' +
+        '<span class="set-switch-track"></span>' +
+        '<span class="set-switch-knob"></span>' +
+      '</label>' +
+    '</div>' + info;
+}
+
 function renderSettingsView(){
   const main = document.getElementById('mainPanel');
   setPageHeader({ title:'Settings', sub:'Department', backLabel:'Home', backTo:'home' });
@@ -13538,6 +13627,12 @@ function renderSettingsView(){
       '<p class="set-section-note">Whether Beacon works the schedule out from your trips, ' +
         'or shows only what someone has entered by hand.</p>' +
       smartScheduleHTML() +
+    '</div>' +
+    '<div class="set-section">' +
+      '<div class="set-section-head"><div class="set-section-title">Reading paperwork with AI</div></div>' +
+      '<p class="set-section-note">Whether Read Trip Paperwork may send a document to Claude ' +
+        'to be read. Some companies require approval before this is used.</p>' +
+      aiExtractionHTML() +
     '</div>' +
     // DESIGNED, NOT BUILT - see beacon-configurable-fields-design.md.
     // Shown to beta testers so the absence reads as "coming" rather than
@@ -13617,6 +13712,11 @@ function renderSettingsView(){
   const smartBox = document.getElementById('schedSmartToggle');
   if(smartBox) smartBox.addEventListener('change', function(){
     handleSchedSmartToggle(smartBox.checked);
+  });
+
+  const aiBox = document.getElementById('aiExtractToggle');
+  if(aiBox) aiBox.addEventListener('change', function(){
+    handleAiExtractionToggle(aiBox.checked);
   });
 
   main.querySelectorAll('[data-person-reset]').forEach(btn => {
@@ -14715,6 +14815,37 @@ async function handleSchedSmartToggle(next){
     // this flag now excludes. Drop it and the next visit re-reads.
     schedData = null;
     showToast(next ? 'Smart schedule on.' : 'Smart schedule off \u2014 manual.');
+  } catch(e){
+    showToast('Could not change this setting.');
+  }
+  // Repaint either way: on success for the new copy, on failure to put the
+  // switch back where the stored value actually is.
+  if(state.view === 'settings') renderSettingsView();
+}
+
+// Writes through set_ai_extraction_enabled (migration 55), same shape and same
+// reasoning as the smart-features toggle above: flight_departments has no
+// UPDATE policy, the RPC is SECURITY DEFINER and carries its own
+// is_department_admin() check, and the check below only spares the client a
+// request it knows will be refused. Non-admins raise 42501 there.
+//
+// The flag is per department, so an admin turns it on or off for their own
+// department only and a department under no such restriction is unaffected.
+async function handleAiExtractionToggle(next){
+  if(!rosterViewerIsAdmin()){
+    showToast('Only a department admin can change this.');
+    renderSettingsView();
+    return;
+  }
+  try {
+    const deptId = await getFlightDepartmentId();
+    const { error } = await sb.rpc('set_ai_extraction_enabled', {
+      p_dept_id: deptId,
+      p_enabled: !!next
+    });
+    if(error) throw error;
+    aiExtractCache = !!next;
+    showToast(next ? 'Reading paperwork on.' : 'Reading paperwork off.');
   } catch(e){
     showToast('Could not change this setting.');
   }
@@ -16191,6 +16322,65 @@ function renderImportPreviewView(){
   const header = '';
 
   if(state.importPhase === 'upload'){
+    // *** THE GATE. ***
+    // Off means the department has not been cleared to send documents to AI, so
+    // this phase never paints a file chooser. Placed HERE rather than on the
+    // home button on purpose: Kyle asked that crew still see Read Trip
+    // Paperwork and be told why it does nothing, and a toast has no room to say
+    // that and point somewhere useful. The button behaves normally, this view
+    // does the explaining.
+    //
+    // NOT A SECURITY BOUNDARY, and that is a decision rather than an oversight
+    // (Kyle, 3 Sep 2026). The edge function still answers anyone who calls it
+    // directly. This stops the department's own crew from reaching extraction,
+    // which is what "we are waiting on approval" needs today. If the answer
+    // given to a company ever becomes "the app CANNOT send documents to AI",
+    // the check has to move into extract-trip-document as well.
+    //
+    // null means the flag has not been read yet -- the import view is one tap
+    // from home and Settings may never have been opened -- so kick the read off
+    // and show Loading. loadAiExtraction re-renders this view when it lands.
+    // 'unknown' (a failed read) falls through to the off panel deliberately:
+    // when the answer is not known, the answer is no.
+    if(aiExtractCache === null){
+      loadAiExtraction();
+      main.innerHTML = header + '<div class="set-empty">Loading\u2026</div>';
+      return;
+    }
+    if(aiExtractCache !== true){
+      main.innerHTML = header +
+        '<div class="import-upload-box">' +
+          '<div class="import-ai-note">' +
+            '<strong>Reading paperwork is switched off for your department.</strong><br><br>' +
+            'Beacon reads trip documents using Claude, and your company has not approved that ' +
+            'yet. Until it does, no document is sent and nothing is read automatically.' +
+            '<br><br>' +
+            'You can still build the trip yourself: open the menu and choose ' +
+            '<b>Create a trip by hand</b> under Manual entry. Everything else in Beacon works ' +
+            'normally, including attaching a document to a trip \u2014 those files are stored and ' +
+            'never read by AI.' +
+            '<br><br>' +
+            'A department admin can turn this on in Settings once approval comes through.' +
+          '</div>' +
+        '</div>' +
+        '<div class="import-actions">' +
+          '<button type="button" class="btn" id="importCancelBtn">Back</button>' +
+          '<button type="button" class="btn btn-primary" id="importManualBtn">Open the menu</button>' +
+        '</div>';
+      document.getElementById('importCancelBtn').addEventListener('click', () => {
+        resetImportState();
+        goToListView('home');
+      });
+      // Opens the drawer rather than creating the leg here. The real handler on
+      // drawerNewLegBtn mints a blank leg, persists it and navigates; copying
+      // that would be a second place for it to rot. One extra tap, no duplicate.
+      document.getElementById('importManualBtn').addEventListener('click', () => {
+        resetImportState();
+        goToListView('home');
+        openDrawer();
+      });
+      return;
+    }
     main.innerHTML = header +
       '<div class="import-upload-box">' +
         '<input type="file" id="importFileInput" accept="application/pdf" style="display:none;" />' +
