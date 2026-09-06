@@ -1186,6 +1186,18 @@
      fixes the label must not cost the scroll its feel. */
   .sched-scroll{ overflow-x:auto; overscroll-behavior-x:contain; padding-bottom:6px;
     max-height:calc(100vh - var(--page-header-h, 84px) - 132px); overflow-y:auto; }
+  /* *** TOUCH AXIS LOCK (Kyle, 6 Sep 2026). *** This one element scrolls both
+     ways -- sideways for the months, and up and down because it holds its own
+     height so the day header can stick. iOS treats a two-axis scroller like a
+     map: whatever angle the thumb moves, both axes move, and a thumb is never
+     quite horizontal, so paging through days drifted the grid up and down.
+     The JS beside the touch handlers reads the first few pixels of each touch,
+     picks the dominant axis and puts one of these classes on for the rest of
+     the gesture. Two-class selectors so they beat the base rule regardless of
+     order. PREDICTION -- no browser here; if iOS stutters on the axis change
+     mid-gesture, this comes straight back out. */
+  .sched-scroll.sched-lock-x{ overflow-y:hidden; }
+  .sched-scroll.sched-lock-y{ overflow-x:hidden; }
   /* *** TRAILING SPACE SO THE LAST MONTH CAN REACH ITS PARK POSITION. ***
      Scrolling forward, the grid ran out of scrollable width before the final
      month's first day could travel to the sticky label's park point -- leaving
@@ -4388,7 +4400,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-06T21:15:00Z';
+const BUILD_VERSION = '2026-09-06T21:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -23650,6 +23662,50 @@ document.addEventListener('mousemove', function(ev){
   schedDragTo(schedCellFromPoint(ev.clientX, ev.clientY));
 });
 document.addEventListener('mouseup', function(){ if(schedDrag) schedDragEnd(); });
+
+// ---- TOUCH: AXIS LOCK -------------------------------------------------------
+// See the .sched-lock-x note in the CSS. Independent of the long-press drag
+// above: it only ever touches the scroller's overflow, never the selection.
+// Decided once per touch, on the first movement past the slop, and undone on
+// release -- momentum after release runs on whichever axis was moving and does
+// not need the lock to stay on. An armed drag suppresses the scroll itself, so
+// the lock stands down when schedDrag is set.
+const SCHED_AXIS_SLOP = 8;    // same tremor threshold as the long press
+let schedAxisEl   = null;     // the .sched-scroll under the finger, or null
+let schedAxisX    = 0;
+let schedAxisY    = 0;
+let schedAxisDone = false;    // axis chosen for this touch
+
+function schedAxisClear(){
+  if(schedAxisEl){ schedAxisEl.classList.remove('sched-lock-x', 'sched-lock-y'); }
+  schedAxisEl = null;
+  schedAxisDone = false;
+}
+
+document.addEventListener('touchstart', function(ev){
+  schedAxisClear();
+  if(ev.touches.length > 1) return;
+  const el = ev.target && ev.target.closest ? ev.target.closest('.sched-scroll') : null;
+  if(!el) return;
+  const t = ev.touches[0];
+  schedAxisEl = el;
+  schedAxisX = t.clientX;
+  schedAxisY = t.clientY;
+}, { passive: true });
+
+document.addEventListener('touchmove', function(ev){
+  if(!schedAxisEl || schedAxisDone || schedDrag) return;
+  if(ev.touches.length > 1){ schedAxisClear(); return; }
+  const t = ev.touches[0];
+  const dx = Math.abs(t.clientX - schedAxisX);
+  const dy = Math.abs(t.clientY - schedAxisY);
+  if(dx < SCHED_AXIS_SLOP && dy < SCHED_AXIS_SLOP) return;
+  schedAxisDone = true;
+  schedAxisEl.classList.add(dx >= dy ? 'sched-lock-x' : 'sched-lock-y');
+}, { passive: true });
+
+document.addEventListener('touchend', schedAxisClear);
+document.addEventListener('touchcancel', schedAxisClear);
 
 // TOUCH. Deliberately NOT symmetrical with the mouse: a mouse has no scroll to
 // compete with, so it arms on press as it always has. Only touch waits.
