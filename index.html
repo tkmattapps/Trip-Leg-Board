@@ -1982,9 +1982,10 @@
      keeps the letters brighter than the light, so it reads lit, not blurred. */
   .sched-wbbtn{ position:relative; gap:6px; }
   /* Inline SVG for the same reason as the tally icon: no font gamble, colour
-     through currentColor, size is a box not a type size. Four rules of unequal
-     length so it reads as a list of entries, not a hamburger menu -- the
-     workbench IS a list of the month's trips. filter, not text-shadow, because
+     through currentColor, size is a box not a type size. Three rows, each a
+     filled square plus a line, so it reads as a list of entries that carry
+     something -- the workbench IS a list of the month's trips. Was four bare
+     rules before 6 Sep 2026, which read as a menu. filter, not text-shadow, because
      there is no text. 7px against a 22px icon with 2px strokes -- less mass
      than two lines of text, so less than the label's 10px. PREDICTION: no
      browser here; if it reads muddy on the phone, drop the radius first. */
@@ -4387,7 +4388,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-06T06:40:00Z';
+const BUILD_VERSION = '2026-09-06T07:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -24952,12 +24953,16 @@ function renderScheduleView(){
       '<button type="button" class="sched-hbtn sched-wbbtn" id="schedTripsBtn" data-wb-open="1" aria-label="Open ' + escHtml(schedTripsLbl) + '">' +
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
              'stroke-width="2" stroke-linecap="round" focusable="false" aria-hidden="true">' +
-          // Top rule full width, the entries beneath it shorter: a list with a
-          // heading, which is what the panel is.
-          '<path d="M4 5H20"/>' +
-          '<path d="M4 10H15"/>' +
-          '<path d="M4 15H15"/>' +
-          '<path d="M4 20H15"/>' +
+          // Three entries, each a filled square with a line beside it: a list
+          // of things that carry something, which is what a trip is. Squares
+          // are 4x4 filled with currentColor (rect, not stroke, so they stay
+          // solid at 22px); lines run from x=10 to x=20. Rows at y=5,12,19.
+          '<rect x="3" y="3" width="4" height="4" rx="1" fill="currentColor" stroke="none"/>' +
+          '<path d="M10 5H20"/>' +
+          '<rect x="3" y="10" width="4" height="4" rx="1" fill="currentColor" stroke="none"/>' +
+          '<path d="M10 12H20"/>' +
+          '<rect x="3" y="17" width="4" height="4" rx="1" fill="currentColor" stroke="none"/>' +
+          '<path d="M10 19H20"/>' +
         '</svg>' +
         '<span class="wb-btn-txt">' +
           '<span class="wb-btn-sizer" aria-hidden="true">' +
