@@ -331,12 +331,29 @@
   .page-header-sub{ text-align:left; }
   /* The right-hand STACK. margin-top lives here now rather than on the actions
      row, so the whole column drops together and the two rows keep a fixed
-     relationship to each other regardless of which of them is populated. */
+     relationship to each other regardless of which of them is populated.
+     *** THE OFFSET IS THE TITLE'S OWN TOP, ADDED UP, NOT CHOSEN. ***
+     .page-header-text stacks .page-back (min-height 16px -- empty and
+     visibility:hidden on most pages, which still occupies its box), a 2px column
+     gap, then the title. So the title's line box begins 18px down: 16 + 2. The
+     right column starts at the same 18px, which is what puts the two on the same
+     line. It was 6px, and the controls sat 5.75px high of the title on every
+     page in the app (Kyle, 5 Sep 2026, on the Schedule). */
   .page-header-right{ display:flex; flex-direction:column; align-items:flex-end;
-    gap:6px; flex:0 0 auto; margin-top:6px; }
+    gap:6px; flex:0 0 auto; margin-top:18px; }
   /* margin-top REMOVED -- it moved to .page-header-right. Leaving it here as
      well would double the offset on every page that has actions. */
-  .page-header-actions{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+  /* *** height, NOT min-height, AND THAT IS THE WHOLE TRICK. ***
+     31.5px is the title's line box: 30px font-size x 1.05 line-height. A fixed
+     height with align-items:center centres the row's contents on the box's
+     midpoint, and anything TALLER than the box overflows equally above and
+     below rather than pushing the box down. So the Schedule's 44px touch
+     targets, a 36px pill and a bare caption all come to rest on the same
+     centre line as the title, with no per-page number anywhere.
+     min-height would not do this: a 44px child would grow the box downward from
+     18px and drop the centre to 40px. */
+  .page-header-actions{ display:flex; align-items:center; gap:8px; flex:0 0 auto;
+    height:31.5px; }
   /* Caption under the right-hand controls. NO CALLER TODAY -- see the note on
      #pageHeaderSubRight in the markup. Collapses when empty, so it is inert
      rather than costly. Dimmer than the title's subtext on purpose: a caption
@@ -4346,7 +4363,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-06T04:15:00Z';
+const BUILD_VERSION = '2026-09-06T04:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
