@@ -1193,11 +1193,15 @@
      quite horizontal, so paging through days drifted the grid up and down.
      The JS beside the touch handlers reads the first few pixels of each touch,
      picks the dominant axis and puts one of these classes on for the rest of
-     the gesture. Two-class selectors so they beat the base rule regardless of
-     order. PREDICTION -- no browser here; if iOS stutters on the axis change
-     mid-gesture, this comes straight back out. */
+     the gesture. Two-class selector so it beats the base rule regardless of
+     order.
+     ONE LOCK ONLY. The first cut also locked the other way (overflow-x:hidden
+     while swiping vertically) and WebKit responded by throwing away the
+     horizontal position: every vertical swipe landed on December 2025. The
+     drift that was complained about was vertical drift during a sideways
+     swipe, so that is the only axis held, and the JS puts scrollTop back the
+     instant the class goes on in case WebKit does the same thing to it. */
   .sched-scroll.sched-lock-x{ overflow-y:hidden; }
-  .sched-scroll.sched-lock-y{ overflow-x:hidden; }
   /* *** TRAILING SPACE SO THE LAST MONTH CAN REACH ITS PARK POSITION. ***
      Scrolling forward, the grid ran out of scrollable width before the final
      month's first day could travel to the sticky label's park point -- leaving
@@ -4400,7 +4404,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-06T21:45:00Z';
+const BUILD_VERSION = '2026-09-06T22:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -23674,10 +23678,12 @@ const SCHED_AXIS_SLOP = 8;    // same tremor threshold as the long press
 let schedAxisEl   = null;     // the .sched-scroll under the finger, or null
 let schedAxisX    = 0;
 let schedAxisY    = 0;
+let schedAxisTop  = 0;        // scrollTop at touchstart, restored on lock
+let schedAxisLeft = 0;        // scrollLeft at touchstart, restored on lock
 let schedAxisDone = false;    // axis chosen for this touch
 
 function schedAxisClear(){
-  if(schedAxisEl){ schedAxisEl.classList.remove('sched-lock-x', 'sched-lock-y'); }
+  if(schedAxisEl){ schedAxisEl.classList.remove('sched-lock-x'); }
   schedAxisEl = null;
   schedAxisDone = false;
 }
@@ -23691,6 +23697,8 @@ document.addEventListener('touchstart', function(ev){
   schedAxisEl = el;
   schedAxisX = t.clientX;
   schedAxisY = t.clientY;
+  schedAxisTop  = el.scrollTop;
+  schedAxisLeft = el.scrollLeft;
 }, { passive: true });
 
 document.addEventListener('touchmove', function(ev){
@@ -23701,7 +23709,12 @@ document.addEventListener('touchmove', function(ev){
   const dy = Math.abs(t.clientY - schedAxisY);
   if(dx < SCHED_AXIS_SLOP && dy < SCHED_AXIS_SLOP) return;
   schedAxisDone = true;
-  schedAxisEl.classList.add(dx >= dy ? 'sched-lock-x' : 'sched-lock-y');
+  if(dx < dy) return;          // vertical swipe: no lock, see the CSS note
+  schedAxisEl.classList.add('sched-lock-x');
+  // Hidden overflow is still scrollable from script, so if WebKit reset the
+  // position when the axis closed, this puts it straight back before paint.
+  if(schedAxisEl.scrollTop  !== schedAxisTop)  schedAxisEl.scrollTop  = schedAxisTop;
+  if(schedAxisEl.scrollLeft !== schedAxisLeft) schedAxisEl.scrollLeft = schedAxisLeft;
 }, { passive: true });
 
 document.addEventListener('touchend', schedAxisClear);
