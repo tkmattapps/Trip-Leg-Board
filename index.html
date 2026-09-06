@@ -1966,29 +1966,58 @@
      this screen green means committed to a flight and teal means a tail
      committed -- see the SCHED_COLORS note. A green control sitting directly
      above that grid borrows a meaning the grid has already spent. */
-  .sched-wbbtn{ color:var(--amber-500); }
-  .sched-wbbtn:hover{ color:var(--amber-500); }
-  /* *** A GLYPH, NOT A LABEL (Kyle, 5 Sep 2026). ***
-     This read "September / TRIPS", stacked, sized to the widest month by a
-     hidden sizer span. On a phone the header row could not hold that beside
-     the title and the month controls -- a filled version was tried on 5 Sep and
-     covered the word "Schedule" -- and the month name was doing no work the
-     screen was not already doing: the month band directly beneath lights and
-     relabels off the SAME key at the SAME moment (schedSyncMonthToScroll), so
-     the month is one line down whenever it matters. The name lives on in the
-     aria-label, which schedUpdateTripsBtn still rewrites on scroll.
-     Inline SVG for the same reason as the tally icon: no font gamble, colour
+  /* *** GLYPH PLUS A LABEL, AND THE LABEL IS WIDE-SCREEN ONLY (Kyle, 6 Sep 2026). ***
+     History, because it was arrived at by elimination: "September / TRIPS" in
+     amber text, then the same filled amber, then a bare glyph. The filled one
+     covered the word "Schedule" on a phone; the bare glyph fit but needed a
+     label. The sum: on a phone the row is ~27px too narrow for the old label,
+     and glyph + "TRIPS" comes to the same ~84px as the old label did, so no
+     stacked label of any wording fits beside the glyph there. Above 700px there
+     is room to spare, so the label shows and the month is spelled out.
+     On the phone the month is one line down anyway: the band beneath lights
+     and relabels off the SAME key at the SAME moment (schedSyncMonthToScroll).
+     WHITE, NOT AMBER, glyph and label both -- .sched-hbtn's own --paper-050,
+     inherited; no colour is set here on purpose. The glow stays --amber-700,
+     the same pairing as the home tagline: paper text over a darker amber halo
+     keeps the letters brighter than the light, so it reads lit, not blurred. */
+  .sched-wbbtn{ position:relative; gap:6px; }
+  /* Inline SVG for the same reason as the tally icon: no font gamble, colour
      through currentColor, size is a box not a type size. Four rules of unequal
      length so it reads as a list of entries, not a hamburger menu -- the
-     workbench IS a list of the month's trips. */
-  .sched-wbbtn svg{ display:block; width:22px; height:22px;
-    /* The glow moves from text-shadow to a filter, because there is no text.
-       Same halo colour and alpha as before -- --amber-700 rgba, darker than the
-       amber-500 strokes, so glyph outranks halo and it reads as light not
-       blur. Radius scaled down from the label's 10px: a 22px icon with 2px
-       strokes carries less mass than two lines of text. PREDICTION -- there is
-       no browser here; if it reads muddy on the phone, drop the radius first. */
+     workbench IS a list of the month's trips. filter, not text-shadow, because
+     there is no text. 7px against a 22px icon with 2px strokes -- less mass
+     than two lines of text, so less than the label's 10px. PREDICTION: no
+     browser here; if it reads muddy on the phone, drop the radius first. */
+  .sched-wbbtn svg{ display:block; width:22px; height:22px; flex:0 0 auto;
     filter:drop-shadow(0 0 7px rgba(201,127,30,0.45)); }
+  /* The label is sized once, to the widest month, by a hidden sizer span
+     holding the real longest name in the real font, and never resizes as you
+     scroll. *** DO NOT REPLACE THIS WITH A FIXED PIXEL WIDTH *** -- a px value
+     is right today and quietly clips when the font or wording changes.
+     visibility:hidden, never display:none, which would occupy nothing. */
+  .sched-wbbtn .wb-btn-txt{ position:relative; }
+  .sched-wbbtn .wb-btn-sizer,
+  .sched-wbbtn .wb-btn-lbl{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    line-height:1.15; white-space:nowrap;
+  }
+  .sched-wbbtn .wb-btn-sizer{ visibility:hidden; }
+  .sched-wbbtn .wb-btn-lbl{ position:absolute; inset:0;
+    /* Bloom only, no tight core -- see the glow rule in the operating notes.
+       Goes on the visible layer only; the sizer must stay unpainted. */
+    text-shadow:0 0 10px rgba(201,127,30,0.45); }
+  /* "trips" is the constant half of the label, so it carries less information
+     than the month and is set back accordingly. */
+  .sched-wbbtn .wb-btn-word{ font-size:12px; font-weight:600; }
+  .sched-wbbtn .wb-btn-sub{ font-size:10px; font-weight:500; letter-spacing:0.06em; text-transform:uppercase; opacity:0.85; }
+  /* *** DIRECTLY BELOW THE RULES IT OVERRIDES, ON PURPOSE. *** A media query
+     adds no specificity; this only wins by coming later. 700px is the app's
+     phone breakpoint (see .sched-entry-panel). Hiding the text leaves the
+     button at its 44px min-width with the glyph centred and gap:6px doing
+     nothing, because a gap needs two visible children. */
+  @media (max-width:700px){
+    .sched-wbbtn .wb-btn-txt{ display:none; }
+  }
   .sched-hbtn:active{ background:var(--panel-800); }
   /* Keyboard focus still needs a visible ring -- removing the border must not
      remove focus visibility. :focus-visible only, so a mouse click does not
@@ -4358,7 +4387,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-06T06:05:00Z';
+const BUILD_VERSION = '2026-09-06T06:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -22173,14 +22202,39 @@ function schedTripsBtnLabel(y, m){
 }
 
 
+// The widest label the button will ever hold, used to size it once so it does
+// not resize while you scroll. DERIVED, not hardcoded to September: month names
+// come from the locale, and a hardcoded English string would be the wrong
+// reference the moment that changes.
+//
+// Longest STRING is a proxy for widest RENDERED string, which is not exact in a
+// proportional font. It is the right proxy here because the sizer holds the
+// actual text in the actual font -- the only risk is picking a name one or two
+// pixels narrower than the true widest, which the button's padding absorbs.
+let _schedWidestMonthName = null;
+function schedWidestMonthName(){
+  if(_schedWidestMonthName !== null) return _schedWidestMonthName;
+  let best = '';
+  for(let m = 0; m < 12; m++){
+    const s = schedMonthLongName(2026, m);
+    if(s.length > best.length) best = s;
+  }
+  _schedWidestMonthName = best;
+  return best;
+}
+
 // Rewrites the label in place. Deliberately does NOT re-render the header: the
 // header is rebuilt by renderMain, and rebuilding it on every scroll that
 // crosses a month boundary would throw away and recreate four buttons mid-drag.
 function schedUpdateTripsBtn(y, m){
-  // The button is a glyph (5 Sep 2026), so the month is carried ONLY by the
-  // aria-label. It is still rewritten on scroll so a screen reader hears the
-  // month the grid is showing, not the one the page opened on.
+  // Only the MONTH line changes. "Trips" is static markup in both the visible
+  // label and the sizer, so it is never rewritten. On a phone the label is
+  // display:none but still present, so this write is harmless there.
+  const lblEl = document.getElementById('schedTripsBtnLbl');
+  if(lblEl) lblEl.textContent = schedMonthLongName(y, m);
   const btn = document.getElementById('schedTripsBtn');
+  // The aria-label carries the whole phrase -- a screen reader announcing a
+  // bare month name would not say what the control does.
   if(btn) btn.setAttribute('aria-label', 'Open ' + schedTripsBtnLabel(y, m));
 }
 
@@ -24875,6 +24929,7 @@ function renderScheduleView(){
   // settles the grid and schedSyncMonthToScroll corrects the label if the
   // resting position is in a different month than the anchor.
   const _tripsA = schedAnchor || schedMonthStart(new Date());
+  const _tripsMonthName = schedMonthLongName(_tripsA.getFullYear(), _tripsA.getMonth());
   const schedTripsLbl = schedTripsBtnLabel(_tripsA.getFullYear(), _tripsA.getMonth());
   setPageHeader({
     title: 'Schedule',
@@ -24890,10 +24945,10 @@ function renderScheduleView(){
       // The month cluster is still intact -- chevron, Today, chevron, year --
       // it has simply moved along. Nothing was inserted INTO it.
       //
-      // A glyph, not a label -- see the .sched-wbbtn CSS note. The month the
-      // grid is showing is spoken in the aria-label, which schedUpdateTripsBtn
-      // rewrites on scroll at the same moment the month band lights; sighted
-      // users read it off the band, one line down.
+      // Glyph plus a stacked "September / TRIPS" label; the label is hidden
+      // below 700px -- see the .sched-wbbtn CSS note. The month word and the
+      // aria-label are rewritten on scroll by schedUpdateTripsBtn, at the same
+      // moment the month band lights.
       '<button type="button" class="sched-hbtn sched-wbbtn" id="schedTripsBtn" data-wb-open="1" aria-label="Open ' + escHtml(schedTripsLbl) + '">' +
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
              'stroke-width="2" stroke-linecap="round" focusable="false" aria-hidden="true">' +
@@ -24904,6 +24959,16 @@ function renderScheduleView(){
           '<path d="M4 15H15"/>' +
           '<path d="M4 20H15"/>' +
         '</svg>' +
+        '<span class="wb-btn-txt">' +
+          '<span class="wb-btn-sizer" aria-hidden="true">' +
+            '<span class="wb-btn-word">' + escHtml(schedWidestMonthName()) + '</span>' +
+            '<span class="wb-btn-sub">Trips</span>' +
+          '</span>' +
+          '<span class="wb-btn-lbl">' +
+            '<span class="wb-btn-word" id="schedTripsBtnLbl">' + escHtml(_tripsMonthName) + '</span>' +
+            '<span class="wb-btn-sub">Trips</span>' +
+          '</span>' +
+        '</span>' +
       '</button>' +
       '<button type="button" class="sched-hbtn sched-nav" data-sched-step="-1" aria-label="Previous month">\u2039</button>' +
       '<button type="button" class="sched-hbtn" data-sched-today="1">Today</button>' +
