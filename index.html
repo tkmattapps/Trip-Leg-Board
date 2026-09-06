@@ -4388,7 +4388,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-06T07:00:00Z';
+const BUILD_VERSION = '2026-09-06T21:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -22161,6 +22161,9 @@ const SCHED_LABELS = {
 let schedAnchor = null;      // Date, first of the displayed month
 let schedData   = null;      // { crew:[], aircraft:[], roster:[], tails:[] }
 let schedLoading = false;
+// Set when the last load threw. Read by renderScheduleView to show a Retry
+// instead of "Loading...". Cleared at the start of every load attempt.
+let schedLoadFailed = false;
 
 function schedMonthStart(dt){ return new Date(dt.getFullYear(), dt.getMonth(), 1); }
 
@@ -24983,6 +24986,15 @@ function renderScheduleView(){
       '</button>'
   });
 
+  if(schedLoadFailed){
+    // *** A FAILED LOAD IS NOT DATA. *** See openScheduleView. The grid is not
+    // drawn at all here, on purpose: names with no bars look like an empty
+    // schedule, and 6 Sep 2026 that is exactly what it looked like on a phone
+    // woken from the background. Say it failed, and give the one useful button.
+    main.innerHTML = '<div class="sched-wrap"><div class="sched-empty">Could not load the schedule. ' +
+      '<button type="button" class="btn" data-sched-retry="1">Retry</button></div></div>';
+    return;
+  }
   if(schedLoading || !schedData){
     main.innerHTML = '<div class="sched-wrap"><div class="sched-empty">Loading the schedule\u2026</div></div>';
     return;
@@ -25866,13 +25878,23 @@ async function openScheduleView(){
   // (saving, trimming, removing, changing year) set schedData = null first.
   if(!schedData){
     schedLoading = true;
+    schedLoadFailed = false;
     renderMain();
     try {
       schedData = await loadScheduleData();
     } catch(e){
+      // *** DO NOT CACHE THE FAILURE. *** This used to write an empty
+      // { crew:[], aircraft:[] } into schedData and toast once. Because the
+      // guard above only fetches when schedData is null, that empty object was
+      // then treated as real data on every visit until a hard reload -- the
+      // schedule showed names and no bars, and nothing in the app would ever
+      // ask the server again. Kyle hit it on 6 Sep 2026 waking the phone from
+      // the background, where the first request goes out before the session
+      // refresh has caught up. Leaving schedData null means the next open --
+      // or the Retry button -- fetches again.
       console.error('schedule load', e);
-      schedData = { crew: [], aircraft: [] };
-      showToast('Could not load the schedule');
+      schedData = null;
+      schedLoadFailed = true;
     }
     schedLoading = false;
   }
@@ -26312,6 +26334,12 @@ document.addEventListener('click', async function(e){
   // Toggled in place, like the key: the detail is already in the DOM, so this is
   // a class on the wrapper. A re-render would reset the horizontal scroll and
   // throw the reader back to December for the sake of opening a column.
+  if(t.closest('[data-sched-retry]')){
+    // schedData is already null after a failure, so openScheduleView fetches.
+    openScheduleView();
+    return;
+  }
+
   if(t.closest('[data-sched-tally]')){
     const twrap = document.querySelector('.sched-wrap');
     if(twrap){
