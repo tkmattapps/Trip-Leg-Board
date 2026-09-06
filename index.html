@@ -1289,7 +1289,7 @@
   /* *** THE TOP SQUARE IS NOW ONLY A CONTROL. ***
      With the words gone it holds one glyph and nothing else, so it is centred
      both ways and the chevron is sized to be seen rather than to sit beside
-     10px text. 34px cell, 18px glyph, line-height 1 -- 8px clear top and bottom.
+     10px text. 34px cell, 24px icon box -- 5px clear top and bottom.
      Kyle, 4 Sep 2026: "Duty Ave" plus a small chevron did not read as an action. */
   .sched-tally-top .sched-tdev{ justify-content:center; align-items:center;
     padding:0; }
@@ -1434,18 +1434,41 @@
   /* Soft days carry one figure, not two: the question is who leans on them over
      a season, not in a fortnight. The group needs no rule of its own -- one
      .sched-tnum instead of two makes it half width by itself. */
-  /* inline-block because a transform does nothing to an inline element -- the
-     same reason .wb-chev carries it. */
-  .sched-tchev{ display:inline-block; font-size:11px; line-height:1;
-    color:var(--fog-500); transition:transform 0.15s ease, color 0.15s ease; }
-  .sched-wrap.is-tally-open .sched-tchev{ transform:rotate(90deg);
-    color:var(--amber-500); }
+  /* *** DRAWN, NOT TYPED. ***
+     This was a text glyph until 5 Sep 2026 and the size was set in font-size.
+     A character can only be as descriptive as the font's coverage allows: the
+     triangle was safe everywhere and said nothing, and the icons that actually
+     say "there is a panel here" have no character worth betting a phone on. So
+     it is an inline SVG. It cannot fall back to a tofu box, it inherits colour
+     through currentColor, and the size is now a box measurement rather than a
+     type size -- font-size no longer does anything here.
+     *** AMBER CLOSED AS WELL AS OPEN. ***
+     Fog-until-open made the closed state read as a label rather than a control:
+     the one thing that would have told you it was tappable only appeared after
+     you had tapped it. Amber throughout (Kyle, 5 Sep 2026). */
+  .sched-tchev{ display:inline-flex; align-items:center; justify-content:center;
+    width:16px; height:16px; color:var(--amber-500); }
+  .sched-tchev svg{ display:block; width:100%; height:100%; }
+  /* *** BOTH ARROWS ARE ALWAYS DRAWN. ***
+     Two paths in the same coordinate space, one faded out. Swapping them with
+     display would work and could not be transitioned; opacity keeps the 150ms
+     the rotation used to have. They overlap rather than stack, so neither one
+     costs any layout.
+     The bar is the panel's edge and never moves. Closed, the arrow points away
+     from it -- the tally is about to come out towards you. Open, it points back
+     into it. */
+  .sched-tchev-out,
+  .sched-tchev-in{ transition:opacity 0.15s ease; }
+  .sched-tchev-out{ opacity:1; }
+  .sched-tchev-in{ opacity:0; }
+  .sched-wrap.is-tally-open .sched-tchev-out{ opacity:0; }
+  .sched-wrap.is-tally-open .sched-tchev-in{ opacity:1; }
   /* *** AFTER .sched-tchev ON PURPOSE. ***
      Both are single-class selectors, so they carry identical specificity and the
-     later one wins. Written above, this rule would set 18px and .sched-tchev
-     would quietly put it back to 11px -- the same failure as a value changed
+     later one wins. Written above, this rule would set 24px and .sched-tchev
+     would quietly put it back to 16px -- the same failure as a value changed
      inside a media query that something below already overrides. */
-  .sched-tchev-big{ font-size:18px; }
+  .sched-tchev-big{ width:24px; height:24px; }
   /* *** THE DATES MUST SURVIVE A VERTICAL SCROLL. ***
      The vertical counterpart of the sticky name column: scrolled down to the
      aircraft band or the legend, an unlabelled row of squares is as unreadable
@@ -4321,7 +4344,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-05T07:30:00Z';
+const BUILD_VERSION = '2026-09-06T04:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -25100,7 +25123,21 @@ function renderScheduleView(){
     // The aircraft band keeps its 44px of the shared width and puts nothing in
     // it: there is no average to head.
     const dev = isTopHead
-      ? '<span class="sched-tchev sched-tchev-big" aria-hidden="true">&#9656;</span>'
+      ? '<span class="sched-tchev sched-tchev-big" aria-hidden="true">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+               'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ' +
+               'focusable="false">' +
+            // The panel edge. Heavier than the arrow so it reads as a wall and
+            // not as a third stroke of the same drawing.
+            '<path d="M19 4.5V19.5" stroke-width="2.5"/>' +
+            // Closed: arrow away from the wall. Tip x=4, tail x=15.
+            '<path class="sched-tchev-out" d="M15 12H4"/>' +
+            '<path class="sched-tchev-out" d="M7.5 8.5L4 12L7.5 15.5"/>' +
+            // Open: arrow back into the wall. Same shaft, head at the far end.
+            '<path class="sched-tchev-in" d="M4 12H15"/>' +
+            '<path class="sched-tchev-in" d="M11.5 8.5L15 12L11.5 15.5"/>' +
+          '</svg>' +
+        '</span>'
       : (mode === 'crewhead')
         ? '<span class="sched-tdev-l">Duty</span><span class="sched-tdev-l">Ave</span>'
         : ((mode === 'crew') ? tallyText(tallyDevs[id]) : '');
