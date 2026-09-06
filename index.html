@@ -1442,12 +1442,14 @@
      it is an inline SVG. It cannot fall back to a tofu box, it inherits colour
      through currentColor, and the size is now a box measurement rather than a
      type size -- font-size no longer does anything here.
-     *** AMBER CLOSED AS WELL AS OPEN. ***
-     Fog-until-open made the closed state read as a label rather than a control:
-     the one thing that would have told you it was tappable only appeared after
-     you had tapped it. Amber throughout (Kyle, 5 Sep 2026). */
+     *** FOG, NOT AMBER. ***
+     It was fog until opened, then amber, which made the closed state read as a
+     label. It went amber throughout on 5 Sep 2026 and the icon landed the same
+     day: once the shape says "panel", the colour no longer has to do the work of
+     saying "control", and amber was spending the app's one accent on a toggle
+     (Kyle, 5 Sep 2026). fog-500 is the colour the tally header already uses. */
   .sched-tchev{ display:inline-flex; align-items:center; justify-content:center;
-    width:16px; height:16px; color:var(--amber-500); }
+    width:16px; height:16px; color:var(--fog-500); }
   .sched-tchev svg{ display:block; width:100%; height:100%; }
   /* *** BOTH ARROWS ARE ALWAYS DRAWN. ***
      Two paths in the same coordinate space, one faded out. Swapping them with
@@ -4344,7 +4346,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-06T04:05:00Z';
+const BUILD_VERSION = '2026-09-06T04:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
