@@ -4435,7 +4435,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T19:00:00Z';
+const BUILD_VERSION = '2026-09-07T19:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7059,6 +7059,7 @@ async function loadLegs(){
     if(typeof workbenchCache !== 'undefined' && workbenchCache === null) loadWorkbenchTrips();
     if(typeof wbAircraftCache !== 'undefined' && wbAircraftCache === null) loadWorkbenchTripAircraft();
     if(typeof aircraftCache !== 'undefined' && aircraftCache === null) loadAircraft();
+    loadTripWorkbenchAssignments();
     _legsLoadFailed = false;
     _noDepartment = false;
   }catch(e){
@@ -17465,8 +17466,15 @@ function renderTripDetailView(){
       const canEdit = wbCanEditTrips();
       return '<div class="trip-link-row">' +
         (wb
-          ? '<span class="trip-link-line" data-wb-assigned="1">Workbench trip \u00b7 ' +
-              escapeHtml(schedPrettySpan(wb.start_date, wb.end_date)) + '</span>'
+          ? '<span class="trip-link-line" data-wb-assigned="1">' +
+              escapeHtml(wbTripPickerLabel(wb)) +
+              (schedPrettySpan(wb.start_date, wb.end_date)
+                ? (' \u00b7 ' + escapeHtml(schedPrettySpan(wb.start_date, wb.end_date))) : '') +
+              (cardsSharingWbTrip(wb.id, tripGroupIdOf(trip)).length
+                ? (' \u00b7 shared with ' + cardsSharingWbTrip(wb.id, tripGroupIdOf(trip)).map(function(x){
+                    return escapeHtml(x.tripNumber ? ('trip ' + x.tripNumber) : 'an unnumbered trip'); }).join(', '))
+                : '') +
+            '</span>'
           : '<span class="trip-link-none">No workbench trip assigned</span>') +
         '<button type="button" class="trip-link-btn" id="wbAssignBtn"' +
           (canEdit ? '' : ' disabled title="Only an admin can assign a trip"') + '>' +
@@ -21947,11 +21955,42 @@ function tripEndISO(trip){
   return best;
 }
 
-// The workbench trip assigned to this card, or null.
+// group_id -> workbench_trip_id. Its own table rather than a column on either
+// side: the card has no row to put a column on, and a column on the workbench
+// trip would allow only one card per workbench trip -- the wrong way round.
+let twaCache = [];
+
+async function loadTripWorkbenchAssignments(){
+  const deptId = await getFlightDepartmentId();
+  if(!deptId){ twaCache = []; return twaCache; }
+  const { data, error } = await sb.from('trip_workbench_assignments')
+    .select('group_id, workbench_trip_id')
+    .eq('flight_department_id', deptId);
+  if(error){ console.warn('loadTripWorkbenchAssignments', error); twaCache = []; return twaCache; }
+  twaCache = data || [];
+  return twaCache;
+}
+
+// The workbench trip assigned to this card, or null. Null also when the row
+// exists but the workbench trip is not in the cache -- retired, or the panel
+// has not loaded -- which reads as unassigned rather than throwing.
 function wbTripForCard(trip){
   const gid = tripGroupIdOf(trip);
   if(!gid) return null;
-  return (workbenchCache || []).find(function(t){ return String(t.group_id || '') === gid; }) || null;
+  const row = (twaCache || []).find(function(r){ return String(r.group_id) === gid; });
+  if(!row) return null;
+  return (workbenchCache || []).find(function(t){ return t.id === row.workbench_trip_id; }) || null;
+}
+
+// The other cards sharing this workbench trip. One planned journey the
+// paperwork split in two shows on both cards, and each should say so.
+function cardsSharingWbTrip(wbTripId, exceptGid){
+  const gids = (twaCache || [])
+    .filter(function(r){ return r.workbench_trip_id === wbTripId && String(r.group_id) !== exceptGid; })
+    .map(function(r){ return '__grp_' + r.group_id; });
+  if(!gids.length) return [];
+  const live = groupIntoTrips((state.legs || []).filter(l => !l.deletedAt));
+  return gids.map(function(k){ return live.find(function(t){ return t.key === k; }); }).filter(Boolean);
 }
 
 // Which workbench trips are worth offering for this card.
@@ -21961,51 +22000,76 @@ function wbTripForCard(trip){
 // arrives before a tail has been decided, and treating a blank as a mismatch
 // would hide the very trip it belongs to.
 //
-// A workbench trip with no dates at all is offered rather than filtered out.
-// It cannot be ruled in or out, and silently withholding it would look like a
-// bug from the seat.
+// A workbench trip with NO START DATE is offered rather than filtered out: it
+// cannot be placed in time at all, and silently withholding it would look like
+// a bug from the seat. A missing END is not the same thing -- it reads as a
+// one-day trip everywhere else in the app, so it is treated as one here too.
+// That was letting a September trip surface against an October card.
+//
+// A workbench trip ALREADY ASSIGNED TO ANOTHER CARD IS STILL OFFERED. One
+// planned journey the paperwork split into two numbered trips must be
+// assignable to both, and whether two cards belong together is a judgement only
+// a person can make -- Kyle, 7 Sep 2026.
 function wbCandidatesForCard(trip){
   const cardStart = tripStartISO(trip);
   const cardEnd   = tripEndISO(trip) || cardStart;
   const cardTails = tripCardTails(trip);
-  const gid = tripGroupIdOf(trip);
   return (workbenchCache || []).filter(function(t){
-    // Already assigned somewhere else -- one workbench trip per card.
-    if(t.group_id && String(t.group_id) !== gid) return false;
     const tails = wbTripTails(t);
     if(cardTails.length && tails.length){
       const shared = tails.some(function(x){ return cardTails.indexOf(x) !== -1; });
       if(!shared) return false;
     }
-    if(!t.start_date || !t.end_date) return true;   // undatable, cannot be ruled out
+    if(!t.start_date) return true;                  // cannot be placed in time
     if(!cardStart || !cardEnd) return true;
-    return t.start_date <= cardEnd && t.end_date >= cardStart;
+    const wbEnd = t.end_date || t.start_date;
+    return t.start_date <= cardEnd && wbEnd >= cardStart;
   });
 }
 
+// A row in the picker has to say WHICH trip it is. wbTripDescribe falls back to
+// the words "this trip", which reads correctly inside a confirm sentence and
+// says nothing at all in a list.
+function wbTripPickerLabel(t){
+  const bits = [];
+  const tail = wbTailLabel(t);
+  if(tail) bits.push(tail);
+  if(t.destinations && t.destinations.trim()) bits.push(t.destinations.trim());
+  if(bits.length) return bits.join(' \u2014 ');
+  const seats = (t.crew.pic ? 1 : 0) + (t.crew.sic ? 1 : 0) +
+                t.crew.acm.length + t.crew.fa.length + t.crew.unassigned.length;
+  if(seats) return 'Workbench trip \u00b7 ' + seats + ' crew';
+  return 'Workbench trip \u00b7 no tail or crew yet';
+}
+
+// .select() is load-bearing on both of these: a write the policy refuses comes
+// back as zero rows rather than an error, and without reading it back a refusal
+// would show as success.
 async function assignWorkbenchTripToCard(wbTripId, trip){
   if(!wbCanEditTrips()){ showToast('Only an admin can assign a trip.'); return false; }
+  const deptId = await getFlightDepartmentId();
   const gid = tripGroupIdOf(trip);
-  if(!gid) return false;
-  // .select() is load-bearing: an update that matched no policy returns no rows
-  // rather than an error, and would otherwise read as success.
-  const { data, error } = await sb.from('workbench_trips')
-    .update({ group_id: gid, updated_at: new Date().toISOString() })
-    .eq('id', wbTripId).select().single();
+  if(!deptId || !gid) return false;
+  const { data, error } = await sb.from('trip_workbench_assignments')
+    .upsert({ flight_department_id: deptId, group_id: gid, workbench_trip_id: wbTripId },
+            { onConflict: 'flight_department_id,group_id' })
+    .select();
   if(error){ showToast('Could not assign: ' + (error.message || 'unknown error')); return false; }
-  if(!data){ showToast('Trip not changed.'); return false; }
-  await loadWorkbenchTrips();
+  if(!data || !data.length){ showToast('Not assigned \u2014 admin only.'); return false; }
+  await loadTripWorkbenchAssignments();
   return true;
 }
 
-async function unassignWorkbenchTripFromCard(wbTripId){
+async function unassignWorkbenchTripFromCard(trip){
   if(!wbCanEditTrips()){ showToast('Only an admin can assign a trip.'); return false; }
-  const { data, error } = await sb.from('workbench_trips')
-    .update({ group_id: null, updated_at: new Date().toISOString() })
-    .eq('id', wbTripId).select().single();
+  const deptId = await getFlightDepartmentId();
+  const gid = tripGroupIdOf(trip);
+  if(!deptId || !gid) return false;
+  const { data, error } = await sb.from('trip_workbench_assignments').delete()
+    .eq('flight_department_id', deptId).eq('group_id', gid).select();
   if(error){ showToast('Could not unassign: ' + (error.message || 'unknown error')); return false; }
-  if(!data){ showToast('Trip not changed.'); return false; }
-  await loadWorkbenchTrips();
+  if(!data || !data.length){ showToast('Not unassigned \u2014 admin only.'); return false; }
+  await loadTripWorkbenchAssignments();
   return true;
 }
 
@@ -22021,6 +22085,7 @@ function openWbAssignPicker(trip){
   const candidates = wbCandidatesForCard(trip).filter(function(t){
     return !current || t.id !== current.id;
   });
+  const gid = tripGroupIdOf(trip);
 
   msgEl.textContent = candidates.length
     ? 'Workbench trips whose dates overlap this one, and whose tail matches where both name one. Assigning does not merge anything \u2014 the workbench stays where crew are set, and this card starts showing them.'
@@ -22032,10 +22097,15 @@ function openWbAssignPicker(trip){
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'wb-merge-choice';
-    b.textContent = wbTripDescribe(t);
+    b.textContent = wbTripPickerLabel(t);
     const sub = document.createElement('span');
     sub.className = 'wb-merge-choice-sub';
-    sub.textContent = schedPrettySpan(t.start_date, t.end_date);
+    const shared = cardsSharingWbTrip(t.id, gid);
+    sub.textContent = (schedPrettySpan(t.start_date, t.end_date) || 'No dates set') +
+      (shared.length
+        ? (' \u00b7 also on ' + shared.map(function(x){
+            return x.tripNumber ? ('trip ' + x.tripNumber) : 'an unnumbered trip'; }).join(', '))
+        : '');
     b.appendChild(sub);
     b.addEventListener('click', async function(){
       overlay.classList.remove('open');
@@ -22047,7 +22117,7 @@ function openWbAssignPicker(trip){
   clearBtn.style.display = current ? '' : 'none';
   clearBtn.onclick = async function(){
     overlay.classList.remove('open');
-    if(current && await unassignWorkbenchTripFromCard(current.id)) renderMain();
+    if(await unassignWorkbenchTripFromCard(trip)) renderMain();
   };
   cancelBtn.onclick = function(){ overlay.classList.remove('open'); };
   overlay.classList.add('open');
