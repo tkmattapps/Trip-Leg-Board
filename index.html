@@ -3414,6 +3414,9 @@
     font-family:inherit; font-size:12px; color:var(--amber-500);
   }
   .trip-link-btn:hover{ border-color:var(--amber-500); }
+  .trip-link-btn[disabled]{ color:var(--fog-500); cursor:not-allowed; }
+  .trip-link-btn[disabled]:hover{ border-color:var(--hairline); }
+  .trip-link-line[data-wb-assigned]{ cursor:default; text-decoration:none; }
   /* Secondary to the flown date on an archived card: the filing date is a
      provenance detail, not what the list is ordered by. */
   .dash-card-archived-on{ font-size:10px; color:var(--fog-500); opacity:0.72; font-family:system-ui,'Inter',sans-serif; margin-top:2px; }
@@ -4360,6 +4363,20 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   </div>
 </div>
 
+<div class="feedback-overlay" id="wbAssignOverlay">
+  <div class="feedback-modal" style="max-width:380px;">
+    <div class="feedback-modal-head">
+      <span class="feedback-modal-title">Assign a workbench trip</span>
+    </div>
+    <p id="wbAssignMessage" style="font-size:13px; color:var(--paper-050); line-height:1.6; margin:0 0 14px; white-space:pre-line;"></p>
+    <div id="wbAssignChoices" style="max-height:46vh; overflow-y:auto;"></div>
+    <div style="display:flex; gap:10px; margin-top:16px;">
+      <button class="btn" id="wbAssignClearBtn" style="flex:1;">Unassign</button>
+      <button class="btn" id="wbAssignCancelBtn" style="flex:1;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="feedback-overlay" id="tripLinkOverlay">
   <div class="feedback-modal" style="max-width:380px;">
     <div class="feedback-modal-head">
@@ -4418,7 +4435,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T18:30:00Z';
+const BUILD_VERSION = '2026-09-07T19:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7036,6 +7053,12 @@ async function loadLegs(){
     // Trip links are read with the legs rather than on demand: the card has to
     // draw the line on first paint, and a fetch inside the render would flash.
     loadTripLinks();
+    // The brief has to say which workbench trip is assigned on FIRST paint, so
+    // these are fetched with the legs rather than when the workbench opens.
+    // Guarded on null so an already-loaded panel is not refetched underneath.
+    if(typeof workbenchCache !== 'undefined' && workbenchCache === null) loadWorkbenchTrips();
+    if(typeof wbAircraftCache !== 'undefined' && wbAircraftCache === null) loadWorkbenchTripAircraft();
+    if(typeof aircraftCache !== 'undefined' && aircraftCache === null) loadAircraft();
     _legsLoadFailed = false;
     _noDepartment = false;
   }catch(e){
@@ -17434,6 +17457,22 @@ function renderTripDetailView(){
       '<button type="button" class="trip-link-btn" id="tripLinkBtn">' +
         (tripLinkCount(trip) ? 'Change' : 'Link trip') + '</button>' +
     '</div>' +
+    // WHO IS ON THIS TRIP, ACCORDING TO THE SCHEDULE. Disabled rather than
+    // hidden for a crew member: the control exists and they should know who to
+    // ask, which is the rule everywhere else that admin gates a feature.
+    (function(){
+      const wb = wbTripForCard(trip);
+      const canEdit = wbCanEditTrips();
+      return '<div class="trip-link-row">' +
+        (wb
+          ? '<span class="trip-link-line" data-wb-assigned="1">Workbench trip \u00b7 ' +
+              escapeHtml(schedPrettySpan(wb.start_date, wb.end_date)) + '</span>'
+          : '<span class="trip-link-none">No workbench trip assigned</span>') +
+        '<button type="button" class="trip-link-btn" id="wbAssignBtn"' +
+          (canEdit ? '' : ' disabled title="Only an admin can assign a trip"') + '>' +
+          (wb ? 'Change' : 'Assign trip') + '</button>' +
+      '</div>';
+    })() +
     // NO .dash-grid. That grid puts two cards side by side on an iPad, which is
     // exactly what stopped a leg reading as a single unit.
     '<div id="tbBands">' + briefLegs.map(tripBriefBandHTML).join('') + '</div>' +
@@ -17444,6 +17483,14 @@ function renderTripDetailView(){
       ' <button type="button" class="review-history-btn" id="tripReviewHistoryBtn">Review history</button></span></div>' +
       '<div id="tripHistoryPanel" class="leg-history-panel" style="display:none;"></div>') : '') +
     tripArchiveBlockHTML(trip);
+
+  const wbAssignBtn = document.getElementById('wbAssignBtn');
+  if(wbAssignBtn && !wbAssignBtn.disabled){
+    wbAssignBtn.addEventListener('click', function(){
+      autoSaveIfEditing();
+      openWbAssignPicker(trip);
+    });
+  }
 
   const linkBtn = document.getElementById('tripLinkBtn');
   if(linkBtn){
@@ -21838,6 +21885,172 @@ async function deleteTripLink(trip){
 // How many trips this one is joined to, in either direction.
 function tripLinkCount(trip){
   return (tripLinkFor(trip) ? 1 : 0) + tripLinksForward(trip).length;
+}
+
+/* ============================================================
+   ASSIGNING A WORKBENCH TRIP TO A TRIP CARD.
+
+   Two objects that have never been joined. A workbench trip is PLANNING --
+   dates, crew, aircraft, no legs -- and lives on the schedule. A trip card is
+   PAPERWORK -- legs from an upload, grouped by groupId. Crew assigned on the
+   schedule therefore does not show on the card, which is the defect.
+
+   The join is workbench_trips.group_id (migration 64), pointing at the card's
+   groupId. One workbench trip per card.
+
+   NOTHING IS AUTOMATIC. Beacon offers likely candidates and a person chooses.
+   Overlapping dates and a shared tail are good evidence and not proof -- two
+   trips can share both and be unrelated -- and a wrong assignment would put
+   somebody else's crew on your trip.
+
+   ADMIN ONLY, matching every other workbench write. The control is DISABLED
+   rather than hidden for a crew member, so they can see it exists and know who
+   to ask.
+   ============================================================ */
+
+// The tails a workbench trip carries, upper-cased. Reads the assignment table
+// first and falls back to the legacy tail_number on the row.
+function wbTripTails(t){
+  const out = [];
+  const fleet = aircraftCache || [];
+  wbAircraftFor(t.id).forEach(function(r){
+    const ac = fleet.find(function(a){ return a.id === r.aircraft_id; });
+    const tail = ac ? String(ac.tail_number || '').trim().toUpperCase() : '';
+    if(tail && out.indexOf(tail) === -1) out.push(tail);
+  });
+  if(!out.length && t.tailNumber) out.push(String(t.tailNumber).trim().toUpperCase());
+  return out;
+}
+
+// The tails named anywhere on a card's legs.
+function tripCardTails(trip){
+  const out = [];
+  ((trip && trip.legs) || []).forEach(function(l){
+    const tail = String((l && l.tailNumber) || '').trim().toUpperCase();
+    if(tail && out.indexOf(tail) === -1) out.push(tail);
+  });
+  return out;
+}
+
+// The last date any leg of the trip arrives or departs, as a sortable ISO
+// string. Pairs with tripStartISO.
+function tripEndISO(trip){
+  let best = '';
+  ((trip && trip.legs) || []).forEach(function(l){
+    [(l && l.date), (l && l.arr && l.arr.date)].forEach(function(raw){
+      let d = String(raw || '').trim();
+      if(!d) return;
+      try { d = toISODate(d) || d; } catch(e){}
+      if(!best || d > best) best = d;
+    });
+  });
+  return best;
+}
+
+// The workbench trip assigned to this card, or null.
+function wbTripForCard(trip){
+  const gid = tripGroupIdOf(trip);
+  if(!gid) return null;
+  return (workbenchCache || []).find(function(t){ return String(t.group_id || '') === gid; }) || null;
+}
+
+// Which workbench trips are worth offering for this card.
+//
+// Dates must overlap. Tails must AGREE ONLY WHEN BOTH SIDES NAME ONE -- the
+// same rule legIdentitySame uses, and for the same reason: an itinerary often
+// arrives before a tail has been decided, and treating a blank as a mismatch
+// would hide the very trip it belongs to.
+//
+// A workbench trip with no dates at all is offered rather than filtered out.
+// It cannot be ruled in or out, and silently withholding it would look like a
+// bug from the seat.
+function wbCandidatesForCard(trip){
+  const cardStart = tripStartISO(trip);
+  const cardEnd   = tripEndISO(trip) || cardStart;
+  const cardTails = tripCardTails(trip);
+  const gid = tripGroupIdOf(trip);
+  return (workbenchCache || []).filter(function(t){
+    // Already assigned somewhere else -- one workbench trip per card.
+    if(t.group_id && String(t.group_id) !== gid) return false;
+    const tails = wbTripTails(t);
+    if(cardTails.length && tails.length){
+      const shared = tails.some(function(x){ return cardTails.indexOf(x) !== -1; });
+      if(!shared) return false;
+    }
+    if(!t.start_date || !t.end_date) return true;   // undatable, cannot be ruled out
+    if(!cardStart || !cardEnd) return true;
+    return t.start_date <= cardEnd && t.end_date >= cardStart;
+  });
+}
+
+async function assignWorkbenchTripToCard(wbTripId, trip){
+  if(!wbCanEditTrips()){ showToast('Only an admin can assign a trip.'); return false; }
+  const gid = tripGroupIdOf(trip);
+  if(!gid) return false;
+  // .select() is load-bearing: an update that matched no policy returns no rows
+  // rather than an error, and would otherwise read as success.
+  const { data, error } = await sb.from('workbench_trips')
+    .update({ group_id: gid, updated_at: new Date().toISOString() })
+    .eq('id', wbTripId).select().single();
+  if(error){ showToast('Could not assign: ' + (error.message || 'unknown error')); return false; }
+  if(!data){ showToast('Trip not changed.'); return false; }
+  await loadWorkbenchTrips();
+  return true;
+}
+
+async function unassignWorkbenchTripFromCard(wbTripId){
+  if(!wbCanEditTrips()){ showToast('Only an admin can assign a trip.'); return false; }
+  const { data, error } = await sb.from('workbench_trips')
+    .update({ group_id: null, updated_at: new Date().toISOString() })
+    .eq('id', wbTripId).select().single();
+  if(error){ showToast('Could not unassign: ' + (error.message || 'unknown error')); return false; }
+  if(!data){ showToast('Trip not changed.'); return false; }
+  await loadWorkbenchTrips();
+  return true;
+}
+
+function openWbAssignPicker(trip){
+  const overlay = document.getElementById('wbAssignOverlay');
+  const msgEl   = document.getElementById('wbAssignMessage');
+  const choices = document.getElementById('wbAssignChoices');
+  const clearBtn  = document.getElementById('wbAssignClearBtn');
+  const cancelBtn = document.getElementById('wbAssignCancelBtn');
+  if(!overlay || !choices) return;
+
+  const current = wbTripForCard(trip);
+  const candidates = wbCandidatesForCard(trip).filter(function(t){
+    return !current || t.id !== current.id;
+  });
+
+  msgEl.textContent = candidates.length
+    ? 'Workbench trips whose dates overlap this one, and whose tail matches where both name one. Assigning does not merge anything \u2014 the workbench stays where crew are set, and this card starts showing them.'
+    : 'No workbench trip overlaps these dates. Build one on the schedule first, or widen its dates.';
+
+  // DOM calls, not innerHTML: routing and notes are typed by people.
+  choices.textContent = '';
+  candidates.forEach(function(t){
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'wb-merge-choice';
+    b.textContent = wbTripDescribe(t);
+    const sub = document.createElement('span');
+    sub.className = 'wb-merge-choice-sub';
+    sub.textContent = schedPrettySpan(t.start_date, t.end_date);
+    b.appendChild(sub);
+    b.addEventListener('click', async function(){
+      overlay.classList.remove('open');
+      if(await assignWorkbenchTripToCard(t.id, trip)) renderMain();
+    });
+    choices.appendChild(b);
+  });
+
+  clearBtn.style.display = current ? '' : 'none';
+  clearBtn.onclick = async function(){
+    overlay.classList.remove('open');
+    if(current && await unassignWorkbenchTripFromCard(current.id)) renderMain();
+  };
+  cancelBtn.onclick = function(){ overlay.classList.remove('open'); };
+  overlay.classList.add('open');
 }
 
 // THE PICKER. Every other live trip in the department, most recent first,
