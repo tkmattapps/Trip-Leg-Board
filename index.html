@@ -3401,6 +3401,19 @@
   .trip-link-line{ font-size:11px; color:var(--amber-500); font-family:system-ui,'Inter',sans-serif; margin-top:4px; }
   .trip-link-line[data-trip-link-to]{ cursor:pointer; text-decoration:underline; }
   .trip-link-line[data-trip-link-dead]{ color:var(--fog-500); font-style:italic; }
+  .trip-link-row{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    margin:0 0 14px; padding:10px 12px;
+    border:1px solid var(--hairline); border-radius:6px;
+  }
+  .trip-link-row .trip-link-line{ margin-top:0; }
+  .trip-link-none{ font-size:11px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
+  .trip-link-btn{
+    margin-left:auto; background:none; border:1px solid var(--hairline);
+    border-radius:6px; padding:0 12px; min-height:32px; cursor:pointer;
+    font-family:inherit; font-size:12px; color:var(--amber-500);
+  }
+  .trip-link-btn:hover{ border-color:var(--amber-500); }
   /* Secondary to the flown date on an archived card: the filing date is a
      provenance detail, not what the list is ordered by. */
   .dash-card-archived-on{ font-size:10px; color:var(--fog-500); opacity:0.72; font-family:system-ui,'Inter',sans-serif; margin-top:2px; }
@@ -4347,6 +4360,20 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   </div>
 </div>
 
+<div class="feedback-overlay" id="tripLinkOverlay">
+  <div class="feedback-modal" style="max-width:380px;">
+    <div class="feedback-modal-head">
+      <span class="feedback-modal-title">Continues from which trip?</span>
+    </div>
+    <p id="tripLinkMessage" style="font-size:13px; color:var(--paper-050); line-height:1.6; margin:0 0 14px; white-space:pre-line;"></p>
+    <div id="tripLinkChoices" style="max-height:46vh; overflow-y:auto;"></div>
+    <div style="display:flex; gap:10px; margin-top:16px;">
+      <button class="btn" id="tripLinkClearBtn" style="flex:1;">Remove link</button>
+      <button class="btn" id="tripLinkCancelBtn" style="flex:1;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- "What changed since you last looked" -- per-person, advisory only.
      Its own overlay rather than showConfirm() because showConfirm writes with
      textContent and this needs a real list: the whole point is to draw the eye
@@ -4391,7 +4418,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T17:05:00Z';
+const BUILD_VERSION = '2026-09-07T17:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -17399,6 +17426,14 @@ function renderTripDetailView(){
       // Say what happened and why, so nobody reads the missing number as a
       // Beacon failure -- or as something they are expected to go and fix.
       '<div class="trip-subhead">No trip number on the paperwork. Beacon grouped these legs by route and date.</div>') +
+    // WHERE THIS TRIP SITS IN A LONGER JOURNEY. Linking is done from the brief
+    // rather than the card: the card is a glance, and choosing which trip
+    // precedes this one is a decision that wants the whole trip in front of you.
+    '<div class="trip-link-row">' +
+      (tripLinkLine(trip) || '<span class="trip-link-none">Not linked to another trip</span>') +
+      '<button type="button" class="trip-link-btn" id="tripLinkBtn">' +
+        (tripLinkFor(trip) ? 'Change' : 'Link trip') + '</button>' +
+    '</div>' +
     // NO .dash-grid. That grid puts two cards side by side on an iPad, which is
     // exactly what stopped a leg reading as a single unit.
     '<div id="tbBands">' + briefLegs.map(tripBriefBandHTML).join('') + '</div>' +
@@ -17409,6 +17444,22 @@ function renderTripDetailView(){
       ' <button type="button" class="review-history-btn" id="tripReviewHistoryBtn">Review history</button></span></div>' +
       '<div id="tripHistoryPanel" class="leg-history-panel" style="display:none;"></div>') : '') +
     tripArchiveBlockHTML(trip);
+
+  const linkBtn = document.getElementById('tripLinkBtn');
+  if(linkBtn){
+    linkBtn.addEventListener('click', function(){
+      autoSaveIfEditing();
+      openTripLinkPicker(trip);
+    });
+  }
+  // The brief is not wired by wireCardClicks, so its own copy of the line needs
+  // the jump bound here.
+  const briefLinkLine = main.querySelector('.trip-link-row .trip-link-line[data-trip-link-to]');
+  if(briefLinkLine){
+    briefLinkLine.addEventListener('click', function(){
+      openTripDetail(briefLinkLine.dataset.tripLinkTo, state.tripDetailOrigin || 'dashboard');
+    });
+  }
 
   const archiveBtn = document.getElementById('tripArchiveBtn');
   if(archiveBtn){
@@ -21715,6 +21766,70 @@ async function deleteTripLink(trip){
     .eq('group_id', gid);
   if(error) throw error;
   await loadTripLinks();
+}
+
+// THE PICKER. Every other live trip in the department, most recent first,
+// minus this one. No suggestions and no pre-selection: two trips sharing a
+// date and an airport are as likely unrelated as linked, and a suggestion at
+// the top of a list is a guess wearing the clothes of an answer.
+//
+// Archived trips are excluded. A sealed trip is a finished record and pointing
+// a live trip at it would invite editing the seal.
+function openTripLinkPicker(trip){
+  const overlay = document.getElementById('tripLinkOverlay');
+  const msgEl   = document.getElementById('tripLinkMessage');
+  const choices = document.getElementById('tripLinkChoices');
+  const clearBtn  = document.getElementById('tripLinkClearBtn');
+  const cancelBtn = document.getElementById('tripLinkCancelBtn');
+  if(!overlay || !choices) return;
+
+  const existing = tripLinkFor(trip);
+  const meKey = trip.key;
+  const candidates = groupIntoTrips((state.legs || []).filter(l => !l.deletedAt))
+    .filter(t => t.key !== meKey)
+    .filter(t => !(t.tripNumber && tripIsArchived(t.tripNumber)));
+
+  msgEl.textContent = candidates.length
+    ? 'Pick the trip this one continues from. Nothing merges \u2014 the two trips stay separate and each says where it sits in the journey.'
+    : 'There is no other live trip to link to.';
+
+  // DOM calls, not innerHTML: trip numbers and routes are typed by people.
+  choices.textContent = '';
+  candidates.forEach(function(t){
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'wb-merge-choice';
+    b.textContent = t.tripNumber ? ('Trip ' + t.tripNumber) : unnumberedTripLabel(t.legs);
+    const sub = document.createElement('span');
+    sub.className = 'wb-merge-choice-sub';
+    const first = t.legs[0] || {};
+    const last  = t.legs[t.legs.length - 1] || {};
+    const route = ((first.dep && first.dep.airportId) || '') +
+                  (last.arr && last.arr.airportId ? (' \u2192 ' + last.arr.airportId) : '');
+    sub.textContent = (route ? route + ' \u00b7 ' : '') +
+                      (formatISODateDisplay(first.date) || '') +
+                      (existing && existing.continues_from_group_id === tripGroupIdOf(t) ? ' \u00b7 linked' : '');
+    b.appendChild(sub);
+    b.addEventListener('click', async function(){
+      overlay.classList.remove('open');
+      try {
+        await saveTripLink(trip, t);
+        renderMain();
+      } catch(err){
+        showToast('Could not link: ' + ((err && err.message) || 'unknown error'));
+      }
+    });
+    choices.appendChild(b);
+  });
+
+  clearBtn.style.display = existing ? '' : 'none';
+  clearBtn.onclick = async function(){
+    overlay.classList.remove('open');
+    try { await deleteTripLink(trip); renderMain(); }
+    catch(err){ showToast('Could not remove the link: ' + ((err && err.message) || 'unknown error')); }
+  };
+  cancelBtn.onclick = function(){ overlay.classList.remove('open'); };
+  overlay.classList.add('open');
 }
 
 // Which trips appear. LIVE ONES ONLY -- archived trips are excluded, because
