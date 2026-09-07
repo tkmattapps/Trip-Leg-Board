@@ -4388,7 +4388,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-06T22:20:00Z';
+const BUILD_VERSION = '2026-09-07T15:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -16228,6 +16228,14 @@ async function processImportFile(file){
           existingLegs = state.legs.filter(l => !(l.tripNumber || '').trim() && l.groupId === reconcileGroupId);
         }
       }
+      // NUMBERED TRIPS TOO. Legs that a second upload ADDS to a trip already on
+      // the board must adopt THAT trip's group, not this upload's fresh one.
+      // This was set only on the numberless path above, so every re-upload that
+      // added a leg to a numbered trip planted another group id on that trip.
+      // Runs after both branches so it never overrides a numberless match.
+      if(tripNumber && existingLegs.length && !reconcileGroupId){
+        reconcileGroupId = existingLegs.map(l => l && l.groupId).find(Boolean) || '';
+      }
       if(existingLegs.length){
         // This trip number already exists on the board. Reconcile instead
         // of blindly appending duplicate legs: match incoming legs to
@@ -17381,8 +17389,14 @@ function renderTripDetailView(){
     autoSaveIfEditing();
     const newLeg = blankLeg();
     newLeg.tripNumber = trip.tripNumber;
-    // For an untitled trip, inherit the group so the new leg joins this trip.
-    if(trip.isOrphan){ newLeg.groupId = trip.legs[0] ? (trip.legs[0].groupId || newLeg.groupId) : newLeg.groupId; }
+    // ALWAYS inherit the trip's group -- numbered or not. groupId is the trip's
+    // identity now, so a leg added by hand must join the trip rather than keep
+    // the fresh id blankLeg() minted for it. This used to be gated on
+    // trip.isOrphan, which is exactly how numbered trips ended up carrying one
+    // group id per leg (SQL 60 consolidated the ones already on the board).
+    // Falls back to the fresh id only if no leg on the trip carries one.
+    const inheritedGroupId = (trip.legs || []).map(l => l && l.groupId).find(Boolean);
+    if(inheritedGroupId) newLeg.groupId = inheritedGroupId;
     const maxLegNum = Math.max(0, ...trip.legs.map(l => parseInt(l.legNumber, 10) || 0));
     newLeg.legNumber = String(maxLegNum + 1);
     state.legs.unshift(newLeg);
