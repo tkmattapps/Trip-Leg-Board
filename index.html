@@ -4435,7 +4435,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T19:40:00Z';
+const BUILD_VERSION = '2026-09-07T19:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -22016,6 +22016,15 @@ function wbCandidatesForCard(trip){
   const cardTails = tripCardTails(trip);
   return (workbenchCache || []).filter(function(t){
     const tails = wbTripTails(t);
+    // AN EMPTY WORKBENCH TRIP IS NOT OFFERED. No dates, no tail, no
+    // destinations, no crew -- there is nothing on the row for a person to
+    // recognise, so every one of them reads the same and picking between them
+    // is guessing. Two of these sitting in a list is how the wrong trip gets
+    // assigned. Kyle, 7 Sep 2026. They come back the moment anything is put on
+    // them.
+    const seats = (t.crew.pic ? 1 : 0) + (t.crew.sic ? 1 : 0) +
+                  t.crew.acm.length + t.crew.fa.length + t.crew.unassigned.length;
+    if(!t.start_date && !tails.length && !(t.destinations || '').trim() && !seats) return false;
     if(cardTails.length && tails.length){
       const shared = tails.some(function(x){ return cardTails.indexOf(x) !== -1; });
       if(!shared) return false;
