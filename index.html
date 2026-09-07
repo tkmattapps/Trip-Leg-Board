@@ -4418,7 +4418,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T17:55:00Z';
+const BUILD_VERSION = '2026-09-07T18:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -17432,7 +17432,7 @@ function renderTripDetailView(){
     '<div class="trip-link-row">' +
       (tripLinkLine(trip) || '<span class="trip-link-none">Not linked to another trip</span>') +
       '<button type="button" class="trip-link-btn" id="tripLinkBtn">' +
-        (tripLinkFor(trip) ? 'Change' : 'Link trip') + '</button>' +
+        (tripLinkCount(trip) ? 'Change' : 'Link trip') + '</button>' +
     '</div>' +
     // NO .dash-grid. That grid puts two cards side by side on an iPad, which is
     // exactly what stopped a leg reading as a single unit.
@@ -21772,27 +21772,72 @@ function tripLinkLine(trip){
   return out;
 }
 
-async function saveTripLink(trip, fromTrip){
+// The earliest date any leg of the trip departs, as a sortable ISO string.
+// Empty when no leg carries a date -- in which case the order is unknowable and
+// the caller falls back to the order the two trips were picked in.
+function tripStartISO(trip){
+  let best = '';
+  ((trip && trip.legs) || []).forEach(function(l){
+    let d = String((l && l.date) || '').trim();
+    if(!d) return;
+    try { d = toISODate(d) || d; } catch(e){}
+    if(!best || d < best) best = d;
+  });
+  return best;
+}
+
+// LINK TWO TRIPS. The caller says "these two are one journey"; the DIRECTION is
+// worked out here from the dates, not from which card the person happened to be
+// standing on. Whichever trip departs first is the one being continued from.
+//
+// This is why the picker's wording is neutral. Making the person pick the right
+// card to press the button on was a trap: get it backwards and the two cards
+// read a sequence that never happened, with nothing on screen to say so.
+//
+// One row, always on the LATER trip. If the pair was previously linked the
+// other way round, that row is removed first -- otherwise the two rows would
+// claim each trip follows the other.
+async function saveTripLink(a, b){
   const deptId = await getFlightDepartmentId();
-  const gid  = tripGroupIdOf(trip);
-  const from = tripGroupIdOf(fromTrip);
-  if(!deptId || !gid || !from || gid === from) throw new Error('bad link');
+  const ga = tripGroupIdOf(a), gb = tripGroupIdOf(b);
+  if(!deptId || !ga || !gb || ga === gb) throw new Error('bad link');
+  const sa = tripStartISO(a), sb_ = tripStartISO(b);
+  // Undated trips keep the caller's order: `a` is the trip whose brief is open,
+  // and "this one continues from the one I picked" is what was meant.
+  const aIsLater = (sa && sb_) ? (sa >= sb_) : true;
+  const later   = aIsLater ? ga : gb;
+  const earlier = aIsLater ? gb : ga;
+  const { error: delErr } = await sb.from('trip_links').delete()
+    .eq('flight_department_id', deptId)
+    .eq('group_id', earlier)
+    .eq('continues_from_group_id', later);
+  if(delErr) throw delErr;
   const { error } = await sb.from('trip_links')
-    .upsert({ flight_department_id: deptId, group_id: gid, continues_from_group_id: from },
+    .upsert({ flight_department_id: deptId, group_id: later, continues_from_group_id: earlier },
             { onConflict: 'flight_department_id,group_id' });
   if(error) throw error;
   await loadTripLinks();
 }
 
+// The row may sit on either trip depending on which flew first, so removal has
+// to look both ways. Only offered when the trip has exactly ONE link -- a trip
+// in the middle of a chain has two, and a single Remove button could not say
+// which it meant. That case is unlinked from a neighbouring brief instead.
 async function deleteTripLink(trip){
   const deptId = await getFlightDepartmentId();
   const gid = tripGroupIdOf(trip);
   if(!deptId || !gid) return;
-  const { error } = await sb.from('trip_links').delete()
-    .eq('flight_department_id', deptId)
-    .eq('group_id', gid);
+  const q = tripLinkFor(trip)
+    ? sb.from('trip_links').delete().eq('flight_department_id', deptId).eq('group_id', gid)
+    : sb.from('trip_links').delete().eq('flight_department_id', deptId).eq('continues_from_group_id', gid);
+  const { error } = await q;
   if(error) throw error;
   await loadTripLinks();
+}
+
+// How many trips this one is joined to, in either direction.
+function tripLinkCount(trip){
+  return (tripLinkFor(trip) ? 1 : 0) + tripLinksForward(trip).length;
 }
 
 // THE PICKER. Every other live trip in the department, most recent first,
@@ -21812,12 +21857,18 @@ function openTripLinkPicker(trip){
 
   const existing = tripLinkFor(trip);
   const meKey = trip.key;
+  // Trips already joined to this one, either way round, so the list can say so
+  // rather than offering a link that is already there.
+  const linkedKeys = new Set(
+    (tripLinkTarget(trip) ? [tripLinkTarget(trip).key] : [])
+      .concat(tripLinksForward(trip).map(t => t.key))
+  );
   const candidates = groupIntoTrips((state.legs || []).filter(l => !l.deletedAt))
     .filter(t => t.key !== meKey)
     .filter(t => !(t.tripNumber && tripIsArchived(t.tripNumber)));
 
   msgEl.textContent = candidates.length
-    ? 'Pick the trip this one continues from. Nothing merges \u2014 the two trips stay separate and each says where it sits in the journey.'
+    ? 'Pick the trip that belongs with this one. Nothing merges \u2014 the two stay separate, and Beacon reads the order from the dates, so it does not matter which one you started from.'
     : 'There is no other live trip to link to.';
 
   // DOM calls, not innerHTML: trip numbers and routes are typed by people.
@@ -21835,7 +21886,7 @@ function openTripLinkPicker(trip){
                   (last.arr && last.arr.airportId ? (' \u2192 ' + last.arr.airportId) : '');
     sub.textContent = (route ? route + ' \u00b7 ' : '') +
                       (formatISODateDisplay(first.date) || '') +
-                      (existing && existing.continues_from_group_id === tripGroupIdOf(t) ? ' \u00b7 linked' : '');
+                      (linkedKeys.has(t.key) ? ' \u00b7 already linked' : '');
     b.appendChild(sub);
     b.addEventListener('click', async function(){
       overlay.classList.remove('open');
@@ -21849,7 +21900,9 @@ function openTripLinkPicker(trip){
     choices.appendChild(b);
   });
 
-  clearBtn.style.display = existing ? '' : 'none';
+  // One link: Remove is unambiguous. None: nothing to remove. Two (a trip in
+  // the middle of a chain): the button could not say which, so it is withheld.
+  clearBtn.style.display = (tripLinkCount(trip) === 1) ? '' : 'none';
   clearBtn.onclick = async function(){
     overlay.classList.remove('open');
     try { await deleteTripLink(trip); renderMain(); }
