@@ -3402,7 +3402,7 @@
   .trip-link-line[data-trip-link-to]{ cursor:pointer; text-decoration:underline; }
   .trip-link-line[data-trip-link-dead]{ color:var(--fog-500); font-style:italic; }
   .trip-link-row{
-    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap;
     margin:0 0 14px; padding:10px 12px;
     border:1px solid var(--hairline); border-radius:6px;
   }
@@ -4418,7 +4418,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T17:35:00Z';
+const BUILD_VERSION = '2026-09-07T17:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -17454,12 +17454,11 @@ function renderTripDetailView(){
   }
   // The brief is not wired by wireCardClicks, so its own copy of the line needs
   // the jump bound here.
-  const briefLinkLine = main.querySelector('.trip-link-row .trip-link-line[data-trip-link-to]');
-  if(briefLinkLine){
-    briefLinkLine.addEventListener('click', function(){
-      openTripDetail(briefLinkLine.dataset.tripLinkTo, state.tripDetailOrigin || 'dashboard');
+  main.querySelectorAll('.trip-link-row .trip-link-line[data-trip-link-to]').forEach(function(el){
+    el.addEventListener('click', function(){
+      openTripDetail(el.dataset.tripLinkTo, state.tripDetailOrigin || 'dashboard');
     });
-  }
+  });
 
   const archiveBtn = document.getElementById('tripArchiveBtn');
   if(archiveBtn){
@@ -21731,18 +21730,46 @@ function tripLinkTarget(trip){
     .find(t => t.key === key) || null;
 }
 
-// The words on the card and the brief. A numberless earlier trip has no number
+// THE OTHER END OF THE LINK. One row is stored, on the LATER trip, pointing
+// back. The earlier trip has no row of its own -- it is found by reading the
+// same rows the other way round. There can be more than one only if a trip has
+// been linked from two places, which is a mistake rather than a shape we
+// support; showing all of them is how it becomes visible.
+function tripLinksForward(trip){
+  const gid = tripGroupIdOf(trip);
+  if(!gid) return [];
+  const keys = (tripLinksCache || [])
+    .filter(r => String(r.continues_from_group_id) === gid)
+    .map(r => '__grp_' + r.group_id);
+  if(!keys.length) return [];
+  const live = groupIntoTrips((state.legs || []).filter(l => !l.deletedAt));
+  return keys.map(k => live.find(t => t.key === k)).filter(Boolean);
+}
+
+// How a trip is named in the other trip's line. A numberless trip has no number
 // to show, so it is described rather than named -- Beacon never invents one.
-function tripLinkLine(trip){
-  const link = tripLinkFor(trip);
-  if(!link) return '';
-  const target = tripLinkTarget(trip);
-  const label = target
-    ? (target.tripNumber ? ('trip ' + target.tripNumber) : unnumberedTripLabel(target.legs).toLowerCase())
-    : 'a trip no longer on the board';
+function tripLinkLabel(t){
+  if(!t) return 'a trip no longer on the board';
+  return t.tripNumber ? ('trip ' + t.tripNumber) : unnumberedTripLabel(t.legs).toLowerCase();
+}
+
+function tripLinkLineHTML(target, words){
   return '<div class="trip-link-line"' +
          (target ? (' data-trip-link-to="' + escapeHtml(target.key) + '"') : ' data-trip-link-dead="1"') +
-         '>Continues from ' + escapeHtml(label) + '</div>';
+         '>' + words + ' ' + escapeHtml(tripLinkLabel(target)) + '</div>';
+}
+
+// BOTH DIRECTIONS, IN THE WORDS THAT FIT THE SEAT YOU ARE IN. The trip flown
+// second continues FROM the first; the trip flown first continues IN the
+// second. One stored pointer, read from either end, and neither card has to
+// say something that only makes sense on the other one.
+function tripLinkLine(trip){
+  let out = '';
+  if(tripLinkFor(trip)) out += tripLinkLineHTML(tripLinkTarget(trip), 'Continues from');
+  tripLinksForward(trip).forEach(function(t){
+    out += tripLinkLineHTML(t, 'Continues in');
+  });
+  return out;
 }
 
 async function saveTripLink(trip, fromTrip){
