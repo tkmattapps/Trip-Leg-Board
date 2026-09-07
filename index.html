@@ -3402,14 +3402,19 @@
   .trip-link-line[data-trip-link-to]{ cursor:pointer; text-decoration:underline; }
   .trip-link-line[data-trip-link-dead]{ color:var(--fog-500); font-style:italic; }
   .trip-link-row{
-    display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap;
-    margin:0 0 14px; padding:10px 12px;
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    margin:0 0 14px; padding:8px 12px;
     border:1px solid var(--hairline); border-radius:6px;
   }
+  .trip-link-facts{
+    flex:1 1 auto; min-width:0;
+    display:flex; align-items:center; flex-wrap:wrap; gap:2px 6px;
+  }
+  .trip-link-sep{ font-size:11px; color:var(--fog-500); }
   .trip-link-row .trip-link-line{ margin-top:0; }
   .trip-link-none{ font-size:11px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
   .trip-link-btn{
-    margin-left:auto; background:none; border:1px solid var(--hairline);
+    background:none; border:1px solid var(--hairline);
     border-radius:6px; padding:0 12px; min-height:32px; cursor:pointer;
     font-family:inherit; font-size:12px; color:var(--amber-500);
   }
@@ -4435,7 +4440,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T19:55:00Z';
+const BUILD_VERSION = '2026-09-07T20:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -17453,32 +17458,36 @@ function renderTripDetailView(){
     // WHERE THIS TRIP SITS IN A LONGER JOURNEY. Linking is done from the brief
     // rather than the card: the card is a glance, and choosing which trip
     // precedes this one is a decision that wants the whole trip in front of you.
-    '<div class="trip-link-row">' +
-      (tripLinkLine(trip) || '<span class="trip-link-none">Not linked to another trip</span>') +
-      '<button type="button" class="trip-link-btn" id="tripLinkBtn">' +
-        (tripLinkCount(trip) ? 'Change' : 'Link trip') + '</button>' +
-    '</div>' +
-    // WHO IS ON THIS TRIP, ACCORDING TO THE SCHEDULE. Disabled rather than
-    // hidden for a crew member: the control exists and they should know who to
-    // ask, which is the rule everywhere else that admin gates a feature.
+    // ONE ROW, TWO FACTS. Both of these are set once and then read at a glance,
+    // so a bordered block each was two rows of furniture above the legs -- which
+    // are what the page is actually for. Facts on the left in muted text, the
+    // two controls on the right.
     (function(){
       const wb = wbTripForCard(trip);
       const canEdit = wbCanEditTrips();
+      const shared = wb ? cardsSharingWbTrip(wb.id, tripGroupIdOf(trip)) : [];
+      const facts = [];
+      const linkHTML = tripLinkLine(trip);
+      if(linkHTML) facts.push(linkHTML);
+      else facts.push('<span class="trip-link-none">Not linked</span>');
+      if(wb){
+        facts.push('<span class="trip-link-line" data-wb-assigned="1">Workbench \u00b7 ' +
+          escapeHtml(wbTripPickerLabel(wb)) +
+          (shared.length
+            ? (' \u00b7 shared with ' + shared.map(function(x){
+                return escapeHtml(x.tripNumber ? ('trip ' + x.tripNumber) : 'an unnumbered trip');
+              }).join(', '))
+            : '') + '</span>');
+      } else {
+        facts.push('<span class="trip-link-none">No workbench trip</span>');
+      }
       return '<div class="trip-link-row">' +
-        (wb
-          ? '<span class="trip-link-line" data-wb-assigned="1">' +
-              escapeHtml(wbTripPickerLabel(wb)) +
-              (schedPrettySpan(wb.start_date, wb.end_date)
-                ? (' \u00b7 ' + escapeHtml(schedPrettySpan(wb.start_date, wb.end_date))) : '') +
-              (cardsSharingWbTrip(wb.id, tripGroupIdOf(trip)).length
-                ? (' \u00b7 shared with ' + cardsSharingWbTrip(wb.id, tripGroupIdOf(trip)).map(function(x){
-                    return escapeHtml(x.tripNumber ? ('trip ' + x.tripNumber) : 'an unnumbered trip'); }).join(', '))
-                : '') +
-            '</span>'
-          : '<span class="trip-link-none">No workbench trip assigned</span>') +
+        '<div class="trip-link-facts">' + facts.join('<span class="trip-link-sep">\u00b7</span>') + '</div>' +
+        '<button type="button" class="trip-link-btn" id="tripLinkBtn">' +
+          (tripLinkCount(trip) ? 'Change link' : 'Link trip') + '</button>' +
         '<button type="button" class="trip-link-btn" id="wbAssignBtn"' +
           (canEdit ? '' : ' disabled title="Only an admin can assign a trip"') + '>' +
-          (wb ? 'Change' : 'Assign trip') + '</button>' +
+          (wb ? 'Change trip' : 'Assign trip') + '</button>' +
       '</div>';
     })() +
     // NO .dash-grid. That grid puts two cards side by side on an iPad, which is
