@@ -4388,7 +4388,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T15:40:00Z';
+const BUILD_VERSION = '2026-09-07T16:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8325,18 +8325,24 @@ function statusLabel(s){
 }
 
 function groupIntoTrips(legs){
+  // *** THE TRIP'S IDENTITY IS ITS groupId, NOT ITS NUMBER. ***
+  //
+  // This used to bucket numbered legs by their trip number text and only fall
+  // back to groupId for numberless ones. That made a trip a string six legs
+  // happened to share: edit the number on one leg and that leg left the card,
+  // and correcting a typo split a trip in two.
+  //
+  // Now every leg buckets on groupId, numbered or not. The number becomes a
+  // LABEL on the group -- taken from the first leg that carries one -- and
+  // isOrphan means "this trip has no number", which is what it always meant.
+  //
+  // Depends on SQL 60 having consolidated one groupId per numbered trip. Two
+  // legs of the same trip carrying different ids would show as two cards.
   const groups = new Map();
-  const untitledGroups = new Map();
   legs.forEach(leg => {
-    const tn = (leg.tripNumber || '').trim();
-    if(!tn){
-      const gid = leg.groupId || ('__solo_' + leg.id);
-      if(!untitledGroups.has(gid)) untitledGroups.set(gid, []);
-      untitledGroups.get(gid).push(leg);
-      return;
-    }
-    if(!groups.has(tn)) groups.set(tn, []);
-    groups.get(tn).push(leg);
+    const gid = leg.groupId || ('__solo_' + leg.id);
+    if(!groups.has(gid)) groups.set(gid, []);
+    groups.get(gid).push(leg);
   });
   const legSort = (a, b) => {
     const an = parseInt(a.legNumber, 10);
@@ -8352,13 +8358,12 @@ function groupIntoTrips(legs){
     if(bValid) return 1;
     return (a.createdAt || 0) - (b.createdAt || 0);
   };
-  const tripList = Array.from(groups.entries()).map(([tripNumber, legsArr]) => {
+  const tripList = Array.from(groups.entries()).map(([gid, legsArr]) => {
     legsArr.sort(legSort);
-    return { key: tripNumber, tripNumber: tripNumber, legs: legsArr, isOrphan: false };
-  });
-  Array.from(untitledGroups.entries()).forEach(([gid, legsArr]) => {
-    legsArr.sort(legSort);
-    tripList.push({ key: '__grp_' + gid, tripNumber: '', legs: legsArr, isOrphan: true });
+    // The label is the first number any leg in the group carries. A group whose
+    // legs disagree is a data anomaly; showing one number beats showing none.
+    const tn = legsArr.map(l => (l.tripNumber || '').trim()).find(Boolean) || '';
+    return { key: '__grp_' + gid, tripNumber: tn, legs: legsArr, isOrphan: !tn };
   });
   // ORDERED BY WHEN THE TRIP FLIES, not when it was imported.
   //
@@ -17403,7 +17408,9 @@ function renderTripDetailView(){
     // Stay on the Trip Brief page: keep the view + trip key pinned, persist the
     // new leg so it survives refresh / reaches other devices, then re-render in place.
     state.view = 'tripDetail';
-    state.activeTripKey = trip.isOrphan ? ('__grp_' + newLeg.groupId) : (trip.tripNumber || '').trim();
+    // Always the group key now -- groupIntoTrips returns '__grp_<gid>' for every
+    // trip, numbered or not, so the number would match nothing.
+    state.activeTripKey = '__grp_' + newLeg.groupId;
     await saveLeg(newLeg);
     renderMain();
   });
@@ -18848,10 +18855,9 @@ function renderMain(){
   // Offered defaults for the Next pax leg section. Computed here, used in the
   // fields below with `stored || derived` so a typed value always wins.
   const _npl = nextPaxLegDefaults(leg);
-  const tripNumForLeg = (leg.tripNumber || '').trim();
-  const siblingTrip = tripNumForLeg
-    ? groupIntoTrips(state.legs).find(t => t.key === tripNumForLeg)
-    : groupIntoTrips(state.legs).find(t => t.key === '__grp_' + (leg.groupId || ''));
+  // One lookup: every trip keys on its group now, numbered or not.
+  const siblingTrip = groupIntoTrips(state.legs)
+    .find(t => t.key === '__grp_' + (leg.groupId || ('__solo_' + leg.id)));
   const stripLegs = (siblingTrip && siblingTrip.legs.length > 0) ? siblingTrip.legs : [leg];
   // *** THE BOTTOM-BAR LEG NAVIGATOR IS GONE. ***
   // It did three jobs, all now better served elsewhere:
@@ -21238,8 +21244,7 @@ async function handleDelete(id){
   if(!confirmed) return;
   // Determine the sibling leg to fall back to BEFORE removing from state,
   // so a delete keeps us on the leg checklist instead of jumping to the trip page.
-  const tripKeyForLeg = (leg.tripNumber || '').trim();
-  const sibKey = tripKeyForLeg ? tripKeyForLeg : ('__grp_' + (leg.groupId || ''));
+  const sibKey = '__grp_' + (leg.groupId || ('__solo_' + leg.id));
   let fallbackLegId = null;
   const sibTrip = groupIntoTrips(state.legs).find(t => t.key === sibKey);
   const tripLegsBefore = sibTrip ? sibTrip.legs.slice() : [];
@@ -22512,14 +22517,18 @@ function schedFillAwayDays(idx){
     const byDay = idx[ownerId] || {};
     // trip key -> sorted list of that person's flight days on that trip
     const trips = {};
+    // Same keys -> the trip's NUMBER, for display. The key itself is a group id
+    // now and carries no number, so the label has to ride alongside it.
+    const tripLabels = {};
     Object.keys(byDay).forEach(function(day){
       (byDay[day] || []).forEach(function(e){
         if(e.kind !== 'flight' || !e.ref) return;
         const info = schedFlightRefInfo(e.ref);
         if(!info) return;                       // archived or unreadable -- leave alone
-        const key = info.tripNumber || ('__grp_' + (info.groupId || e.ref));
+        const key = '__grp_' + (info.groupId || e.ref);
         if(!trips[key]) trips[key] = [];
         trips[key].push(day);
+        if(!tripLabels[key] && info.tripNumber) tripLabels[key] = info.tripNumber;
       });
     });
     Object.keys(trips).forEach(function(key){
@@ -22556,7 +22565,7 @@ function schedFillAwayDays(idx){
         // the run becomes continuous, and the span-suppression rule then hides the
         // redundant backfill because the day is no longer backfill-only.
         if(!byDay[iso]) byDay[iso] = [];
-        byDay[iso].push({ kind: 'away_on_trip', ref: '', detail: '', trip: key });
+        byDay[iso].push({ kind: 'away_on_trip', ref: '', detail: '', trip: key, tripLabel: tripLabels[key] || '' });
       }
     });
   });
@@ -23051,13 +23060,13 @@ function schedRunKeyFor(e){
     // and labels a trip id as a leg. Named here instead.
     //
     // These days key SEPARATELY from extracted days of the same trip, which key
-    // on the trip number. That is not a bug to paper over: two bars mean the
+    // on the trip's group id. That is not a bug to paper over: two bars mean the
     // hand-built trip and the extracted one have not been reconciled, which is
     // precisely what the disagreement flag exists to raise.
     if(!trip && e.kind === 'flight_assigned') trip = 'wb:' + (e.ref || '');
     if(!trip){
       const info = (typeof schedFlightRefInfo === 'function') ? schedFlightRefInfo(e.ref) : null;
-      trip = info ? (info.tripNumber || ('__grp_' + (info.groupId || e.ref))) : '';
+      trip = info ? ('__grp_' + (info.groupId || e.ref)) : '';
     }
     // *** NOTE THE BUCKET IS 'trip', NOT e.kind. *** That is what merges a flying
     // day and an away day on the same trip into one bar.
@@ -23366,8 +23375,7 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
     if(e.kind === 'away_on_trip'){
       // Never quiet -- away_on_trip is green on crew, teal on aircraft, both loud.
       return '<span class="sched-blk' + schedRunCls(e, dayRuns) + '" style="background:' + col + '"' +
-             ' title="' + escapeHtml(label + (e.trip && e.trip.indexOf('__grp_') !== 0
-                                              ? ' \u2014 trip ' + e.trip : '')) + '">' +
+             ' title="' + escapeHtml(label + (e.tripLabel ? ' \u2014 trip ' + e.tripLabel : '')) + '">' +
              schedRunLabel(e, dayRuns) + '</span>';
     }
     // The qualifier -- the spreadsheet's "M" for a medical appointment -- is
@@ -23745,24 +23753,30 @@ function schedAwayTripForDay(ownerId, dayISO, ownerKind){
   const ownerKey = isAc ? 'aircraft_id' : 'user_id';
   const srcKey   = isAc ? 'status' : 'source';
   const trips = {};
+  const tripLabels = {};
   rows.forEach(function(r){
     if(r[ownerKey] !== ownerId || r[srcKey] !== 'flight' || !r.ref_id) return;
     const info = schedFlightRefInfo(r.ref_id);
     if(!info) return;
-    const key = info.tripNumber || ('__grp_' + (info.groupId || r.ref_id));
+    const key = '__grp_' + (info.groupId || r.ref_id);
+    if(!tripLabels[key] && info.tripNumber) tripLabels[key] = info.tripNumber;
     const day = String(r.day || '').slice(0,10);
     if(!day) return;
     if(!trips[key]) trips[key] = [];
     trips[key].push(day);
     if(day === dayISO) trips[key].flying = true;
   });
-  let found = '';
+  // Returns { key, label } or null. The key is the group id -- it carries no
+  // number -- so the label travels with it for anything that displays the trip.
+  let found = null;
   Object.keys(trips).forEach(function(key){
     const days = trips[key];
     if(days.flying) return;                 // actually flying -- not an away day
     if(days.length < 2) return;
     const sorted = days.slice().sort();
-    if(dayISO > sorted[0] && dayISO < sorted[sorted.length - 1]) found = key;
+    if(dayISO > sorted[0] && dayISO < sorted[sorted.length - 1]){
+      found = { key: key, label: tripLabels[key] || '' };
+    }
   });
   return found;
 }
@@ -23847,7 +23861,7 @@ async function loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO){
   if(!out.length){
     const awayTrip = schedAwayTripForDay(ownerId, dayISO, ownerKind);
     if(awayTrip){
-      out.push({ id: '', kind: 'away_on_trip', detail: '', trip: awayTrip, removable: false });
+      out.push({ id: '', kind: 'away_on_trip', detail: '', trip: awayTrip.key, tripLabel: awayTrip.label, removable: false });
     }
   }
   if(wbRefs.length){
@@ -24121,10 +24135,9 @@ function schedGoToLeg(legId){
     openArchivedTrip(info.tripNumber);
     return;
   }
-  const tn = info.tripNumber;
-  // A numbered trip is keyed by its number; an unnumbered one is keyed by its
-  // group, matching groupIntoTrips. Anything else would land on a blank view.
-  const key = tn ? tn : ('__grp_' + (info.leg.groupId || ('__solo_' + info.leg.id)));
+  // Every trip is keyed by its group, matching groupIntoTrips. Anything else
+  // would land on a blank view.
+  const key = '__grp_' + (info.leg.groupId || ('__solo_' + info.leg.id));
   openTripDetail(key, 'schedule');
 }
 
@@ -24133,11 +24146,11 @@ function schedGoToLeg(legId){
 // concatenation is where paren bugs live.
 function schedExistingSubText(r, isAwayRow, ownerKind){
   if(isAwayRow){
-    const named = r.trip && r.trip.indexOf('__grp_') !== 0;
+    const named = !!r.tripLabel;
     // A person is between legs; a tail is parked. Same derived day, but the
     // sentence has to describe the thing whose row it is sitting on.
     const lead = ownerKind === 'aircraft' ? 'Parked between legs of ' : 'Between legs of ';
-    return lead + (named ? 'trip ' + r.trip : 'a trip') +
+    return lead + (named ? 'trip ' + r.tripLabel : 'a trip') +
            ' \u2014 derived from the trip, nothing to remove';
   }
   // A workbench trip owns its span the way an exception does, and it can also
