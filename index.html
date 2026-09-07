@@ -3398,6 +3398,9 @@
   .leg-status-hint{ opacity:0.55; font-size:9px; }
   .dash-card-route{ font-size:13px; color:var(--fog-500); margin-bottom:8px; }
   .dash-card-date{ font-size:11px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
+  .trip-link-line{ font-size:11px; color:var(--amber-500); font-family:system-ui,'Inter',sans-serif; margin-top:4px; }
+  .trip-link-line[data-trip-link-to]{ cursor:pointer; text-decoration:underline; }
+  .trip-link-line[data-trip-link-dead]{ color:var(--fog-500); font-style:italic; }
   /* Secondary to the flown date on an archived card: the filing date is a
      provenance detail, not what the list is ordered by. */
   .dash-card-archived-on{ font-size:10px; color:var(--fog-500); opacity:0.72; font-family:system-ui,'Inter',sans-serif; margin-top:2px; }
@@ -4388,7 +4391,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T16:30:00Z';
+const BUILD_VERSION = '2026-09-07T17:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7003,6 +7006,9 @@ async function loadLegs(){
     });
     state.legs = legs;
     snapshotAllLegs();
+    // Trip links are read with the legs rather than on demand: the card has to
+    // draw the line on first paint, and a fetch inside the render would flash.
+    loadTripLinks();
     _legsLoadFailed = false;
     _noDepartment = false;
   }catch(e){
@@ -11511,6 +11517,7 @@ function tripCardHTML(trip){
     '<div class="leg-status-strip"><span class="leg-status-dots">' + legStatusDots + '</span></div>' +
     '<div class="dash-card-legsum">' + legCount + ' leg' + (legCount === 1 ? '' : 's') + ' \u2022 ' + escapeHtml(statusSummary) + '</div>' +
     '<div class="dash-card-date">' + escapeHtml(dateLabel) + '</div>' +
+    tripLinkLine(trip) +
     '<div class="dash-card-spacer"></div>' +
     (archived
       ? '<div class="trip-quick-row trip-quick-row-sealed">Sealed record</div>'
@@ -11528,6 +11535,15 @@ function wireCardClicks(originView){
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       openTripQuickSheet(btn.dataset.tripKey, btn.dataset.quick);
+    });
+  });
+  // Same rule as the quick buttons: bound first, stops propagation, or tapping
+  // the link would also open the card it sits on. A dead link (its trip has
+  // been deleted) has no target attribute and is not wired at all.
+  document.querySelectorAll('.trip-link-line[data-trip-link-to]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTripDetail(el.dataset.tripLinkTo, originView);
     });
   });
   // Scoped to leg tiles only. Trip-tile dots are status indicators and carry
@@ -21603,6 +21619,102 @@ async function deleteChatLink(tripId){
     .eq('trip_id', String(tripId).trim());
   if(error) throw error;
   await loadChatLinks();
+}
+
+/* ============================================================
+   LINKED TRIPS -- "this trip continues from that one".
+
+   Two trip numbers that are really one journey: 415531 out to Berlin on
+   business, 415543 home again as personal travel. Nothing merges, no leg is
+   renumbered. Each card simply says where it came from.
+
+   ONE POINTER, BACKWARDS ONLY. Links are always sequential, so the forward
+   direction is read by querying the other way round. Nothing to keep in sync
+   and no way for two directions to disagree.
+
+   KEYED ON THE GROUP ID, NOT THE NUMBER. That is the whole reason steps 1-3
+   came first: a trip number is text a person can edit, and a link that keys on
+   it orphans the moment someone fixes a typo. The group id never changes.
+
+   NEVER INFERRED. Two trips sharing Teterboro on a date are as likely
+   unrelated as linked, and the business/personal split is a decision a person
+   made that no leg data records. A link exists because somebody said so.
+   ============================================================ */
+
+let tripLinksCache = [];
+
+async function loadTripLinks(){
+  const deptId = await getFlightDepartmentId();
+  if(!deptId){ tripLinksCache = []; return tripLinksCache; }
+  const { data, error } = await sb.from('trip_links')
+    .select('group_id, continues_from_group_id, created_by, created_at')
+    .eq('flight_department_id', deptId);
+  if(error){ console.warn('loadTripLinks', error); tripLinksCache = []; return tripLinksCache; }
+  tripLinksCache = data || [];
+  return tripLinksCache;
+}
+
+// The bare group id behind a trip's key. groupIntoTrips returns '__grp_<gid>'
+// for every trip; the table stores the gid alone.
+function tripGroupIdOf(trip){
+  const k = String((trip && trip.key) || '');
+  return k.indexOf('__grp_') === 0 ? k.slice(6) : k;
+}
+
+// What this trip continues FROM, or null.
+function tripLinkFor(trip){
+  const gid = tripGroupIdOf(trip);
+  if(!gid) return null;
+  return (tripLinksCache || []).find(r => String(r.group_id) === gid) || null;
+}
+
+// The trip on the other end of a link, if it is still on the board. Returns
+// null when the earlier trip has been deleted -- the row is left alone rather
+// than cleaned up, because a link pointing at nothing is a smaller problem than
+// a delete that quietly removes history.
+function tripLinkTarget(trip){
+  const link = tripLinkFor(trip);
+  if(!link) return null;
+  const key = '__grp_' + link.continues_from_group_id;
+  return groupIntoTrips((state.legs || []).filter(l => !l.deletedAt))
+    .find(t => t.key === key) || null;
+}
+
+// The words on the card and the brief. A numberless earlier trip has no number
+// to show, so it is described rather than named -- Beacon never invents one.
+function tripLinkLine(trip){
+  const link = tripLinkFor(trip);
+  if(!link) return '';
+  const target = tripLinkTarget(trip);
+  const label = target
+    ? (target.tripNumber ? ('trip ' + target.tripNumber) : unnumberedTripLabel(target.legs).toLowerCase())
+    : 'a trip no longer on the board';
+  return '<div class="trip-link-line"' +
+         (target ? (' data-trip-link-to="' + escapeHtml(target.key) + '"') : ' data-trip-link-dead="1"') +
+         '>Continues from ' + escapeHtml(label) + '</div>';
+}
+
+async function saveTripLink(trip, fromTrip){
+  const deptId = await getFlightDepartmentId();
+  const gid  = tripGroupIdOf(trip);
+  const from = tripGroupIdOf(fromTrip);
+  if(!deptId || !gid || !from || gid === from) throw new Error('bad link');
+  const { error } = await sb.from('trip_links')
+    .upsert({ flight_department_id: deptId, group_id: gid, continues_from_group_id: from },
+            { onConflict: 'flight_department_id,group_id' });
+  if(error) throw error;
+  await loadTripLinks();
+}
+
+async function deleteTripLink(trip){
+  const deptId = await getFlightDepartmentId();
+  const gid = tripGroupIdOf(trip);
+  if(!deptId || !gid) return;
+  const { error } = await sb.from('trip_links').delete()
+    .eq('flight_department_id', deptId)
+    .eq('group_id', gid);
+  if(error) throw error;
+  await loadTripLinks();
 }
 
 // Which trips appear. LIVE ONES ONLY -- archived trips are excluded, because
