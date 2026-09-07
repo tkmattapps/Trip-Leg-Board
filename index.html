@@ -4388,7 +4388,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T16:05:00Z';
+const BUILD_VERSION = '2026-09-07T16:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15111,6 +15111,30 @@ function legIdentityKey(leg){
   return dep + '|' + arr + '|' + date;
 }
 
+// SAME FLIGHT? -- routing and date, PLUS the tail when both legs carry one.
+//
+// Two aircraft flying the same routing on the same day are two different trips,
+// and legIdentityKey alone collapses them into one. The tail settles it.
+//
+// It cannot go IN the key, because the rule is conditional: an early itinerary
+// often has no tail yet, and a revision that finally adds one must still find
+// the trip it belongs to. A key is either present or absent; "match on tail only
+// if both sides have one" is a comparison between two legs, not a string.
+//
+// So: routing and date must always agree. If BOTH legs name a tail, the tails
+// must agree too. If either is blank, routing and date decide alone.
+//
+// Safe for collapsing duplicates inside a single upload: two copies of one leg
+// from one document carry the same tail, or neither carries one.
+function legIdentitySame(a, b){
+  if(!a || !b) return false;
+  if(legIdentityKey(a) !== legIdentityKey(b)) return false;
+  const ta = ((a.tailNumber || '') + '').trim().toUpperCase();
+  const tb = ((b.tailNumber || '') + '').trim().toUpperCase();
+  if(ta && tb) return ta === tb;
+  return true;
+}
+
 // A numberless trip still has to be NAMEABLE -- in the import summary, on the
 // trip card, and in the page header. Beacon deliberately does NOT invent a
 // trip number to fill the gap: a fabricated number would land in trip_notes,
@@ -16217,8 +16241,9 @@ async function processImportFile(file){
       // silently discarded. The trip did not duplicate; it simply never
       // updated, which is worse because it is invisible.
       //
-      // So: fall back to IDENTITY. legIdentityKey is dep|arr|date and already
-      // ignores the trip number, so if any incoming leg matches a numberless
+      // So: fall back to IDENTITY. legIdentitySame is dep/arr/date -- plus the
+      // tail when both sides name one -- and ignores the trip number, so if any
+      // incoming leg matches a numberless
       // leg already on the board, that leg's whole GROUP is what we are
       // revising. Restricted to numberless board legs deliberately -- a
       // numberless brief must never silently reconcile against, and propose
@@ -16226,8 +16251,9 @@ async function processImportFile(file){
       let existingLegs = tripNumber ? state.legs.filter(l => (l.tripNumber || '').trim() === tripNumber) : [];
       let reconcileGroupId = '';
       if(!tripNumber){
-        const incomingKeys = new Set(dedupedLegs.map(ex => legIdentityKey(buildLegFromExtraction(ex))));
-        const hit = state.legs.find(l => !(l.tripNumber || '').trim() && l.groupId && incomingKeys.has(legIdentityKey(l)));
+        const probeLegs = dedupedLegs.map(ex => buildLegFromExtraction(ex));
+        const hit = state.legs.find(l => !(l.tripNumber || '').trim() && l.groupId &&
+                                         probeLegs.some(b => legIdentitySame(l, b)));
         if(hit){
           reconcileGroupId = hit.groupId;
           existingLegs = state.legs.filter(l => !(l.tripNumber || '').trim() && l.groupId === reconcileGroupId);
@@ -16261,29 +16287,28 @@ async function processImportFile(file){
             .filter(l => String(l.sourceLegNumber || '').trim())
             .map(l => [String(l.sourceLegNumber).trim(), l])
         );
-        const existingByIdentity = new Map(existingLegs.map(l => [legIdentityKey(l), l]));
         const incomingLegNums = new Set(dedupedLegs.map(ex => String(ex.legNumber || '').trim()));
         const fieldsDiffer = (leg, built) => describeLegChanges(leg, built).length > 0;
         // Collapse incoming copies of the same flight FIRST (the extraction can
         // emit the same leg twice with a blank/'?' leg number, which otherwise
         // lands as two separate adds). Merge their fields so no detail is lost.
-        const incomingByIdentity = new Map();
+        const incomingByIdentity = [];
         // Legs joining a numberless trip already on the board must adopt THAT
         // trip's group, not this upload's fresh one, or the revision would land
         // as a second card beside the trip it revises.
         const useGroupId = reconcileGroupId || importGroupId;
         dedupedLegs.forEach(ex => {
           const built = buildLegFromExtraction(ex, useGroupId);
-          const ik = legIdentityKey(built);
-          if(incomingByIdentity.has(ik)) mergeLegInto(incomingByIdentity.get(ik), built);
-          else incomingByIdentity.set(ik, built);
+          const twin = incomingByIdentity.find(b => legIdentitySame(b, built));
+          if(twin) mergeLegInto(twin, built);
+          else incomingByIdentity.push(built);
         });
         // Mirror fuel/ramp across airport codes on the INCOMING legs. Seed the
         // lookup with existing legs too (as read-only sources) so an airport
         // whose fuel arrives on one incoming leg also fills its twin end even
         // when that twin lives on a leg already on the board. We only ever
         // write into the incoming built legs here, never the existing ones.
-        const incomingBuilt = Array.from(incomingByIdentity.values());
+        const incomingBuilt = incomingByIdentity.slice();
         mirrorFuelAcrossLegs(incomingBuilt, existingLegs);
         const toAdd = [];
         const toUpdate = [];
@@ -16302,7 +16327,7 @@ async function processImportFile(file){
           //   leg number -> source leg number -> dep/arr/date identity
           let existing = (numKey && numKey !== '?') ? existingByLegNum.get(numKey) : null;
           if(!existing && numKey && numKey !== '?') existing = existingBySourceNum.get(numKey);
-          if(!existing) existing = existingByIdentity.get(legIdentityKey(built));
+          if(!existing) existing = existingLegs.find(l => legIdentitySame(l, built)) || null;
           if(existing){
             matchedExisting.add(existing);
             if(fieldsDiffer(existing, built)){
@@ -16346,18 +16371,17 @@ async function processImportFile(file){
         // any duplicates the extraction emitted for the SAME dep/arr/date
         // (merging their fields so no detail is lost), and flag any that
         // already exist on the board so a re-import doesn't plant a copy.
-        const builtMap = new Map();
+        const builtList = [];
         dedupedLegs.forEach(ex => {
           const built = buildLegFromExtraction(ex, importGroupId);
-          const key = legIdentityKey(built);
-          if(builtMap.has(key)) mergeLegInto(builtMap.get(key), built);
-          else builtMap.set(key, built);
+          const twin = builtList.find(b => legIdentitySame(b, built));
+          if(twin) mergeLegInto(twin, built);
+          else builtList.push(built);
         });
-        const boardKeys = new Set(state.legs.map(legIdentityKey));
         const newLegs = [];
         const alreadyOnBoard = [];
-        builtMap.forEach((leg, key) => {
-          if(boardKeys.has(key)) alreadyOnBoard.push(leg);
+        builtList.forEach(leg => {
+          if(state.legs.some(l => legIdentitySame(l, leg))) alreadyOnBoard.push(leg);
           else newLegs.push(leg);
         });
         mirrorFuelAcrossLegs(newLegs);
