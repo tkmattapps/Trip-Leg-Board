@@ -904,6 +904,22 @@
   }
 
   .field{ display:flex; flex-direction:column; gap:6px; }
+  /* Non-flying event detail. Two stacked cards: the shared facts, then what
+     can be edited. Deliberately plain -- this page is read far more often
+     than it is written to. */
+  .ev-card{
+    border:1px solid var(--hairline); border-radius:8px;
+    background:var(--panel-800);
+    padding:14px 16px; margin:0 0 14px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .ev-row{ display:flex; align-items:baseline; gap:12px; }
+  .ev-lbl{
+    flex:0 0 64px; font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--fog-500);
+  }
+  .ev-val{ flex:1 1 auto; min-width:0; color:var(--paper-050); }
+  .ev-note{ font-size:12px; color:var(--fog-500); }
   .field label{ font-size:11px; color:var(--fog-300); font-family:system-ui,'Inter',sans-serif; letter-spacing:0.2px; }
   .field label.crit-attn, .field > label.crit-attn{ color:var(--amber-500); font-weight:600; }
   /* A provisional date: shown, but not yet collected and not yet written.
@@ -4440,7 +4456,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T20:15:00Z';
+const BUILD_VERSION = '2026-09-07T21:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8553,6 +8569,146 @@ function openTripDetail(tripKey, origin){
   renderList();
   renderMain();
 }
+
+// ================= NON-FLYING EVENT DETAIL =================
+// The second instance of a pattern the trip brief already established: a
+// full-screen view reached from a card, with a back link in the page header
+// and nothing added to the bottom nav. Reached from the day panel, returns to
+// the schedule.
+//
+// WHY IT EXISTS. Tapping 23-29 September told you "Global 6000 recurrent" and
+// stopped there. Where the training is, what hotel you are in and whether you
+// have a car all lived in email. This is where they go.
+//
+// The row is fetched fresh rather than read out of schedData. The schedule's
+// rows come from an RPC that reports occupancy, not detail, and rendering a
+// page off a cache that was never meant to carry these columns is how the two
+// surfaces start disagreeing.
+let eventDetail = null;         // the fetched crew_exceptions row
+let eventDetailLoading = false;
+let eventDetailFailed = false;
+
+function openEventDetail(exceptionId){
+  if(!exceptionId) return;
+  if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
+  state.view = 'eventDetail';
+  state.activeId = null;
+  state.eventDetailId = exceptionId;
+  eventDetail = null;
+  eventDetailFailed = false;
+  eventDetailLoading = true;
+  updateNavTabs();
+  renderMain();
+  loadEventDetail(exceptionId);
+}
+
+async function loadEventDetail(exceptionId){
+  try {
+    const { data, error } = await sb.from('crew_exceptions')
+      .select('id,user_id,category,start_date,end_date,reason,location')
+      .eq('id', exceptionId)
+      .is('deleted_at', null)
+      .single();
+    if(error) throw error;
+    eventDetail = data || null;
+    eventDetailFailed = !eventDetail;
+  } catch(err){
+    console.error('event detail load', err);
+    eventDetail = null;
+    eventDetailFailed = true;
+  } finally {
+    eventDetailLoading = false;
+    // Only repaint if we are still on this page. A slow fetch that lands after
+    // the person has navigated away must not redraw over wherever they went.
+    if(state.view === 'eventDetail' && state.eventDetailId === exceptionId) renderMain();
+  }
+}
+
+function renderEventDetailView(){
+  const main = document.getElementById('mainPanel');
+  const r = eventDetail;
+  const kind = r ? r.category : '';
+  const label = kind ? schedKindLabel(kind, 'crew') : 'Event';
+  const who = r ? schedOwnerLabel(r.user_id, 'crew') : '';
+  setPageHeader({
+    title: label,
+    sub: r ? schedPrettySpan(r.start_date, r.end_date) : '',
+    backLabel: 'Schedule',
+    backTo: 'schedule'
+  });
+  if(eventDetailLoading){
+    main.innerHTML = '<div class="empty-list">Loading\u2026</div>';
+    return;
+  }
+  if(eventDetailFailed || !r){
+    main.innerHTML = '<div class="empty-list">Could not load that event.</div>';
+    return;
+  }
+  // Admin gate matches the schedule panel: what the event IS and where it is
+  // are department facts, entered by whoever runs the schedule. The personal
+  // half -- hotel, car, travel -- is not here yet and will NOT carry this gate.
+  const canEdit = rosterViewerIsAdmin();
+  main.innerHTML =
+    '<div class="ev-card">' +
+      '<div class="ev-row"><span class="ev-lbl">Who</span>' +
+        '<span class="ev-val">' + escapeHtml(who || '\u2014') + '</span></div>' +
+      '<div class="ev-row"><span class="ev-lbl">What</span>' +
+        '<span class="ev-val">' + escapeHtml(label) + '</span></div>' +
+      '<div class="ev-row"><span class="ev-lbl">When</span>' +
+        '<span class="ev-val">' + escapeHtml(schedPrettySpan(r.start_date, r.end_date)) + '</span></div>' +
+      (r.reason
+        ? '<div class="ev-row"><span class="ev-lbl">Detail</span>' +
+            '<span class="ev-val">' + escapeHtml(r.reason) + '</span></div>'
+        : '') +
+    '</div>' +
+    '<div class="ev-card">' +
+      '<div class="field"><label>Location</label>' +
+        '<input type="text" id="evLocation" maxlength="120" ' +
+          'value="' + escapeHtml(r.location || '') + '" ' +
+          (canEdit ? '' : 'disabled ') +
+          'placeholder="' + escapeHtml(canEdit ? 'e.g. Dallas' : 'Not set') + '">' +
+      '</div>' +
+      // Disabled, not hidden: a crew member should see the field exists and
+      // know it is somebody else's to fill in.
+      (canEdit
+        ? '<button type="button" class="btn-primary" id="evSaveLocationBtn">Save location</button>'
+        : '<div class="ev-note">Only a department admin can set the location.</div>') +
+    '</div>';
+}
+
+async function saveEventLocation(){
+  if(!eventDetail) return;
+  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can set the location'); return; }
+  const el = document.getElementById('evLocation');
+  if(!el) return;
+  const val = el.value.trim();
+  const btn = document.getElementById('evSaveLocationBtn');
+  if(btn) btn.disabled = true;
+  try {
+    // Read back with .select(). A policy refusal returns no row rather than an
+    // error, so without this a blocked write would toast "Saved".
+    const { data, error } = await sb.from('crew_exceptions')
+      .update({ location: val || null })
+      .eq('id', eventDetail.id)
+      .select('id,location').single();
+    if(error) throw error;
+    eventDetail.location = (data && data.location) || '';
+    // The day panel reads location off the schedule fetch, so the cached rows
+    // are now stale in one field. Drop them rather than patching.
+    schedData = null;
+    showToast(val ? 'Location saved' : 'Location cleared');
+  } catch(err){
+    console.error('event location save', err);
+    showToast('Could not save that \u2014 try again');
+  } finally {
+    if(btn) btn.disabled = false;
+  }
+}
+
+document.addEventListener('click', function(e){
+  const b = e.target.closest && e.target.closest('#evSaveLocationBtn');
+  if(b) saveEventLocation();
+});
 
 function goToListView(view){
   autoSaveIfEditing();
@@ -18011,6 +18167,10 @@ document.addEventListener('click', function(e){
   // the snapshot the archived screens render from, and renderArchivedTripView
   // bounces to the archive list if it is ever missing.
   else if(dest === 'archivedTrip'){ state.view = 'archivedTrip'; state.archivedLeg = null; }
+  // The schedule is not a plain view swap: it owns a fetch, an anchor and a
+  // scroll position. openScheduleView() reuses the cached rows when they are
+  // still good, so this is a return rather than a reload.
+  else if(dest === 'schedule'){ state.activeId = null; openScheduleView(); return; }
   else return;
   state.activeId = null;
   if(typeof updateNavTabs === 'function') updateNavTabs();
@@ -18977,6 +19137,7 @@ function renderMain(){
   if(state.view === 'importPreview'){ renderImportPreviewView(); return; }
   if(state.view === 'settings'){ renderSettingsView(); return; }
   if(state.view === 'schedule'){ renderScheduleView(); return; }
+  if(state.view === 'eventDetail'){ renderEventDetailView(); return; }
   if(state.view === 'notes'){ renderNotesView(); return; }
 
   const main = document.getElementById('mainPanel');
@@ -24522,14 +24683,22 @@ async function loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO){
   if(refs.length){
     const tbl = ownerKind === 'aircraft' ? 'aircraft_availability' : 'crew_exceptions';
     const catCol = ownerKind === 'aircraft' ? 'status' : 'category';
+    // `location` exists on crew_exceptions only -- migration 68 did not touch
+    // aircraft_availability -- so it is asked for on the crew path alone. A
+    // blanket select would 400 on every tail row.
+    const detailCols = ownerKind === 'aircraft' ? '' : ',location';
     const { data, error } = await sb.from(tbl)
-      .select('id,' + catCol + ',start_date,end_date,reason')
+      .select('id,' + catCol + ',start_date,end_date,reason' + detailCols)
       .in('id', refs)
       .is('deleted_at', null);
     if(error) throw error;
     (data || []).forEach(function(r){
       out.push({ id: r.id, kind: r[catCol], start: r.start_date, end: r.end_date,
-                 reason: r.reason || '', removable: true });
+                 reason: r.reason || '', location: r.location || '',
+                 // Only a crew row has somewhere to go: the detail view reads
+                 // and writes crew_exceptions and nothing else.
+                 hasDetail: ownerKind !== 'aircraft',
+                 removable: true });
     });
   }
 
@@ -24919,9 +25088,16 @@ function schedExistingHTML(e){
     // view. Two different kinds of id going to two different places, so they
     // stay two attributes and the handler cannot confuse them.
     const goWb = (r.kind === 'flight_assigned' && r.id) ? r.id : '';
-    h += '<div class="sched-existing-row' + (goTrip || goWb ? ' sched-existing-go' : '') + '"' +
+    // *** THE CARD STOPS BEING A DEAD END. ***
+    // A hand-entered crew block -- training, PTO, a soft day -- had nowhere to
+    // go from here, so where the training is and what is booked around it lived
+    // in somebody's email. The row id IS the crew_exceptions id, so this is a
+    // destination, not a lookup.
+    const goEvent = (r.hasDetail && r.id) ? r.id : '';
+    h += '<div class="sched-existing-row' + (goTrip || goWb || goEvent ? ' sched-existing-go' : '') + '"' +
            (goTrip ? ' data-sched-goleg="' + escapeHtml(goTrip) + '" role="button" tabindex="0"' : '') +
-           (goWb ? ' data-sched-gowb="' + escapeHtml(goWb) + '" role="button" tabindex="0"' : '') + '>' +
+           (goWb ? ' data-sched-gowb="' + escapeHtml(goWb) + '" role="button" tabindex="0"' : '') +
+           (goEvent ? ' data-sched-goevent="' + escapeHtml(goEvent) + '" role="button" tabindex="0"' : '') + '>' +
            '<span class="sched-key-dot" style="background:' + col + '"></span>' +
            '<div class="sched-existing-txt">' +
              '<div class="sched-existing-lbl">' +
@@ -24930,6 +25106,7 @@ function schedExistingHTML(e){
              '<div class="sched-existing-sub">' +
                escapeHtml(schedExistingSubText(r, isAwayRow, e.ownerKind)) +
                (r.reason ? ' \u00b7 ' + escapeHtml(r.reason) : '') +
+               (r.location ? ' \u00b7 ' + escapeHtml(r.location) : '') +
              '</div>' +
            '</div>' +
            (r.removable && !e.readOnly
@@ -26966,6 +27143,15 @@ document.addEventListener('click', async function(e){
   if(schedGo){ schedGoToLeg(schedGo.getAttribute('data-sched-goleg')); return; }
   const schedGoWb = t.closest('[data-sched-gowb]');
   if(schedGoWb){ schedGoToWorkbenchTrip(schedGoWb.getAttribute('data-sched-gowb')); return; }
+  const schedGoEvent = t.closest('[data-sched-goevent]');
+  if(schedGoEvent){
+    // The delete X sits inside the same row. Without this the remove button
+    // would navigate instead of removing.
+    if(t.closest('[data-sched-del]') || t.closest('[data-sched-wbdel]')) return;
+    closeSchedEntry();
+    openEventDetail(schedGoEvent.getAttribute('data-sched-goevent'));
+    return;
+  }
   if(t.closest('[data-sched-toworkbench]')){ schedEntryToWorkbench(); return; }
   const schedCat = t.closest('[data-sched-cat]');
   if(schedCat && schedEntry){
