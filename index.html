@@ -4498,7 +4498,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T21:40:00Z';
+const BUILD_VERSION = '2026-09-08T22:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11897,19 +11897,62 @@ function tripCardHTML(trip){
     (archived
       ? '<div class="trip-quick-row trip-quick-row-sealed">Sealed record</div>'
       : '<div class="trip-quick-row">' +
-          '<button type="button" class="trip-quick-btn" data-quick="crew" data-trip-key="' + escapeHtml(trip.key) + '">Set crew</button>' +
-          '<button type="button" class="trip-quick-btn" data-quick="aircraft" data-trip-key="' + escapeHtml(trip.key) + '">Set aircraft</button>' +
+          // TWO WINDOWS INTO ONE TRIP, named for the work rather than the
+          // screen. Set crew and Set aircraft used to sit here; both are build
+          // work, and build work lives on the plan. See the one-trip design.
+          '<button type="button" class="trip-quick-btn" data-plan-key="' + escapeHtml(trip.key) + '">Plan it</button>' +
+          '<button type="button" class="trip-quick-btn" data-fly-key="' + escapeHtml(trip.key) + '">Fly it</button>' +
         '</div>') +
   '</div>';
+}
+
+// PLAN IT. One button, one meaning: take me to this trip's plan.
+//
+// Linked, it navigates. Not linked, it creates and then navigates. It does NOT
+// offer candidates, and that is a deliberate call by Kyle, 8 Sep 2026 --
+// a button that sometimes asks a question is two buttons wearing one label.
+//
+// The cost, stated so it is not discovered later: an upload that should have
+// joined a plan you built by hand gets its own instead, and you end up with
+// two plans for one journey. The import screen is where that is caught, because
+// that is the moment somebody is looking at both. This button is the fallback
+// for a card that got past it, and the fallback is allowed to be blunt.
+async function openPlanForCard(tripKey){
+  const trip = groupIntoTrips(state.legs).find(function(t){ return t.key === tripKey; });
+  if(!trip){ showToast('Trip not found.'); return; }
+  try {
+    await loadWorkbenchTrips();
+    await loadWorkbenchTripAircraft();
+    await loadTripWorkbenchAssignments();
+  } catch(e){ console.warn('openPlanForCard', e); showToast('Could not read trip plans.'); return; }
+
+  let wb = wbTripForCard(trip);
+  if(!wb){
+    if(!await createWorkbenchTripForCard(trip)) return;   // it has already said why
+    // Both caches. The RPC writes a plan row AND an assignment row, and
+    // reloading only the first leaves the new plan invisible to wbTripForCard.
+    await loadWorkbenchTrips();
+    await loadTripWorkbenchAssignments();
+    wb = wbTripForCard(trip);
+    if(!wb){ showToast('Trip plan created, but it could not be opened.'); return; }
+    showToast('Trip plan created');
+  }
+  openWorkbenchTrip(wb.id);
 }
 
 function wireCardClicks(originView){
   // Must run BEFORE the .dash-card handler binds, and must stop propagation, or
   // tapping a quick action would also open the trip behind the sheet.
-  document.querySelectorAll('.trip-quick-btn[data-quick]').forEach(btn => {
+  document.querySelectorAll('.trip-quick-btn[data-plan-key]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      openTripQuickSheet(btn.dataset.tripKey, btn.dataset.quick);
+      openPlanForCard(btn.dataset.planKey);
+    });
+  });
+  document.querySelectorAll('.trip-quick-btn[data-fly-key]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTripDetail(btn.dataset.flyKey, originView);
     });
   });
   // Same rule as the quick buttons: bound first, stops propagation, or tapping
