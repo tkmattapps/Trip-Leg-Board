@@ -908,6 +908,7 @@
      can be edited. Deliberately plain -- this page is read far more often
      than it is written to. */
   .ev-card{
+    max-width:720px;
     border:1px solid var(--hairline); border-radius:8px;
     background:var(--panel-800);
     padding:14px 16px; margin:0 0 14px;
@@ -924,16 +925,28 @@
     font-family:'Big Shoulders Display',sans-serif; font-size:18px;
     letter-spacing:0.02em; color:var(--paper-050);
   }
-  /* The tick sits on the label line rather than beside the box: the question
-     "is this booked" is about the whole row, and putting it inline with the
-     text field made the field short on a phone for no reason. */
-  .ev-log-lbl{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
-  .ev-booked{
-    display:flex; align-items:center; gap:6px;
-    font-size:11px; letter-spacing:0.06em; text-transform:uppercase;
-    color:var(--fog-500);
+  /* *** ONE ROW PER FACT, AND NO BREAKPOINT TO GET WRONG. ***
+     Label above input meant every field was two lines tall and the input ran
+     the full width of a monitor to hold two words. This is the same shape the
+     card above already uses: label left, value right.
+
+     There is deliberately NO media query here. The wrapping does the work: the
+     input asks for 240px and the label takes 96, so anything wide enough holds
+     them side by side and anything narrower drops the input onto its own line
+     at full width -- which is the phone layout, arrived at by the box itself
+     rather than by a number someone guessed at a breakpoint. */
+  .ev-field{ flex-direction:row; align-items:center; flex-wrap:wrap; gap:10px 12px; }
+  .ev-field > label{
+    flex:0 0 96px; font-size:12px; color:var(--fog-300);
   }
-  .ev-booked input{ width:auto; margin:0; }
+  .ev-field > input[type=text], .ev-field > textarea{ flex:1 1 240px; min-width:0; }
+  /* The notes box is the one field where the value is longer than the label,
+     so it takes the whole row under its label rather than sitting beside it. */
+  .ev-field-notes > textarea{ flex:1 1 100%; }
+  /* A save is a small confirming action, not the point of the page. Full-width
+     amber read as the primary thing on screen. */
+  .ev-actions{ display:flex; justify-content:flex-end; }
+  .ev-actions .btn-primary{ width:auto; }
   .field label{ font-size:11px; color:var(--fog-300); font-family:system-ui,'Inter',sans-serif; letter-spacing:0.2px; }
   .field label.crit-attn, .field > label.crit-attn{ color:var(--amber-500); font-weight:600; }
   /* A provisional date: shown, but not yet collected and not yet written.
@@ -4476,7 +4489,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T22:35:00Z';
+const BUILD_VERSION = '2026-09-07T23:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8626,7 +8639,7 @@ async function loadEventDetail(exceptionId){
   try {
     const { data, error } = await sb.from('crew_exceptions')
       .select('id,user_id,category,start_date,end_date,reason,location,' +
-              'hotel,hotel_booked,rental_car,rental_car_booked,travel,travel_booked,detail_notes')
+              'hotel,rental_car,travel,detail_notes')
       .eq('id', exceptionId)
       .is('deleted_at', null)
       .single();
@@ -8699,14 +8712,14 @@ function renderEventDetailView(){
       // way. "Reason" reads as a justification, which is right for Other and
       // wrong for PTO, training and a soft day -- the field actually holds what
       // the block IS. Same shape as "cabin crew" over 'flight attendant'.
-      '<div class="field"><label>Details' + (needsReason ? '' : ' (optional)') + '</label>' +
+      '<div class="field ev-field"><label>Details' + (needsReason ? '' : ' (optional)') + '</label>' +
         '<input type="text" id="evReason" maxlength="120" ' +
           'value="' + escapeHtml(r.reason || '') + '" ' +
           (canEdit ? '' : 'disabled ') +
           'placeholder="' + escapeHtml(canEdit ? (needsReason ? 'Required for ' + label : 'e.g. FAA medical') : 'Not set') + '">' +
       '</div>' +
       (isTraining
-        ? '<div class="field"><label>Location</label>' +
+        ? '<div class="field ev-field"><label>Location</label>' +
             '<input type="text" id="evLocation" maxlength="120" ' +
               'value="' + escapeHtml(r.location || '') + '" ' +
               (canEdit ? '' : 'disabled ') +
@@ -8716,21 +8729,27 @@ function renderEventDetailView(){
       // Disabled, not hidden: a crew member should see the fields exist and
       // know they are somebody else's to fill in.
       (canEdit
-        ? '<button type="button" class="btn-primary" id="evSaveDetailBtn">Save</button>'
+        ? '<div class="ev-actions"><button type="button" class="btn-primary" id="evSaveDetailBtn">Save</button></div>'
         : '<div class="ev-note">Only a department admin can change these.</div>') +
     '</div>' +
     // *** WHAT IS ARRANGED, AND WHAT IS NOT. ***
-    // The booked box is the point of this card. A free-text note cannot answer
-    // "do I have a car for Dallas", because an empty note and a note that never
-    // mentions a car look identical -- absence in prose is invisible. A flag
-    // that is expected and unticked is a question the app can actually ask.
+    // A free-text note cannot answer "do I have a car for Dallas", because an
+    // empty note and a note that never mentions a car look identical. Three
+    // named boxes fix that on their own: the box is expected, so an empty one
+    // IS the open item. A separate booked tick was tried and removed 7 Sep 2026
+    // -- it asked the same question the empty box already answers.
+    //
+    // hotel_booked, rental_car_booked and travel_booked remain on the table,
+    // written by nothing and read by nothing. Left in place rather than
+    // dropped: a stray reader is easier to find than a missing column is to
+    // explain, the same call made for sectionComplete.
     (isTraining
       ? '<div class="ev-card">' +
           '<div class="ev-head">Arrangements</div>' +
-          evLogisticsFieldHTML('Hotel',       'Hotel',        r.hotel,      r.hotel_booked,      canEdit) +
-          evLogisticsFieldHTML('RentalCar',   'Rental car',   r.rental_car, r.rental_car_booked, canEdit) +
-          evLogisticsFieldHTML('Travel',      'Flights',      r.travel,     r.travel_booked,     canEdit) +
-          '<div class="field"><label>Notes</label>' +
+          evLogisticsFieldHTML('Hotel',     'Hotel',      r.hotel,      canEdit) +
+          evLogisticsFieldHTML('RentalCar', 'Rental car', r.rental_car, canEdit) +
+          evLogisticsFieldHTML('Travel',    'Flights',    r.travel,     canEdit) +
+          '<div class="field ev-field ev-field-notes"><label>Notes</label>' +
             '<textarea id="evNotes" rows="3" maxlength="1000" ' +
               (canEdit ? '' : 'disabled ') +
               'placeholder="' + escapeHtml(canEdit ? 'Anything the fields above do not cover' : 'Not set') + '">' +
@@ -8738,7 +8757,7 @@ function renderEventDetailView(){
             '</textarea>' +
           '</div>' +
           (canEdit
-            ? '<button type="button" class="btn-primary" id="evSaveLogisticsBtn">Save arrangements</button>'
+            ? '<div class="ev-actions"><button type="button" class="btn-primary" id="evSaveLogisticsBtn">Save arrangements</button></div>'
             : '<div class="ev-note">Only a department admin can change these.</div>') +
         '</div>'
       : '');
@@ -8747,16 +8766,9 @@ function renderEventDetailView(){
 // One row per arranged thing: a booked tick and a box for the detail. Built by
 // hand rather than through field(): a checkbox's .value is "on" whether ticked
 // or not, so the provenance machinery cannot see it change.
-function evLogisticsFieldHTML(key, label, val, booked, canEdit){
-  return '<div class="field">' +
-    '<label class="ev-log-lbl">' +
-      '<span>' + escapeHtml(label) + '</span>' +
-      '<span class="ev-booked">' +
-        '<input type="checkbox" id="ev' + key + 'Booked"' +
-          (booked ? ' checked' : '') + (canEdit ? '' : ' disabled') + '>' +
-        '<span>Booked</span>' +
-      '</span>' +
-    '</label>' +
+function evLogisticsFieldHTML(key, label, val, canEdit){
+  return '<div class="field ev-field">' +
+    '<label for="ev' + key + '">' + escapeHtml(label) + '</label>' +
     '<input type="text" id="ev' + key + '" maxlength="200" ' +
       'value="' + escapeHtml(val || '') + '" ' +
       (canEdit ? '' : 'disabled ') +
@@ -8771,13 +8783,10 @@ async function saveEventLogistics(){
   const hotelEl = g('evHotel'), carEl = g('evRentalCar'), travelEl = g('evTravel'), notesEl = g('evNotes');
   if(!hotelEl || !carEl || !travelEl || !notesEl) return;
   const patch = {
-    hotel:             hotelEl.value.trim()  || null,
-    hotel_booked:      !!(g('evHotelBooked')     && g('evHotelBooked').checked),
-    rental_car:        carEl.value.trim()    || null,
-    rental_car_booked: !!(g('evRentalCarBooked') && g('evRentalCarBooked').checked),
-    travel:            travelEl.value.trim() || null,
-    travel_booked:     !!(g('evTravelBooked')    && g('evTravelBooked').checked),
-    detail_notes:      notesEl.value.trim()  || null
+    hotel:        hotelEl.value.trim()  || null,
+    rental_car:   carEl.value.trim()    || null,
+    travel:       travelEl.value.trim() || null,
+    detail_notes: notesEl.value.trim()  || null
   };
   const btn = g('evSaveLogisticsBtn');
   if(btn) btn.disabled = true;
@@ -8785,7 +8794,7 @@ async function saveEventLogistics(){
     const { data, error } = await sb.from('crew_exceptions')
       .update(patch)
       .eq('id', eventDetail.id)
-      .select('id,hotel,hotel_booked,rental_car,rental_car_booked,travel,travel_booked,detail_notes')
+      .select('id,hotel,rental_car,travel,detail_notes')
       .single();
     if(error) throw error;
     if(data) Object.assign(eventDetail, data);
