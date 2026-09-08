@@ -4209,10 +4209,10 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 </div>
 
 <div class="sheet-backdrop" id="workbenchBackdrop"></div>
-<div class="sheet sheet-full" id="workbenchSheet" role="dialog" aria-label="Trip workbench" aria-hidden="true">
+<div class="sheet sheet-full" id="workbenchSheet" role="dialog" aria-label="Trips this month" aria-hidden="true">
   <div class="sheet-head">
     <div>
-      <div class="sheet-title" id="workbenchTitle">Workbench</div>
+      <div class="sheet-title" id="workbenchTitle">Trips</div>
       <div class="sheet-sub" id="workbenchSub">Trips being built</div>
     </div>
     <div class="wb-head-actions">
@@ -4488,7 +4488,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T17:40:00Z';
+const BUILD_VERSION = '2026-09-08T18:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13816,7 +13816,7 @@ function openWorkbench(){
         .find(function(x){ return x.id === want; });
       if(!t){
         renderWorkbenchBody();
-        showToast('That trip is no longer on the workbench');
+        showToast('That trip is no longer on the list');
         return;
       }
       // *** THE PANEL SHOWS ONE MONTH, AND IT IS THE GRID'S MONTH. ***
@@ -13849,40 +13849,51 @@ function openWorkbench(){
 }
 
 // *** THE PAGE. ***
-// Header follows the training event detail exactly: what it is on the title
-// line, when it is underneath, and a named way back. The title is the routing
-// the person typed, because that is what they recognise a trip by -- the tail
-// is the fallback for a trip that has no routing yet, and a brand new trip has
-// neither, so it says Trip rather than nothing.
+// Header follows the leg checklist and the training event detail: the TITLE
+// names the screen, the line under it says which one you are on. "Trip Plan" is
+// the destination of the Plan it button, so the word you tapped is the word at
+// the top of where you land.
+//
+// Back names the month list in the same words the button and the panel title
+// use -- "September trips" -- rather than "Workbench". The panel stopped being
+// a place where work happens the moment editing moved to this page; it is a
+// list of a month's trips and it already calls itself that.
 function renderWorkbenchTripView(){
   const main = document.getElementById('mainPanel');
   if(!main) return;
+  const mo = wbShownMonth();
+  const backLabel = schedTripsBtnLabel(mo.y, mo.m);
   const t = (Array.isArray(workbenchCache) ? workbenchCache : [])
     .find(function(x){ return x.id === wbExpandedId; });
   // A trip that is no longer there. Says so rather than painting an empty form
   // that would save into nothing.
   if(!t){
-    setPageHeader({ title:'Trip', backLabel:'Workbench', backTo:'workbench' });
-    main.innerHTML = '<div class="empty-list">That trip is no longer on the workbench.</div>';
+    setPageHeader({ title:'Trip Plan', backLabel:backLabel, backTo:'workbench' });
+    main.innerHTML = '<div class="empty-list">That trip is no longer on the list.</div>';
     return;
   }
   const days = wbDayCount(t.start_date, t.end_date);
-  let sub = '';
+  const bits = [];
+  // Routing first: it is hand-typed and it is what the person recognises the
+  // trip by. It was the title until 8 Sep 2026 and reads better here, under a
+  // title that says what the screen is.
+  const routing = (t.destinations || '').trim();
+  if(routing) bits.push(routing);
   if(t.start_date || t.end_date){
-    sub = (t.start_date ? wbShortDate(t.start_date) : '?')
-        + ' \u2013 ' + (t.end_date ? wbShortDate(t.end_date) : '?')
-        + (days == null ? '' : ' \u00b7 ' + days + ' day' + (days === 1 ? '' : 's'));
+    bits.push((t.start_date ? wbShortDate(t.start_date) : '?')
+      + ' \u2013 ' + (t.end_date ? wbShortDate(t.end_date) : '?')
+      + (days == null ? '' : ' \u00b7 ' + days + ' day' + (days === 1 ? '' : 's')));
   } else {
-    // An undated trip is a real state -- a trip goes on the panel the moment the
+    // An undated trip is a real state -- a trip goes on the list the moment the
     // department knows it is happening -- so this reads as a fact, not an error.
-    sub = 'No dates yet';
+    bits.push('No dates yet');
   }
   const tail = wbTailLabel(t);
-  if(tail) sub += ' \u00b7 ' + tail;
+  if(tail) bits.push(tail);
   setPageHeader({
-    title: (t.destinations || '').trim() || tail || 'Trip',
-    sub: sub,
-    backLabel: 'Workbench',
+    title: 'Trip Plan',
+    sub: bits.join(' \u00b7 '),
+    backLabel: backLabel,
     backTo: 'workbench'
   });
   main.innerHTML = wbTripFormHTML(t);
