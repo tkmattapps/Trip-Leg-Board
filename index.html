@@ -4488,7 +4488,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T19:10:00Z';
+const BUILD_VERSION = '2026-09-08T19:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -17385,6 +17385,9 @@ function renderImportPreviewView(){
           snapshotLeg(leg);
         }
         await loadLegs();
+        // The uploaded trip now needs somewhere to live. Forced, because the
+        // boot pass has already latched for this session.
+        await ensureTripPlans({ force: true });
         resetImportState();
         showToast('Import applied');
         goToListView('dashboard');
@@ -22563,6 +22566,55 @@ async function createWorkbenchTripForCard(trip){
   return await assignWorkbenchTripToCard(saved.id, trip);
 }
 
+// EVERY TRIP LIVES ON A PLAN.
+//
+// Runs once a session at boot, and again after an import. What it does is the
+// narrow half of the one-trip model: a card with nothing behind it has nowhere
+// to keep its dates, its crew or its positioning days, so it gets a plan.
+//
+// *** IT ONLY CREATES WHERE THERE IS NOTHING TO RECOGNISE. ***
+// A card whose dates and tail match a plan already on the list is skipped and
+// left for a person to assign. That is the whole distinction the model rests
+// on: deciding WHICH plan this paperwork belongs to is a judgement and cannot
+// be made silently, while creating one because none exists is not a judgement
+// at all. Creating past a candidate would put a second October plan beside the
+// one somebody built in June.
+//
+// Archived trips are skipped. A sealed trip is a finished record.
+//
+// ADMIN ONLY, because workbench_trips refuses the insert otherwise. A crew
+// member's upload therefore lands without a plan until an admin next opens the
+// app. Stated rather than worked around -- the alternative is a client-side
+// write that the database will refuse, reported as success.
+let tripPlansEnsured = false;
+
+async function ensureTripPlans(opts){
+  const force = !!(opts && opts.force);
+  if(tripPlansEnsured && !force) return 0;
+  // Latched whether or not anything is done, so a non-admin session does not
+  // re-run this on every render.
+  tripPlansEnsured = true;
+  if(!wbCanEditTrips()) return 0;
+  try {
+    await loadWorkbenchTrips();
+    await loadTripWorkbenchAssignments();
+    const trips = groupIntoTrips((state.legs || []).filter(function(l){ return !l.deletedAt; }));
+    let made = 0;
+    for(const trip of trips){
+      if(!tripGroupIdOf(trip)) continue;
+      if(trip.tripNumber && tripIsArchived(trip.tripNumber)) continue;
+      if(wbTripForCard(trip)) continue;
+      if(wbCandidatesForCard(trip).length) continue;
+      if(await createWorkbenchTripForCard(trip)) made++;
+    }
+    if(made) await loadWorkbenchTrips();
+    return made;
+  } catch(e){
+    console.warn('ensureTripPlans', e);
+    return 0;
+  }
+}
+
 async function unassignWorkbenchTripFromCard(trip){
   if(!wbCanEditTrips()){ showToast('Only an admin can assign a trip.'); return false; }
   const deptId = await getFlightDepartmentId();
@@ -22592,7 +22644,7 @@ function openWbAssignPicker(trip){
 
   msgEl.textContent = candidates.length
     ? 'Trip plans whose dates overlap this one, and whose tail matches where both name one. Assigning does not merge anything \u2014 the plan stays where crew are set, and this card starts showing them.'
-    : 'No trip plan overlaps these dates. Create one from this trip below, or build one on the schedule.';
+    : 'No trip plan overlaps these dates. Build one on the schedule first, or widen its dates.';
 
   // DOM calls, not innerHTML: routing and notes are typed by people.
   choices.textContent = '';
@@ -22616,27 +22668,6 @@ function openWbAssignPicker(trip){
     });
     choices.appendChild(b);
   });
-
-  // LAST IN THE LIST ON PURPOSE. Recognising an existing plan is the better
-  // answer whenever one exists, so the candidates get read first; this is what
-  // happens when none of them is it. Offered even when there are candidates,
-  // because "none of these" is a real answer and the alternative is leaving the
-  // trip with nowhere to live.
-  if(wbCanEditTrips()){
-    const nb = document.createElement('button');
-    nb.type = 'button';
-    nb.className = 'wb-merge-choice';
-    nb.textContent = 'Create a trip plan for this trip';
-    const nsub = document.createElement('span');
-    nsub.className = 'wb-merge-choice-sub';
-    nsub.textContent = 'Dates, number and routing from the paperwork. No tail and no crew, so nothing moves on the schedule.';
-    nb.appendChild(nsub);
-    nb.addEventListener('click', async function(){
-      overlay.classList.remove('open');
-      if(await createWorkbenchTripForCard(trip)) renderMain();
-    });
-    choices.appendChild(nb);
-  }
 
   clearBtn.style.display = current ? '' : 'none';
   clearBtn.onclick = async function(){
@@ -28232,7 +28263,16 @@ async function bootApp(){
   // leg opens, rather than flashing empty while a per-leg fetch resolves.
   loadAircraft();
   // Same for the roster: the crew pickers need names, not ids.
-  loadRoster();
+  const _rosterReady = loadRoster();
+  // EVERY TRIP GETS A PLAN. Chained off the roster rather than fired beside it:
+  // rosterViewerIsAdmin() reads rosterCache and returns false until it lands, so
+  // running this any earlier would skip an admin and latch the flag for the
+  // session. Not awaited -- the board is already on screen.
+  Promise.resolve(_rosterReady).then(function(){
+    ensureTripPlans().then(function(made){
+      if(made) showToast(made === 1 ? 'Trip plan created for 1 trip' : ('Trip plans created for ' + made + ' trips'));
+    });
+  });
   // And the department name for the bottom bar.
   loadDepartmentName();
 
