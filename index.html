@@ -4488,7 +4488,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T18:10:00Z';
+const BUILD_VERSION = '2026-09-08T18:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13874,11 +13874,12 @@ function renderWorkbenchTripView(){
   }
   const days = wbDayCount(t.start_date, t.end_date);
   const bits = [];
-  // Routing first: it is hand-typed and it is what the person recognises the
-  // trip by. It was the title until 8 Sep 2026 and reads better here, under a
-  // title that says what the screen is.
-  const routing = (t.destinations || '').trim();
-  if(routing) bits.push(routing);
+  // *** ROUTING IS NOT REPEATED HERE. ***
+  // It was the title, then it was the first thing on this line, and both were
+  // wrong for the same reason: the Routing field sits a few pixels below in the
+  // card, showing the same text. Kyle, 8 Sep 2026 -- it read as clutter. The
+  // line carries what the field does NOT show in one glance: the span and the
+  // tail.
   if(t.start_date || t.end_date){
     bits.push((t.start_date ? wbShortDate(t.start_date) : '?')
       + ' \u2013 ' + (t.end_date ? wbShortDate(t.end_date) : '?')
