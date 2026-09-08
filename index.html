@@ -4488,7 +4488,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T18:25:00Z';
+const BUILD_VERSION = '2026-09-08T19:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -22526,6 +22526,43 @@ async function assignWorkbenchTripToCard(wbTripId, trip){
   return true;
 }
 
+// CREATING A PLAN FOR A CARD THAT HAS NONE.
+//
+// Offering an existing trip plan is a judgement -- which plan does this
+// paperwork belong to -- and a person makes it. Creating one because there is
+// nothing to belong to is not a judgement at all: the trip has to live
+// somewhere, and under the one-trip model the plan is where it lives.
+//
+// *** DATES, NUMBER AND ROUTING ONLY. NO TAIL AND NO CREW. ***
+// The grid reads the plan's OWN tail and crew and nothing else, so writing
+// either here would commit an aeroplane and two pilots to the schedule the
+// instant somebody pressed this -- which is scheduling work, and this is not
+// it. Committing to the grid is its own control. A plan with dates but no
+// tail and no crew occupies nothing, because there is nobody to show it
+// against.
+//
+// If the assign fails the plan is left behind rather than rolled back. That is
+// deliberate: it is a real trip on the list that a person can assign by hand,
+// and deleting somebody's row to tidy up a failed write is the worse outcome.
+async function createWorkbenchTripForCard(trip){
+  if(!wbCanEditTrips()){ showToast('Only an admin can build trips.'); return false; }
+  const start = tripStartISO(trip);
+  const end   = tripEndISO(trip) || start;
+  const saved = await saveWorkbenchTrip({
+    crew: {},
+    tripNumber:   trip.tripNumber || '',
+    // What the paperwork says, not a guess. The field is free text a person
+    // normally writes, and this fills it with the routing the legs already
+    // carry so the plan is recognisable in the list.
+    destinations: notesTripRouteChain(trip) || '',
+    start_date:   start || null,
+    end_date:     end   || null
+  });
+  if(!saved) return false;   // saveWorkbenchTrip has already said why.
+  if(Array.isArray(workbenchCache)) workbenchCache.push(saved);
+  return await assignWorkbenchTripToCard(saved.id, trip);
+}
+
 async function unassignWorkbenchTripFromCard(trip){
   if(!wbCanEditTrips()){ showToast('Only an admin can assign a trip.'); return false; }
   const deptId = await getFlightDepartmentId();
@@ -22554,8 +22591,8 @@ function openWbAssignPicker(trip){
   const gid = tripGroupIdOf(trip);
 
   msgEl.textContent = candidates.length
-    ? 'Workbench trips whose dates overlap this one, and whose tail matches where both name one. Assigning does not merge anything \u2014 the workbench stays where crew are set, and this card starts showing them.'
-    : 'No workbench trip overlaps these dates. Build one on the schedule first, or widen its dates.';
+    ? 'Trip plans whose dates overlap this one, and whose tail matches where both name one. Assigning does not merge anything \u2014 the plan stays where crew are set, and this card starts showing them.'
+    : 'No trip plan overlaps these dates. Create one from this trip below, or build one on the schedule.';
 
   // DOM calls, not innerHTML: routing and notes are typed by people.
   choices.textContent = '';
@@ -22579,6 +22616,27 @@ function openWbAssignPicker(trip){
     });
     choices.appendChild(b);
   });
+
+  // LAST IN THE LIST ON PURPOSE. Recognising an existing plan is the better
+  // answer whenever one exists, so the candidates get read first; this is what
+  // happens when none of them is it. Offered even when there are candidates,
+  // because "none of these" is a real answer and the alternative is leaving the
+  // trip with nowhere to live.
+  if(wbCanEditTrips()){
+    const nb = document.createElement('button');
+    nb.type = 'button';
+    nb.className = 'wb-merge-choice';
+    nb.textContent = 'Create a trip plan for this trip';
+    const nsub = document.createElement('span');
+    nsub.className = 'wb-merge-choice-sub';
+    nsub.textContent = 'Dates, number and routing from the paperwork. No tail and no crew, so nothing moves on the schedule.';
+    nb.appendChild(nsub);
+    nb.addEventListener('click', async function(){
+      overlay.classList.remove('open');
+      if(await createWorkbenchTripForCard(trip)) renderMain();
+    });
+    choices.appendChild(nb);
+  }
 
   clearBtn.style.display = current ? '' : 'none';
   clearBtn.onclick = async function(){
