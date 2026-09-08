@@ -4494,7 +4494,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T20:30:00Z';
+const BUILD_VERSION = '2026-09-08T21:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -16988,8 +16988,6 @@ async function paintImportPlanNote(){
       html = '<strong>This may belong to a trip plan you already have</strong> \u2014 ' +
              cands.map(function(t){ return escapeHtml(wbTripPickerLabel(t)); }).join('; ') +
              '. Beacon will not choose for you, so this trip lands without a plan until you assign it from the trip brief.';
-    } else if(!wbCanEditTrips()){
-      html = '<strong>No trip plan yet.</strong> Only an admin can create one, so this trip waits until an admin next opens Beacon.';
     } else {
       html = '<strong>A new trip plan will be created</strong> for this trip, with its dates and routing and no tail or crew.';
     }
@@ -22641,23 +22639,38 @@ async function assignWorkbenchTripToCard(wbTripId, trip){
 // If the assign fails the plan is left behind rather than rolled back. That is
 // deliberate: it is a real trip on the list that a person can assign by hand,
 // and deleting somebody's row to tidy up a failed write is the worse outcome.
+//
+// *** GOES THROUGH AN RPC, NOT THE TABLE, AND IS NOT ADMIN ONLY. ***
+// workbench_trips_insert and twa_insert both carry is_department_admin(), so
+// the direct writes this used to make refused a crew member -- and a crew
+// member's trip sheet then landed with nowhere to live until an admin next
+// opened Beacon, which is a hole in "an upload lands on a plan".
+// create_trip_plan_for_card (migration 75) is SECURITY DEFINER and checks
+// MEMBERSHIP rather than admin. It is safe to open because it has no parameter
+// for a tail and none for crew: the row it writes cannot reach any grid, so a
+// crew member still cannot commit an aeroplane or seat a colleague. It also
+// only ever CREATES -- pairing a card to a plan somebody already built stays a
+// judgement, stays with a person, and stays admin in assignWorkbenchTripToCard.
 async function createWorkbenchTripForCard(trip){
-  if(!wbCanEditTrips()){ showToast('Only an admin can build trips.'); return false; }
+  const gid = tripGroupIdOf(trip);
+  if(!gid) return false;
+  const deptId = await getFlightDepartmentId();
+  if(!deptId) return false;
   const start = tripStartISO(trip);
   const end   = tripEndISO(trip) || start;
-  const saved = await saveWorkbenchTrip({
-    crew: {},
-    tripNumber:   trip.tripNumber || '',
+  const { error } = await sb.rpc('create_trip_plan_for_card', {
+    p_dept_id:     deptId,
+    p_group_id:    gid,
+    p_trip_number: trip.tripNumber || '',
+    p_start:       start || null,
+    p_end:         end   || null,
     // What the paperwork says, not a guess. The field is free text a person
     // normally writes, and this fills it with the routing the legs already
     // carry so the plan is recognisable in the list.
-    destinations: notesTripRouteChain(trip) || '',
-    start_date:   start || null,
-    end_date:     end   || null
+    p_destinations: notesTripRouteChain(trip) || ''
   });
-  if(!saved) return false;   // saveWorkbenchTrip has already said why.
-  if(Array.isArray(workbenchCache)) workbenchCache.push(saved);
-  return await assignWorkbenchTripToCard(saved.id, trip);
+  if(error){ showToast('Could not create a trip plan: ' + (error.message || 'unknown error')); return false; }
+  return true;
 }
 
 // EVERY TRIP LIVES ON A PLAN.
@@ -22676,19 +22689,18 @@ async function createWorkbenchTripForCard(trip){
 //
 // Archived trips are skipped. A sealed trip is a finished record.
 //
-// ADMIN ONLY, because workbench_trips refuses the insert otherwise. A crew
-// member's upload therefore lands without a plan until an admin next opens the
-// app. Stated rather than worked around -- the alternative is a client-side
-// write that the database will refuse, reported as success.
+// ADMIN NO LONGER REQUIRED. The insert goes through create_trip_plan_for_card,
+// which checks department membership rather than admin -- see that function for
+// why opening it does not open the schedule. A crew member's upload now lands
+// on a plan the moment it is confirmed, instead of waiting for an admin.
 let tripPlansEnsured = false;
 
 async function ensureTripPlans(opts){
   const force = !!(opts && opts.force);
   if(tripPlansEnsured && !force) return 0;
-  // Latched whether or not anything is done, so a non-admin session does not
-  // re-run this on every render.
+  // Latched whether or not anything is done, so this does not re-run on every
+  // render.
   tripPlansEnsured = true;
-  if(!wbCanEditTrips()) return 0;
   try {
     await loadWorkbenchTrips();
     await loadTripWorkbenchAssignments();
@@ -22701,7 +22713,13 @@ async function ensureTripPlans(opts){
       if(wbCandidatesForCard(trip).length) continue;
       if(await createWorkbenchTripForCard(trip)) made++;
     }
-    if(made) await loadWorkbenchTrips();
+    // Both caches: the RPC writes a workbench_trips row AND an assignment row,
+    // and reloading only the first leaves every new plan invisible to
+    // wbTripForCard until the next boot.
+    if(made){
+      await loadWorkbenchTrips();
+      await loadTripWorkbenchAssignments();
+    }
     return made;
   } catch(e){
     console.warn('ensureTripPlans', e);
@@ -28355,14 +28373,17 @@ async function bootApp(){
   loadRemoteAirportTZ();
   // Load the fleet once at boot so the tail picker is populated the moment any
   // leg opens, rather than flashing empty while a per-leg fetch resolves.
-  loadAircraft();
+  const _fleetReady = loadAircraft();
   // Same for the roster: the crew pickers need names, not ids.
-  const _rosterReady = loadRoster();
-  // EVERY TRIP GETS A PLAN. Chained off the roster rather than fired beside it:
-  // rosterViewerIsAdmin() reads rosterCache and returns false until it lands, so
-  // running this any earlier would skip an admin and latch the flag for the
-  // session. Not awaited -- the board is already on screen.
-  Promise.resolve(_rosterReady).then(function(){
+  loadRoster();
+  // EVERY TRIP GETS A PLAN. Chained off the FLEET, not the roster: the pass no
+  // longer asks whether the viewer is an admin, but wbCandidatesForCard resolves
+  // a plan's tail through aircraftCache, and running before that lands would
+  // read every plan as tailless. That widens the candidate set rather than
+  // narrowing it, so nothing wrong gets created -- but a trip that genuinely
+  // needs a plan would be skipped, and the flag latches for the session.
+  // Not awaited -- the board is already on screen.
+  Promise.resolve(_fleetReady).then(function(){
     ensureTripPlans().then(function(made){
       if(made) showToast(made === 1 ? 'Trip plan created for 1 trip' : ('Trip plans created for ' + made + ' trips'));
     });
