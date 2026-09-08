@@ -1126,6 +1126,12 @@
   .import-leg-card{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; }
   .import-leg-card-remove{ border-color:var(--alert-600); border-left-width:3px; }
   .import-reconcile-summary{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:16px; margin-bottom:20px; font-size:14px; color:var(--paper-050); }
+  /* Where the trip will live. Quieter than the summary above it -- it is a
+     statement of fact, not a list of changes to check. :empty keeps it out of
+     the layout entirely until the caches are read and it is painted. */
+  .import-plan-note{ border:1px solid var(--hairline); border-left:3px solid var(--amber-700); border-radius:6px; padding:12px 14px; margin-bottom:20px; font-size:13px; line-height:1.5; color:var(--fog-300); }
+  .import-plan-note:empty{ display:none; }
+  .import-plan-note strong{ color:var(--paper-050); font-weight:600; }
   .import-leg-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; }
   .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
   /* NOTES PAGE. One surface, three doorways (bottom bar / Trip Brief / leg
@@ -4488,7 +4494,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T19:40:00Z';
+const BUILD_VERSION = '2026-09-08T20:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -16912,6 +16918,85 @@ async function processImportFile(file){
   renderMain();
 }
 
+// WHERE THIS UPLOAD IS GOING TO LIVE.
+//
+// Step 1 of beacon-upload-lands-on-a-plan.md. It states, it does not decide --
+// nothing here changes what confirm does. The point is that the import screen
+// already lists every other consequence of pressing Confirm, and which plan the
+// trip lands on was the one consequence it left out.
+//
+// PAINTED ASYNCHRONOUSLY, and the element is empty until it is. The workbench
+// caches may not have been read this session -- a person can upload without
+// ever opening the schedule -- and painting "a new plan will be created" from
+// an empty cache would be a guess, which is the one thing an import screen must
+// never do. Empty until known.
+let importPlanCachesLoaded = false;
+
+function importPlanTargetCard(){
+  const rec = state.importTripReconcile;
+  if(rec){
+    const live = groupIntoTrips((state.legs || []).filter(function(l){ return !l.deletedAt; }));
+    if(rec.groupId){
+      const byG = live.find(function(t){ return tripGroupIdOf(t) === String(rec.groupId); });
+      if(byG) return byG;
+    }
+    if(rec.tripNumber){
+      const byN = live.find(function(t){ return String(t.tripNumber || '') === String(rec.tripNumber); });
+      if(byN) return byN;
+    }
+    return null;
+  }
+  if(state.importNewLegs && state.importNewLegs.length){
+    // A card that does not exist yet. tripStartISO, tripEndISO and
+    // tripCardTails read `.legs` and nothing else, so a bare object is enough
+    // for the candidate rule. It deliberately has NO key: there is no group id
+    // until the legs are inserted, so it can never be looked up in the
+    // assignment table, and wbTripForCard is not called on it.
+    return { key: '', tripNumber: '', legs: state.importNewLegs };
+  }
+  return null;
+}
+
+async function paintImportPlanNote(){
+  if(!document.getElementById('importPlanNote')) return;
+  if(!importPlanCachesLoaded){
+    try {
+      await loadWorkbenchTrips();
+      await loadWorkbenchTripAircraft();
+      await loadTripWorkbenchAssignments();
+      importPlanCachesLoaded = true;
+    } catch(e){ console.warn('paintImportPlanNote', e); return; }
+  }
+  // Re-read the element: the person can cancel while the reads are in flight.
+  const el = document.getElementById('importPlanNote');
+  if(!el) return;
+  const card = importPlanTargetCard();
+  if(!card) return;
+
+  let html = '';
+  if(card.key){
+    const wb = wbTripForCard(card);
+    if(wb) html = '<strong>Stays on its existing trip plan</strong> \u2014 ' + escapeHtml(wbTripPickerLabel(wb)) + '.';
+  }
+  if(!html){
+    const cands = wbCandidatesForCard(card);
+    if(cands.length){
+      // ACCURATE TO WHAT CONFIRM ACTUALLY DOES TODAY. ensureTripPlans skips a
+      // card that has candidates rather than creating past one, so the trip
+      // lands with NO plan and waits for a person. Step 3 turns this line into
+      // the prompt; until then it must not promise a plan that is not made.
+      html = '<strong>This may belong to a trip plan you already have</strong> \u2014 ' +
+             cands.map(function(t){ return escapeHtml(wbTripPickerLabel(t)); }).join('; ') +
+             '. Beacon will not choose for you, so this trip lands without a plan until you assign it from the trip brief.';
+    } else if(!wbCanEditTrips()){
+      html = '<strong>No trip plan yet.</strong> Only an admin can create one, so this trip waits until an admin next opens Beacon.';
+    } else {
+      html = '<strong>A new trip plan will be created</strong> for this trip, with its dates and routing and no tail or crew.';
+    }
+  }
+  el.innerHTML = html;
+}
+
 function renderImportPreviewView(){
   const main = document.getElementById('mainPanel');
   if(!state.importPhase) resetImportState();
@@ -17088,6 +17173,7 @@ function renderImportPreviewView(){
     const hasChanges = rec.toAdd.length || rec.toUpdate.length || rec.toRemove.length;
     main.innerHTML = header +
       '<div class="import-reconcile-summary">' + summaryText + '</div>' +
+      '<div class="import-plan-note" id="importPlanNote"></div>' +
       recSections.join('') +
       (!hasChanges ? '<div style="color:var(--fog-300); padding:16px 0;">This trip sheet matches your board exactly. Nothing to change.</div>' : '') +
       '<div class="import-actions">' +
@@ -17095,6 +17181,8 @@ function renderImportPreviewView(){
         (hasChanges ? '<span class="import-pick-count" id="importPickCount"></span>' : '') +
         (hasChanges ? '<button type="button" class="btn btn-primary" id="importReconcileConfirmBtn">Confirm and apply</button>' : '') +
       '</div>';
+
+    paintImportPlanNote();
 
     document.getElementById('importCancelBtn').addEventListener('click', () => {
       resetImportState();
@@ -17278,6 +17366,10 @@ function renderImportPreviewView(){
   if(state.importNote){
     sections.push('<div style="margin-bottom:16px; color:var(--fog-300); font-size:13px;">' + escapeHtml(state.importNote) + '</div>');
   }
+  // Pushed unconditionally. When there are no new legs there is no trip being
+  // created, importPlanTargetCard returns null, the note stays empty and the
+  // :empty rule keeps it out of the layout.
+  sections.push('<div class="import-plan-note" id="importPlanNote"></div>');
   if(state.importNewLegs.length){
     sections.push('<div class="view-subtitle" style="margin-bottom:8px;">New legs to add (' + state.importNewLegs.length + ')</div>');
     // OFFERED EVERY TIME, never conditionally. Any rule for detecting an
@@ -17321,6 +17413,8 @@ function renderImportPreviewView(){
       '<button type="button" class="btn" id="importCancelBtn">Cancel</button>' +
       (totalActionable ? '<button type="button" class="btn btn-primary" id="importConfirmBtn">Confirm and apply</button>' : '') +
     '</div>';
+
+  paintImportPlanNote();
 
   document.getElementById('importCancelBtn').addEventListener('click', () => {
     resetImportState();
