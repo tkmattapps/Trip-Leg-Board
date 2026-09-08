@@ -2173,6 +2173,12 @@
       border-radius:2px; background:var(--fog-500); opacity:0.55;
     }
   }
+  /* The dates row sat flush against the Details label below it, so the two
+     read as one block. .sched-entry-dates was a markup hook with no rule of its
+     own until now -- nothing else declares it, so there is nothing to override.
+     14px matches .field-row-inline's own gap, so the space below the row is the
+     same as the space between the two date fields. */
+  .sched-entry-dates{ margin-bottom:14px; }
   .sched-entry-who{ font-family:'Big Shoulders Display',sans-serif; font-size:22px;
     color:var(--paper-050); margin-bottom:12px; }
   .sched-entry-cats{ display:flex; flex-direction:column; gap:6px; margin-bottom:16px; }
@@ -4456,7 +4462,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T21:45:00Z';
+const BUILD_VERSION = '2026-09-07T22:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8667,7 +8673,11 @@ function renderEventDetailView(){
     // delete the block and rebuild it, losing its id and its history. This is
     // that missing path, not a second copy of the add form.
     '<div class="ev-card">' +
-      '<div class="field"><label>Reason' + (needsReason ? '' : ' (optional)') + '</label>' +
+      // *** DISPLAY LABEL ONLY. The stored column is `reason` and stays that
+      // way. "Reason" reads as a justification, which is right for Other and
+      // wrong for PTO, training and a soft day -- the field actually holds what
+      // the block IS. Same shape as "cabin crew" over 'flight attendant'.
+      '<div class="field"><label>Details' + (needsReason ? '' : ' (optional)') + '</label>' +
         '<input type="text" id="evReason" maxlength="120" ' +
           'value="' + escapeHtml(r.reason || '') + '" ' +
           (canEdit ? '' : 'disabled ') +
@@ -8716,7 +8726,7 @@ async function saveEventDetail(){
     // The reason trigger reports through here. Its own words are more use than
     // a generic message.
     const msg = (err && err.message) ? String(err.message) : '';
-    showToast(/reason/i.test(msg) ? 'That category needs a reason'
+    showToast(/reason/i.test(msg) ? 'That category needs details'
             : 'Could not save that \u2014 try again');
   } finally {
     if(btn) btn.disabled = false;
@@ -25282,7 +25292,7 @@ function renderSchedEntry(){
   // categories to speak for and naming the wrong one is worse than saying
   // nothing.
   const reasonReq = 'Required for ' + (SCHED_LABELS[e.category] || 'this');
-  h += '<div class="field"><label>Reason' + (needsReason ? '' : ' (optional)') + '</label>' +
+  h += '<div class="field"><label>Details' + (needsReason ? '' : ' (optional)') + '</label>' +
          '<input type="text" id="schedReason" maxlength="120" value="' + escapeHtml(e.reason) + '" ' +
          'placeholder="' + escapeHtml(needsReason ? reasonReq : reasonEg) + '">' +
        '</div>';
@@ -25659,7 +25669,7 @@ async function saveSchedEntry(){
   // The database refuses both of these -- 'other' by trigger, info_only by the
   // CHECK from migration 53. Caught here so the person gets a sentence rather
   // than a constraint violation.
-  if(e.category === 'other' && !reason){ showToast('Other needs a reason'); return; }
+  if(e.category === 'other' && !reason){ showToast('Other needs details'); return; }
   if(e.category === 'info_only' && !reason){
     showToast('An info marker needs something written in it'); return;
   }
@@ -25709,7 +25719,7 @@ async function saveSchedEntry(){
     // The 'other requires a reason' trigger and the date-order constraint both
     // report through here. Their own words are more use than a generic message.
     const msg = (err && err.message) ? String(err.message) : '';
-    showToast(/reason/i.test(msg) ? 'That category needs a reason'
+    showToast(/reason/i.test(msg) ? 'That category needs details'
             : /dates_ordered/i.test(msg) ? 'The end date is before the start date'
             : 'Could not save that \u2014 try again');
   } finally {
