@@ -942,8 +942,6 @@
   .ev-field > input[type=text], .ev-field > textarea{ flex:1 1 240px; min-width:0; }
   /* A save is a small confirming action, not the point of the page. Full-width
      amber read as the primary thing on screen. */
-  .ev-actions{ display:flex; justify-content:flex-end; }
-  .ev-actions .btn-primary{ width:auto; }
   .field label{ font-size:11px; color:var(--fog-300); font-family:system-ui,'Inter',sans-serif; letter-spacing:0.2px; }
   .field label.crit-attn, .field > label.crit-attn{ color:var(--amber-500); font-weight:600; }
   /* A provisional date: shown, but not yet collected and not yet written.
@@ -4486,7 +4484,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T23:45:00Z';
+const BUILD_VERSION = '2026-09-08T00:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8725,9 +8723,7 @@ function renderEventDetailView(){
         : '') +
       // Disabled, not hidden: a crew member should see the fields exist and
       // know they are somebody else's to fill in.
-      (canEdit
-        ? '<div class="ev-actions"><button type="button" class="btn-primary" id="evSaveDetailBtn">Save</button></div>'
-        : '<div class="ev-note">Only a department admin can change these.</div>') +
+      (canEdit ? '' : '<div class="ev-note">Only a department admin can change these.</div>') +
     '</div>' +
     // *** WHAT IS ARRANGED, AND WHAT IS NOT. ***
     // A free-text note cannot answer "do I have a car for Dallas", because an
@@ -8753,9 +8749,7 @@ function renderEventDetailView(){
               escapeHtml(r.detail_notes || '') +
             '</textarea>' +
           '</div>' +
-          (canEdit
-            ? '<div class="ev-actions"><button type="button" class="btn-primary" id="evSaveLogisticsBtn">Save</button></div>'
-            : '<div class="ev-note">Only a department admin can change these.</div>') +
+          (canEdit ? '' : '<div class="ev-note">Only a department admin can change these.</div>') +
         '</div>'
       : '');
 }
@@ -8790,13 +8784,14 @@ function evLogisticsFieldHTML(key, label, val, canEdit){
 // cleared one. The eventDetailLoading guard says so out loud.
 let eventSaveInFlight = false;
 
-async function saveEventFields(opts){
-  opts = opts || {};
+// There is no Save button. Removed 7 Sep 2026 once save-on-exit and
+// save-on-background were both working: a button that only ever does what the
+// app already did a moment later is furniture, and the one thing it reliably
+// does is make people wonder whether the times they did not press it counted.
+// So every call here is silent, and the only toast left is the failure one.
+async function saveEventFields(){
   if(!eventDetail || eventDetailLoading || eventSaveInFlight) return;
-  if(!rosterViewerIsAdmin()){
-    if(!opts.silent) showToast('Only a department admin can change these');
-    return;
-  }
+  if(!rosterViewerIsAdmin()) return;
   const cur = {};
   [['evReason','reason'], ['evLocation','location'], ['evHotel','hotel'],
    ['evRentalCar','rental_car'], ['evTravel','travel'], ['evNotes','detail_notes']
@@ -8811,13 +8806,7 @@ async function saveEventFields(opts){
   Object.keys(cur).forEach(function(k){
     if((eventDetail[k] || null) !== cur[k]) patch[k] = cur[k];
   });
-  if(!Object.keys(patch).length){
-    if(!opts.silent) showToast('Saved');
-    return;
-  }
-  const btns = ['evSaveDetailBtn','evSaveLogisticsBtn']
-    .map(function(id){ return document.getElementById(id); }).filter(Boolean);
-  btns.forEach(function(x){ x.disabled = true; });
+  if(!Object.keys(patch).length) return;
   eventSaveInFlight = true;
   try {
     // Read back with .select(). A policy refusal returns no row rather than an
@@ -8832,24 +8821,17 @@ async function saveEventFields(opts){
     // The day panel reads details and location off the schedule fetch, so the
     // cached rows are now stale. Drop them rather than patching.
     if('reason' in patch || 'location' in patch) schedData = null;
-    if(!opts.silent) showToast('Saved');
   } catch(err){
     console.error('event detail save', err);
     const msg = (err && err.message) ? String(err.message) : '';
-    // Reported even on a silent flush: we are already leaving the page, so a
-    // toast is the only way a failure can be seen at all.
+    // A failure is always reported. We are usually on the way out of the page
+    // when this runs, so the toast is the only chance to say so at all.
     showToast(/reason/i.test(msg) ? 'That category needs details'
             : 'Could not save that \u2014 try again');
   } finally {
     eventSaveInFlight = false;
-    btns.forEach(function(x){ x.disabled = false; });
   }
 }
-
-document.addEventListener('click', function(e){
-  const b = e.target.closest && e.target.closest('#evSaveDetailBtn, #evSaveLogisticsBtn');
-  if(b) saveEventFields();
-});
 
 // *** A PHONE CALL IS A WAY OF LEAVING THE PAGE. ***
 // autoSaveIfEditing covers every route through the app -- Back, a nav tab,
@@ -8858,20 +8840,23 @@ document.addEventListener('click', function(e){
 // so nothing ran, and whatever was typed since the last save was gone.
 //
 // visibilitychange -> hidden is the last moment the page is reliably alive on
-// iOS, so it is where the write goes. It fires on every app switch, which
-// sounds expensive and is not: saveEventFields sends only changed columns, so
-// a page that was read and not edited costs nothing at all.
+// iOS, so it is where the write goes.
 //
-// Deliberately not wired to the leg editor yet. One screen first, tested, and
-// the editor follows if this behaves.
+// It calls autoSaveIfEditing rather than any one screen's save, which is the
+// whole reason that function exists: it already knows which view is open, and
+// it already carries the trip-note draft stash. So backgrounding now behaves
+// exactly like walking out of a page, on the leg editor and the event detail
+// alike, and a third screen that adds itself there gets this for free.
+//
+// It fires on every app switch, which sounds expensive and is not -- both
+// branches send only what changed, so a page that was read and not edited
+// costs nothing at all.
 //
 // The close-the-tab case is still not covered and probably cannot be: the
 // write is an async round trip, and a browser tearing the page down does not
 // wait for it. Backgrounding is the case that actually happens.
 document.addEventListener('visibilitychange', function(){
-  if(document.visibilityState !== 'hidden') return;
-  if(state.view !== 'eventDetail') return;
-  saveEventFields({ silent: true }).catch(function(e){ console.error('event save on hide', e); });
+  if(document.visibilityState === 'hidden') autoSaveIfEditing();
 });
 
 
@@ -21656,7 +21641,7 @@ function autoSaveIfEditing(){
   // Same contract as the trip-note stash above: the event detail page has no
   // Done button, and people leave it by tapping Back or a nav tab.
   if(state.view === 'eventDetail'){
-    saveEventFields({ silent: true }).catch(function(e){ console.error('event autosave', e); });
+    saveEventFields().catch(function(e){ console.error('event autosave', e); });
   }
   if(state.view === 'editor' && state.activeId && !autosaveInFlight){
     autosaveInFlight = true;
