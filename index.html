@@ -1132,6 +1132,10 @@
   .import-plan-note{ border:1px solid var(--hairline); border-left:3px solid var(--amber-700); border-radius:6px; padding:12px 14px; margin-bottom:20px; font-size:13px; line-height:1.5; color:var(--fog-300); }
   .import-plan-note:empty{ display:none; }
   .import-plan-note strong{ color:var(--paper-050); font-weight:600; }
+  .import-plan-opts{ display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+  .import-plan-opt{ display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border:1px solid var(--hairline); border-radius:6px; background:var(--panel-800); cursor:pointer; color:var(--paper-050); }
+  .import-plan-opt input{ margin-top:2px; flex:0 0 auto; }
+  .import-plan-opt-sub{ display:block; margin-top:2px; color:var(--fog-500); font-size:12px; }
   .import-leg-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; }
   .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
   /* NOTES PAGE. One surface, three doorways (bottom bar / Trip Brief / leg
@@ -4494,7 +4498,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T21:05:00Z';
+const BUILD_VERSION = '2026-09-08T21:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -16640,6 +16644,7 @@ function resetImportState(){
   // says; renumbering is the DEVIATION, and the deviation must be the
   // deliberate act. See beacon-leg-renumbering-design.md section 3.
   state.importRenumber = false;
+  state.importPlanChoice = null;
 }
 
 async function processImportFile(file){
@@ -16668,6 +16673,10 @@ async function processImportFile(file){
     // would leave the box ticked for the NEXT upload, which is exactly the kind
     // of sticky default that gets a leg renumbered by nobody in particular.
     state.importRenumber = false;
+    // Where this upload will land. Recomputed by paintImportPlanNote once the
+    // workbench caches are read; cleared here so a decision made about the last
+    // document can never be applied to this one.
+    state.importPlanChoice = null;
     const extractedLegs = Array.isArray(data.legs) ? data.legs : [];
     if(state.importDocType === 'trip_sheet'){
       // Defensive dedup: some source documents repeat a leg reference in a
@@ -16957,6 +16966,38 @@ function importPlanTargetCard(){
   return null;
 }
 
+// EXACTNESS IS WHAT EARNS SILENCE.
+//
+// Same tail, same start, same end, and exactly one plan that fits. Anything
+// looser goes to the person. The candidate window -- same tail, dates
+// overlapping or within a few days -- deliberately does NOT qualify: a tail
+// comes home on the 24th and goes out again on the 26th, and two unrelated
+// trips satisfy it. Pairing those silently absorbs the second into the first
+// with nothing on screen to say so.
+//
+// BOTH SIDES MUST NAME A TAIL. A blank on either side is the loose case, not a
+// match -- an early itinerary often arrives before a tail is decided.
+//
+// TWO exact hits is not an exact match. It is an ambiguity, and it asks.
+function wbExactMatchForCard(card, cands){
+  const s = tripStartISO(card);
+  const e = tripEndISO(card) || s;
+  if(!s || !e) return null;
+  const cardTails = tripCardTails(card);
+  if(!cardTails.length) return null;
+  const hits = (cands || []).filter(function(t){
+    // A plan with no start date can never be exact. Guarded explicitly so a
+    // null-tolerant comparison cannot read two blanks as equal.
+    if(!t.start_date || !t.end_date) return false;
+    if(String(t.start_date) !== s) return false;
+    if(String(t.end_date) !== e) return false;
+    const tails = wbTripTails(t);
+    if(!tails.length) return false;
+    return tails.some(function(x){ return cardTails.indexOf(x) !== -1; });
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+
 async function paintImportPlanNote(){
   if(!document.getElementById('importPlanNote')) return;
   if(!importPlanCachesLoaded){
@@ -16973,26 +17014,121 @@ async function paintImportPlanNote(){
   const card = importPlanTargetCard();
   if(!card) return;
 
-  let html = '';
+  // Already on a plan. Nothing to decide and nothing to offer.
   if(card.key){
     const wb = wbTripForCard(card);
-    if(wb) html = '<strong>Stays on its existing trip plan</strong> \u2014 ' + escapeHtml(wbTripPickerLabel(wb)) + '.';
-  }
-  if(!html){
-    const cands = wbCandidatesForCard(card);
-    if(cands.length){
-      // ACCURATE TO WHAT CONFIRM ACTUALLY DOES TODAY. ensureTripPlans skips a
-      // card that has candidates rather than creating past one, so the trip
-      // lands with NO plan and waits for a person. Step 3 turns this line into
-      // the prompt; until then it must not promise a plan that is not made.
-      html = '<strong>This may belong to a trip plan you already have</strong> \u2014 ' +
-             cands.map(function(t){ return escapeHtml(wbTripPickerLabel(t)); }).join('; ') +
-             '. Beacon will not choose for you, so this trip lands without a plan until you assign it from the trip brief.';
-    } else {
-      html = '<strong>A new trip plan will be created</strong> for this trip, with its dates and routing and no tail or crew.';
+    if(wb){
+      state.importPlanChoice = null;
+      el.innerHTML = '<strong>Stays on its existing trip plan</strong> \u2014 ' + escapeHtml(wbTripPickerLabel(wb)) + '.';
+      return;
     }
   }
-  el.innerHTML = html;
+
+  const cands = wbCandidatesForCard(card);
+
+  if(!cands.length){
+    state.importPlanChoice = { mode: 'new' };
+    el.innerHTML = '<strong>A new trip plan will be created</strong> for this trip, with its dates and routing and no tail or crew.';
+    return;
+  }
+
+  const exact = wbExactMatchForCard(card, cands);
+  if(exact){
+    state.importPlanChoice = { mode: 'existing', id: exact.id };
+    el.innerHTML = '<strong>Joins your existing trip plan</strong> \u2014 ' + escapeHtml(wbTripPickerLabel(exact)) +
+                   '. Same aircraft and the same dates, so Beacon is not asking.';
+    return;
+  }
+
+  // PAIRING STAYS ADMIN. assignWorkbenchTripToCard is refused at database level
+  // for anyone else, so offering the choice to a crew member would be a control
+  // that cannot work. They are told what was found instead, and their upload
+  // still gets a plan of its own from the pass that follows.
+  if(!wbCanEditTrips()){
+    state.importPlanChoice = { mode: 'new' };
+    el.innerHTML = '<strong>This may belong to a trip plan you already have</strong> \u2014 ' +
+                   cands.map(function(t){ return escapeHtml(wbTripPickerLabel(t)); }).join('; ') +
+                   '. A new plan will be created for now; an admin can move it.';
+    return;
+  }
+
+  // NEW IS THE DEFAULT, and deliberately. A default is a silent choice, so it
+  // has to be the one that cannot do damage: a new plan never absorbs a trip
+  // into somebody else's. Picking an existing plan is the deliberate act.
+  if(!state.importPlanChoice) state.importPlanChoice = { mode: 'new' };
+
+  const rows = cands.map(function(t){
+    const on = state.importPlanChoice.mode === 'existing' && state.importPlanChoice.id === t.id;
+    return '<label class="import-plan-opt">' +
+             '<input type="radio" name="importPlanPick" value="' + escapeHtml(String(t.id)) + '"' + (on ? ' checked' : '') + ' />' +
+             '<span>' + escapeHtml(wbTripPickerLabel(t)) +
+               '<span class="import-plan-opt-sub">' + escapeHtml(wbPlanDateLabel(t)) + '</span>' +
+             '</span>' +
+           '</label>';
+  }).join('');
+
+  el.innerHTML =
+    '<strong>Where should this trip live?</strong> It looks like a trip plan you already have \u2014 ' +
+    'same aircraft, close dates \u2014 but not an exact match, so Beacon will not decide for you.' +
+    '<div class="import-plan-opts">' + rows +
+      '<label class="import-plan-opt">' +
+        '<input type="radio" name="importPlanPick" value="__new__"' + (state.importPlanChoice.mode === 'new' ? ' checked' : '') + ' />' +
+        '<span>This is a new trip' +
+          '<span class="import-plan-opt-sub">A plan is created for it, with no tail or crew</span>' +
+        '</span>' +
+      '</label>' +
+    '</div>';
+
+  el.querySelectorAll('input[name="importPlanPick"]').forEach(function(r){
+    r.addEventListener('change', function(ev){
+      const v = ev.target.value;
+      state.importPlanChoice = (v === '__new__') ? { mode: 'new' } : { mode: 'existing', id: v };
+    });
+  });
+}
+
+// The dates under a plan in the chooser. This is the whole reason the person
+// can answer the question at a glance -- the routing is in the label above and
+// the dates are what differ.
+function wbPlanDateLabel(t){
+  if(!t.start_date) return 'No dates set';
+  const end = t.end_date || t.start_date;
+  return wbShortDate(t.start_date) + ' \u2014 ' + wbShortDate(end);
+}
+
+// APPLY THE CHOICE, after the legs are on the board and not before. The card
+// does not exist until then: a new trip's group id lives on the staged legs and
+// becomes a card only once they are inserted.
+//
+// BOTH ARMS DO WORK. 'new' cannot be left to the pass that follows, because
+// that pass deliberately skips any card with a candidate -- which is every card
+// that reached this chooser. Saying "this is a new trip" has to create the plan
+// here or nothing creates it at all.
+async function applyImportPlanChoice(){
+  const ch = state.importPlanChoice;
+  if(!ch) return;
+  const live = groupIntoTrips((state.legs || []).filter(function(l){ return !l.deletedAt; }));
+  let card = null;
+  const rec = state.importTripReconcile;
+  if(rec){
+    if(rec.groupId) card = live.find(function(t){ return tripGroupIdOf(t) === String(rec.groupId); });
+    if(!card && rec.tripNumber) card = live.find(function(t){ return String(t.tripNumber || '') === String(rec.tripNumber); });
+  } else {
+    const gid = (state.importNewLegs || []).map(function(l){ return l && l.groupId; }).find(Boolean);
+    if(gid) card = live.find(function(t){ return tripGroupIdOf(t) === String(gid); });
+  }
+  if(!card) return;
+
+  await loadTripWorkbenchAssignments();
+  if(wbTripForCard(card)) return;      // already has one; leave it alone
+
+  if(ch.mode === 'existing' && ch.id){
+    await assignWorkbenchTripToCard(ch.id, card);
+    return;
+  }
+  if(ch.mode === 'new'){
+    await createWorkbenchTripForCard(card);
+  }
 }
 
 function renderImportPreviewView(){
@@ -17333,6 +17469,11 @@ function renderImportPreviewView(){
             await deleteLeg(leg.id);
           }
           await loadLegs();
+          // Both branches, or the one that is missed is the one that goes
+          // wrong. A reconciled trip usually has a plan already, in which case
+          // applyImportPlanChoice finds one and does nothing.
+          await applyImportPlanChoice();
+          await ensureTripPlans({ force: true });
           resetImportState();
           showToast(rec.tripNumber ? ('Trip ' + rec.tripNumber + ' reconciled') : 'Trip updated from paperwork');
           goToListView('dashboard');
@@ -17477,6 +17618,9 @@ function renderImportPreviewView(){
           snapshotLeg(leg);
         }
         await loadLegs();
+        // The choice made on this screen, applied first. ensureTripPlans then
+        // catches anything else on the board that still has no plan.
+        await applyImportPlanChoice();
         // The uploaded trip now needs somewhere to live. Forced, because the
         // boot pass has already latched for this session.
         await ensureTripPlans({ force: true });
