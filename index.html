@@ -4456,7 +4456,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T21:20:00Z';
+const BUILD_VERSION = '2026-09-07T21:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8648,6 +8648,10 @@ function renderEventDetailView(){
   // are department facts, entered by whoever runs the schedule. The personal
   // half -- hotel, car, travel -- is not here yet and will NOT carry this gate.
   const canEdit = rosterViewerIsAdmin();
+  // The database refuses an 'other' block with no reason -- there is a trigger,
+  // and schedSaveEntry already reports it by name. Saying so on the label is
+  // cheaper than letting the write bounce.
+  const needsReason = schedReasonRequired(kind);
   main.innerHTML =
     '<div class="ev-card">' +
       '<div class="ev-row"><span class="ev-lbl">Who</span>' +
@@ -8656,58 +8660,72 @@ function renderEventDetailView(){
         '<span class="ev-val">' + escapeHtml(label) + '</span></div>' +
       '<div class="ev-row"><span class="ev-lbl">When</span>' +
         '<span class="ev-val">' + escapeHtml(schedPrettySpan(r.start_date, r.end_date)) + '</span></div>' +
-      (r.reason
-        ? '<div class="ev-row"><span class="ev-lbl">Detail</span>' +
-            '<span class="ev-val">' + escapeHtml(r.reason) + '</span></div>'
-        : '') +
     '</div>' +
+    // *** REASON IS EDITABLE HERE AND NOWHERE ELSE. ***
+    // The add panel writes it once at creation and has no update path, so a
+    // typo in "Global 6000 recurrent" was permanent -- the only remedy was to
+    // delete the block and rebuild it, losing its id and its history. This is
+    // that missing path, not a second copy of the add form.
     '<div class="ev-card">' +
+      '<div class="field"><label>Reason' + (needsReason ? '' : ' (optional)') + '</label>' +
+        '<input type="text" id="evReason" maxlength="120" ' +
+          'value="' + escapeHtml(r.reason || '') + '" ' +
+          (canEdit ? '' : 'disabled ') +
+          'placeholder="' + escapeHtml(canEdit ? (needsReason ? 'Required for ' + label : 'e.g. FAA medical') : 'Not set') + '">' +
+      '</div>' +
       '<div class="field"><label>Location</label>' +
         '<input type="text" id="evLocation" maxlength="120" ' +
           'value="' + escapeHtml(r.location || '') + '" ' +
           (canEdit ? '' : 'disabled ') +
           'placeholder="' + escapeHtml(canEdit ? 'e.g. Dallas' : 'Not set') + '">' +
       '</div>' +
-      // Disabled, not hidden: a crew member should see the field exists and
-      // know it is somebody else's to fill in.
+      // Disabled, not hidden: a crew member should see the fields exist and
+      // know they are somebody else's to fill in.
       (canEdit
-        ? '<button type="button" class="btn-primary" id="evSaveLocationBtn">Save location</button>'
-        : '<div class="ev-note">Only a department admin can set the location.</div>') +
+        ? '<button type="button" class="btn-primary" id="evSaveDetailBtn">Save</button>'
+        : '<div class="ev-note">Only a department admin can change these.</div>') +
     '</div>';
 }
 
-async function saveEventLocation(){
+async function saveEventDetail(){
   if(!eventDetail) return;
-  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can set the location'); return; }
-  const el = document.getElementById('evLocation');
-  if(!el) return;
-  const val = el.value.trim();
-  const btn = document.getElementById('evSaveLocationBtn');
+  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can change these'); return; }
+  const locEl = document.getElementById('evLocation');
+  const rsnEl = document.getElementById('evReason');
+  if(!locEl || !rsnEl) return;
+  const loc = locEl.value.trim();
+  const rsn = rsnEl.value.trim();
+  const btn = document.getElementById('evSaveDetailBtn');
   if(btn) btn.disabled = true;
   try {
     // Read back with .select(). A policy refusal returns no row rather than an
     // error, so without this a blocked write would toast "Saved".
     const { data, error } = await sb.from('crew_exceptions')
-      .update({ location: val || null })
+      .update({ location: loc || null, reason: rsn || null })
       .eq('id', eventDetail.id)
-      .select('id,location').single();
+      .select('id,location,reason').single();
     if(error) throw error;
     eventDetail.location = (data && data.location) || '';
-    // The day panel reads location off the schedule fetch, so the cached rows
-    // are now stale in one field. Drop them rather than patching.
+    eventDetail.reason   = (data && data.reason)   || '';
+    // The day panel reads both of these off the schedule fetch, so the cached
+    // rows are now stale. Drop them rather than patching.
     schedData = null;
-    showToast(val ? 'Location saved' : 'Location cleared');
+    showToast('Saved');
   } catch(err){
-    console.error('event location save', err);
-    showToast('Could not save that \u2014 try again');
+    console.error('event detail save', err);
+    // The reason trigger reports through here. Its own words are more use than
+    // a generic message.
+    const msg = (err && err.message) ? String(err.message) : '';
+    showToast(/reason/i.test(msg) ? 'That category needs a reason'
+            : 'Could not save that \u2014 try again');
   } finally {
     if(btn) btn.disabled = false;
   }
 }
 
 document.addEventListener('click', function(e){
-  const b = e.target.closest && e.target.closest('#evSaveLocationBtn');
-  if(b) saveEventLocation();
+  const b = e.target.closest && e.target.closest('#evSaveDetailBtn');
+  if(b) saveEventDetail();
 });
 
 function goToListView(view){
@@ -23654,6 +23672,15 @@ const SCHED_AC_TRIP_LABELS = {
   flight_historical: 'Away on trip \u2014 before Beacon'
 };
 
+// *** ONE RULE, TWO SURFACES. ***
+// The add panel and the event detail view both have to know which categories
+// the database will refuse without a reason. Written out twice they drift, and
+// a rule enforced in one place and missed in the other is how a save bounces
+// with no explanation on the screen that let you type it.
+function schedReasonRequired(cat){
+  return cat === 'other' || cat === 'info_only';
+}
+
 function schedKindLabel(kind, ownerKind){
   if(ownerKind === 'aircraft' && SCHED_AC_TRIP_KINDS[kind]){
     return SCHED_AC_TRIP_LABELS[kind] || 'Away on trip';
@@ -25180,7 +25207,7 @@ function renderSchedEntry(){
   // Both categories that mean nothing without their text. 'other' is enforced by
   // a BEFORE trigger; info_only by a CHECK constraint added in migration 53. The
   // form says so out loud either way rather than letting the save be refused.
-  const needsReason = e.category === 'other' || e.category === 'info_only';
+  const needsReason = schedReasonRequired(e.category);
   let h = '<div class="sched-entry-who">' + escapeHtml(e.ownerLabel) + '</div>';
   h += '<div class="sched-entry-day">' + escapeHtml(schedPrettyDay(e.day)) + '</div>';
   h += schedExistingHTML(e);
