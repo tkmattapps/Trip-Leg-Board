@@ -2604,7 +2604,6 @@
     transition:transform 0.15s ease, color 0.15s ease;
   }
   .wb-row-clickable:hover .wb-chev{ color:var(--fog-300); }
-  .wb-row-open .wb-chev{ transform:rotate(90deg); color:var(--amber-500); }
   .wb-c-routing{ color:var(--fog-300); min-width:180px; }
   .wb-c-date{ color:var(--fog-300); white-space:nowrap; }
   .wb-c-days{ color:var(--fog-500); white-space:nowrap; }
@@ -2641,9 +2640,11 @@
      above as context. Editing the cells in place was rejected: the table is
      ten columns wide and scrolls sideways on a phone, so a field would often
      be typed into while its row was half off screen. */
-  .wb-row-open td{ background:var(--panel-700); }
   .wb-row-clickable{ cursor:pointer; }
-  .wb-edit-row td{ padding:0; border-bottom:1px solid var(--hairline); }
+  /* *** THE EDITOR LEFT THE TABLE. ***
+     .wb-row-open and .wb-edit-row went with it. The block below is now rendered
+     on its own full-screen page (.wb-page) reached by tapping a row, so nothing
+     here may assume a <td> around it. */
   /* *** THREE LINES, NOT A FLOW. ***
      This was grid auto-fit with almost every block set to span the full width,
      so on a laptop the columns collapsed to one and the editor became a tall
@@ -2848,34 +2849,25 @@
     grid-column:1 / -1; font-size:12px; color:var(--fog-500);
   }
 
-  /* *** PHONE ONLY -- 520px, below any iPad. THE PHONE SCROLLS, IT DOES NOT
-     COMPRESS. ***
-     This query MUST stay below .wb-edit-half-actions.
-     It used to sit above them, and a media query adds no specificity -- so the
-     two base rules further down the sheet simply won, and both overrides in
-     here were dead. Delete never moved off the fields line, kept its width and
-     its auto margin, and squeezed the crew block down to two seats. That is why
-     cabin crew stayed under PIC through four pushes: the rule that was supposed
-     to free the width was never applied at all. If a rule in here appears to do
-     nothing, check what is defined after it before changing the value.
+  /* *** THE WORKBENCH TRIP'S OWN SCREEN. ***
+     The editor block is reused verbatim -- same fields, same seats, same
+     aircraft picker, same save-on-blur wiring -- and only its container has
+     changed. That is the whole point of the move: nothing about the editing was
+     redesigned, it just stopped living in a <td>.
 
-     The widths, added up rather than estimated -- border-box, so padding counts:
-       24  .wb-edit padding, 12 each side
-      160  reserved aircraft column
-       12  gap to the crew block
-      496  three 160px seats with two 8px gaps
-      ---
-      692  minimum to keep tail, PIC, SIC and cabin crew on one line
-     720 is that with a little headroom. A fourth seat still wraps, which is
-     right -- an ACM or a second cabin crew is not the normal shape of a crew. */
-  @media (max-width:520px){
-    .wb-edit{ min-width:720px; }
-    /* Delete drops to its own line instead of adding its width to the scroll. */
-    .wb-edit-half-actions{
-      flex:1 1 100%; margin-left:0; align-self:auto;
-      justify-content:flex-end; align-items:flex-start;
-    }
-  }
+     THE 520px QUERY THAT USED TO SIT HERE IS DELETED, NOT MOVED. It set
+     .wb-edit{ min-width:720px } so the block scrolled sideways inside the
+     table's horizontal scroller rather than compressing. There is no scroller
+     on this page, so the same rule would make the whole screen scroll sideways
+     on a phone -- the opposite of what it was for. Here the lines wrap to a
+     stack on their own, which is what .wb-edit-line and .wb-edit-half already
+     do without being told.
+
+     The four-push history behind that query is recorded in the operating rules
+     and does not need repeating: it is gone because the container it existed
+     for is gone, not because anyone judged it wrong. */
+  .wb-page{ padding:12px; }
+  .wb-page .wb-edit{ border:1px solid var(--hairline); border-radius:10px; }
 
   @media (min-width:821px){
     .sheet{ left:50%; right:auto; transform:translate(-50%, 100%); width:520px; }
@@ -4496,7 +4488,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T01:00:00Z';
+const BUILD_VERSION = '2026-09-08T17:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12830,15 +12822,24 @@ async function wbDeleteTrip(id){
   if(!ok) return;
   const done = await retireWorkbenchTrip(id);
   if(!done) return;
-  // The editor was open on a trip that no longer exists.
-  if(wbExpandedId === id){ wbExpandedId = ''; wbPendingAircraft = ''; wbPendingCrewSlot = ''; }
   showToast('Trip deleted');
-  renderWorkbenchBody();
   // Both busy-day functions join workbench_trips with `deleted_at is null`, so
   // the bars go on their own once the grid is read again -- the orphaned
   // workbench_trip_aircraft rows survive the withdrawal but the join drops them.
   // Nothing to clean up; the grid just has to be asked again.
   schedData = null;
+  // Deleted from the trip's own page, which is now a page about nothing. Go back
+  // to the list rather than repainting -- wbBackToWorkbench rebuilds the
+  // schedule underneath and reopens the panel, which is the same route the Back
+  // button takes.
+  if(state.view === 'wbTrip' && wbExpandedId === id){
+    wbGridDirty = false;
+    await wbBackToWorkbench();
+    return;
+  }
+  // The editor was open on a trip that no longer exists.
+  if(wbExpandedId === id){ wbExpandedId = ''; wbPendingAircraft = ''; wbPendingCrewSlot = ''; }
+  wbRepaint();
   await openScheduleView();
 }
 
@@ -12976,11 +12977,11 @@ function renderWorkbenchBody(){
     return;
   }
   body.innerHTML = workbenchTableHTML(shown);
-  // *** WIRED AFTER THE MARKUP, NEVER BEFORE. ***
-  // The fields are painted from the cache, which is already the real row, so
-  // there is no window where a blur could read a blank box and save the blank
-  // over real data -- the mistake leg_notes made and paid for.
-  wbWireEditor();
+  // *** NOTHING TO WIRE HERE ANY MORE. ***
+  // wbWireEditor() used to run at this point, because the open trip's editor was
+  // one of the rows just painted. The editor is its own page now, and
+  // renderWorkbenchTripView wires it there. The table is read-only markup: rows
+  // are doorways, and the click delegate handles them.
 }
 
 // The four-character identifier the department chose, which is what the master
@@ -13342,10 +13343,21 @@ function wbAircraftEditHTML(t){
   return h + '</div>';
 }
 
-function wbEditorHTML(t, colCount){
-  return '<tr class="wb-edit-row" data-wb-editor="' + escHtml(t.id || '') + '">'
-    + '<td colspan="' + colCount + '">'
-    + '<div class="wb-edit">'
+// *** THE TRIP'S OWN PAGE, NOT A ROW THAT UNFOLDS. ***
+// Every field below is exactly what wbEditorHTML put inside a <td colspan>
+// until 8 Sep 2026. The markup is unchanged on purpose -- this push moves the
+// editor, it does not redesign it -- and it keeps data-wb-editor so wbWireEditor
+// binds to it without knowing which surface it is on.
+//
+// Why it left the table: the row editor lived inside a horizontally scrolling
+// <table>, which cost four consecutive pushes to a dead media query and a crew
+// block squeezed to two seats. It also had nowhere to put per-leg tail and crew,
+// which the one-trip model needs. A full-screen view has precedent twice over --
+// the trip brief and the training event detail -- so the header, the back
+// behaviour and the layout are copies rather than decisions.
+function wbTripFormHTML(t){
+  return '<div class="wb-page">'
+    + '<div class="wb-edit" data-wb-editor="' + escHtml(t.id || '') + '">'
       // Line 1 -- when and where. The dates first because that is the order the
       // question gets asked: which days, then what routing on them.
       + '<div class="wb-edit-line">'
@@ -13395,7 +13407,7 @@ function wbEditorHTML(t, colCount){
       + '</div>'
       + '<div class="wb-edit-note">Changes save as you leave each field.</div>'
     + '</div>'
-    + '</td></tr>';
+    + '</div>';
 }
 
 function workbenchTableHTML(trips){
@@ -13421,8 +13433,10 @@ function workbenchTableHTML(trips){
             + (t.crew.unassigned || []).map(function(id){ return wbChip('?', id, true); }).join('');
     }
 
-    const isOpen = t.id && t.id === wbExpandedId;
-    html += '<tr class="wb-row-clickable' + (isOpen ? ' wb-row-open' : '') + '"'
+    // No open state left to paint. A row is a doorway now -- tapping it leaves
+    // the panel for the trip's own page -- so there is nothing for the table to
+    // show as expanded.
+    html += '<tr class="wb-row-clickable"'
       + ' data-wb-trip="' + escHtml(t.id || '') + '">'
       + '<td class="wb-c-tail">'
         + (wbTailLabel(t) ? escHtml(wbTailLabel(t)) : WB_BLANK) + '</td>'
@@ -13448,11 +13462,6 @@ function workbenchTableHTML(trips){
         + '<span class="wb-chev" aria-hidden="true">&#9656;</span>'
       + '</td>'
       + '</tr>';
-
-    // Column count is computed, not written as a number: the extra crew column
-    // only exists when some visible trip has an ACM or an unseated pilot, so a
-    // hardcoded colspan would be wrong half the time and leave a gap.
-    if(isOpen) html += wbEditorHTML(t, anyExtra ? 11 : 10);
   });
 
   return html + '</tbody></table></div>';
@@ -13503,7 +13512,7 @@ async function wbSetSeat(tripId, slot, idx, userId){
         + clash + (clash === 1 ? ' day' : ' days') + ' of this trip.');
     }
   }
-  renderWorkbenchBody();
+  wbRepaint();
 }
 
 // One column per write, same reasoning as wbSaveField.
@@ -13565,7 +13574,7 @@ async function wbRemoveTripAircraft(rowId, tripId){
     // The grid derives its days from this table, so it is now out of date.
     schedData = null;
     wbGridDirty = true;
-    renderWorkbenchBody();
+    wbRepaint();
   } catch(e){
     console.error('wbRemoveTripAircraft', e);
     showToast('Could not take that aircraft off.');
@@ -13584,7 +13593,7 @@ let wbPendingAircraft = '';
 function wbAddAircraftRow(tripId){
   if(!tripId) return;
   wbPendingAircraft = tripId;
-  renderWorkbenchBody();
+  wbRepaint();
 }
 
 // Dates are left empty on create. An assignment without dates posts no days, so
@@ -13616,7 +13625,7 @@ async function wbChooseAircraft(tripId, aircraftId){
 
   wbGridDirty = true;
   schedData = null;
-  renderWorkbenchBody();
+  wbRepaint();
 }
 
 // Save on leaving a field. `change` rather than `blur`: it fires on blur for a
@@ -13637,7 +13646,7 @@ function wbWireEditor(){
   const newSel = document.querySelector('[data-wb-editor="' + id + '"] [data-wb-acnew]');
   if(newSel){
     newSel.addEventListener('change', function(){
-      if(newSel.value === WB_AC_OFF){ wbPendingAircraft = ''; renderWorkbenchBody(); return; }
+      if(newSel.value === WB_AC_OFF){ wbPendingAircraft = ''; wbRepaint(); return; }
       if(!newSel.value) return;
       wbChooseAircraft(newSel.getAttribute('data-wb-acnew') || '', newSel.value);
     });
@@ -13660,7 +13669,7 @@ function wbWireEditor(){
         if(!ok) return;
         schedData = null;
         wbGridDirty = true;
-        renderWorkbenchBody();
+        wbRepaint();
       });
     });
   });
@@ -13675,33 +13684,74 @@ function wbWireEditor(){
       const val = isDate ? (el.value || null) : el.value;
       wbSaveField(id, col, val).then(function(ok){
         if(!ok || !isDate) return;
-        // A date edit changes the Days column and can move the trip out of the
-        // month you are standing in. Repaint so the row tells the truth, and
-        // say so rather than letting it silently disappear.
-        const mo = wbShownMonth();
-        const row = (workbenchCache || []).find(function(x){ return x.id === id; });
         // Crew days come from the trip's own dates, so this moves the grid too.
         wbGridDirty = true;
-        const gone = row && !wbTripInMonth(row, mo.y, mo.m);
-        if(gone){
-          wbExpandedId = '';
-          showToast('That trip no longer runs in ' + schedMonthLongName(mo.y, mo.m) + '.');
+        // *** THE MONTH IS THE PANEL'S PROBLEM, NOT THE PAGE'S. ***
+        // The panel shows one month; a date edit can move a trip out of it, and
+        // saying so beats letting the row silently vanish. The trip's own page
+        // has no month at all -- it shows one trip whatever its dates are -- so
+        // closing it and toasting about September would be a screen shutting
+        // itself for a reason that does not apply to it.
+        if(state.view !== 'wbTrip'){
+          const mo = wbShownMonth();
+          const row = (workbenchCache || []).find(function(x){ return x.id === id; });
+          if(row && !wbTripInMonth(row, mo.y, mo.m)){
+            wbExpandedId = '';
+            showToast('That trip no longer runs in ' + schedMonthLongName(mo.y, mo.m) + '.');
+          }
         }
-        renderWorkbenchBody();
+        wbRepaint();
       });
     });
   });
 }
 
-// Open a trip's editor, or close it if it is already the open one.
-function wbToggleRow(id){
+// *** ONE REPAINT, TWO SURFACES. ***
+// Every write path in the workbench used to end in renderWorkbenchBody(),
+// because the editor was part of the table it painted. It is now on its own
+// page, and the same writes are reachable from there. Routing them through one
+// function is what stops a seat change made on the page from being drawn into a
+// panel nobody is looking at -- and it means each write path names WHAT to
+// repaint rather than WHERE, so neither surface can be forgotten later.
+function wbRepaint(){
+  if(state.view === 'wbTrip'){ renderWorkbenchTripView(); return; }
+  renderWorkbenchBody();
+}
+
+// Leave the panel for the trip's own page. wbExpandedId still means "the trip
+// whose editor is open" -- it is simply open on a page now rather than in a row,
+// so wbWireEditor and every [data-wb-editor] query work unchanged.
+function openWorkbenchTrip(id){
   if(!id) return;
-  wbExpandedId = (wbExpandedId === id) ? '' : id;
-  // The unsaved row belongs to the editor that was open. Leaving it set would
-  // paint a choose-an-aircraft row into the next trip opened.
+  wbExpandedId = id;
+  // The half-finished pickers belong to whatever was last open. Leaving either
+  // set would paint a choose-an-aircraft row into the trip being opened.
   wbPendingAircraft = '';
   wbPendingCrewSlot = '';
-  renderWorkbenchBody();
+  // The sheet's DOM only. NOT closeWorkbench() -- that re-reads the schedule
+  // when the grid is dirty, and openScheduleView sets state.view back to
+  // 'schedule', which would land us on the grid instead of the trip.
+  wbHideSheet();
+  state.view = 'wbTrip';
+  state.activeId = null;
+  if(typeof updateNavTabs === 'function') updateNavTabs();
+  renderMain();
+}
+
+// Back from the trip page. It rebuilds the origin rather than naming a fixed
+// view, the way the notes page does: the panel sits over the schedule, so the
+// schedule has to be rendered underneath it before it is reopened.
+async function wbBackToWorkbench(){
+  wbExpandedId = '';
+  wbPendingAircraft = '';
+  wbPendingCrewSlot = '';
+  // A date or a tail edited on the page moves days on the grid. Drop the cache
+  // here so the schedule behind the panel is re-read once, rather than sitting
+  // stale until someone leaves the schedule entirely -- the fault Kyle found by
+  // changing a tail and watching the old aeroplane stay put.
+  if(wbGridDirty){ wbGridDirty = false; schedData = null; }
+  await openScheduleView();
+  openWorkbench();
 }
 
 // *** CREATES THE ROW IMMEDIATELY. NO DIALOG, NO DATES ASKED FOR. ***
@@ -13719,10 +13769,10 @@ async function wbAddTrip(){
   const saved = await saveWorkbenchTrip({ crew: {} });
   if(!saved) return;   // saveWorkbenchTrip has already said why.
   if(Array.isArray(workbenchCache)) workbenchCache.push(saved);
-  // Straight into the editor. A blank row with no way into it is the thing
-  // this button must not produce.
-  wbExpandedId = saved.id;
-  renderWorkbenchBody();
+  // Straight into the trip's page. A blank row with no way into it is the thing
+  // this button must not produce, and that was as true when the editor unfolded
+  // in the table as it is now the editor is a screen.
+  openWorkbenchTrip(saved.id);
 }
 
 function openWorkbench(){
@@ -13788,12 +13838,59 @@ function openWorkbench(){
       if(!wbTripInMonth(t, mo.y, mo.m)){
         await schedFocusMonthOfDay(t.start_date || t.end_date || t.plan_month || '');
       }
-      wbExpandedId = want;
-      renderWorkbenchBody();
+      // Straight through to the trip's own page. The month focus above still
+      // matters -- Back lands on the panel, and it should be the panel this trip
+      // is filed on rather than whichever one the grid happened to be showing.
+      openWorkbenchTrip(want);
       return;
     }
     renderWorkbenchBody();
   });
+}
+
+// *** THE PAGE. ***
+// Header follows the training event detail exactly: what it is on the title
+// line, when it is underneath, and a named way back. The title is the routing
+// the person typed, because that is what they recognise a trip by -- the tail
+// is the fallback for a trip that has no routing yet, and a brand new trip has
+// neither, so it says Trip rather than nothing.
+function renderWorkbenchTripView(){
+  const main = document.getElementById('mainPanel');
+  if(!main) return;
+  const t = (Array.isArray(workbenchCache) ? workbenchCache : [])
+    .find(function(x){ return x.id === wbExpandedId; });
+  // A trip that is no longer there. Says so rather than painting an empty form
+  // that would save into nothing.
+  if(!t){
+    setPageHeader({ title:'Trip', backLabel:'Workbench', backTo:'workbench' });
+    main.innerHTML = '<div class="empty-list">That trip is no longer on the workbench.</div>';
+    return;
+  }
+  const days = wbDayCount(t.start_date, t.end_date);
+  let sub = '';
+  if(t.start_date || t.end_date){
+    sub = (t.start_date ? wbShortDate(t.start_date) : '?')
+        + ' \u2013 ' + (t.end_date ? wbShortDate(t.end_date) : '?')
+        + (days == null ? '' : ' \u00b7 ' + days + ' day' + (days === 1 ? '' : 's'));
+  } else {
+    // An undated trip is a real state -- a trip goes on the panel the moment the
+    // department knows it is happening -- so this reads as a fact, not an error.
+    sub = 'No dates yet';
+  }
+  const tail = wbTailLabel(t);
+  if(tail) sub += ' \u00b7 ' + tail;
+  setPageHeader({
+    title: (t.destinations || '').trim() || tail || 'Trip',
+    sub: sub,
+    backLabel: 'Workbench',
+    backTo: 'workbench'
+  });
+  main.innerHTML = wbTripFormHTML(t);
+  // *** WIRED AFTER THE MARKUP, NEVER BEFORE. ***
+  // Same contract as renderWorkbenchBody: the fields are painted from the cache,
+  // which is already the real row, so no blur can read a blank box and save it
+  // over real data.
+  wbWireEditor();
 }
 
 // Open the workbench with one trip already expanded. The order matters: the
@@ -13819,11 +13916,18 @@ let wbOpenToTripId = '';
 // came back.
 let wbGridDirty = false;
 
-async function closeWorkbench(){
+// The DOM half of closing, on its own. Navigating to a trip's page needs the
+// panel out of the way but must NOT trigger the grid re-read below, because
+// that re-read calls openScheduleView, which sets state.view back to 'schedule'.
+function wbHideSheet(){
   const s = document.getElementById('workbenchSheet');
   const b = document.getElementById('workbenchBackdrop');
   if(s){ s.classList.remove('open'); s.setAttribute('aria-hidden','true'); }
   if(b) b.classList.remove('open');
+}
+
+async function closeWorkbench(){
+  wbHideSheet();
 
   if(!wbGridDirty) return;
   wbGridDirty = false;
@@ -18320,6 +18424,10 @@ document.addEventListener('click', function(e){
   // The notes page rebuilds its origin rather than naming a fixed destination,
   // so it returns you to the exact leg or trip you left.
   if(dest === 'notesReturn'){ closeNotesPage(); return; }
+  // Like notesReturn, this rebuilds an origin rather than naming a view: the
+  // workbench is a panel over the schedule, so the schedule has to be there
+  // before the panel can be put back on top of it.
+  if(dest === 'workbench'){ wbBackToWorkbench(); return; }
   if(dest === 'home'){ state.view = 'home'; }
   else if(dest === 'dashboard'){ state.view = 'dashboard'; }
   else if(dest === 'history'){ state.view = 'history'; }
@@ -19299,6 +19407,7 @@ function renderMain(){
   if(state.view === 'settings'){ renderSettingsView(); return; }
   if(state.view === 'schedule'){ renderScheduleView(); return; }
   if(state.view === 'eventDetail'){ renderEventDetailView(); return; }
+  if(state.view === 'wbTrip'){ renderWorkbenchTripView(); return; }
   if(state.view === 'notes'){ renderNotesView(); return; }
 
   const main = document.getElementById('mainPanel');
@@ -27419,23 +27528,21 @@ document.addEventListener('click', async function(e){
   const wbCrewAdd = t.closest('[data-wb-crewadd]');
   if(wbCrewAdd){
     wbPendingCrewSlot = wbCrewAdd.getAttribute('data-wb-crewadd') || '';
-    renderWorkbenchBody();
+    wbRepaint();
     return;
   }
   // Removing an aeroplane and cancelling a new one are both options inside the
   // select now, handled on change -- there are no crosses left to click.
-  // The editor's Delete button lives inside [data-wb-editor], which the guard
-  // below skips, so it has to be tested before that guard. It is the only route
-  // to deleting a trip now -- the per-row cross was removed on 3 Sep 2026.
+  // Delete lives on the trip's page and is the only route to deleting a trip --
+  // the per-row cross was removed on 3 Sep 2026.
   const wbTripDel = t.closest('[data-wb-tripdel]');
   if(wbTripDel){ wbDeleteTrip(wbTripDel.getAttribute('data-wb-tripdel') || ''); return; }
-  // A click inside the open editor must not collapse it -- the editor row is
-  // inside the table, so a bare row lookup would match it and toggle the row
-  // shut the moment anyone reached for a field.
-  if(!t.closest('[data-wb-editor]')){
-    const wbRow = t.closest('[data-wb-trip]');
-    if(wbRow){ wbToggleRow(wbRow.getAttribute('data-wb-trip') || ''); return; }
-  }
+  // *** THE [data-wb-editor] GUARD THAT WAS HERE IS GONE WITH THE EDITOR ROW. ***
+  // It existed because the editor unfolded inside the table, so a bare row
+  // lookup matched it and shut the row the moment anyone reached for a field.
+  // The editor is a separate page now and is never inside [data-wb-trip].
+  const wbRow = t.closest('[data-wb-trip]');
+  if(wbRow){ openWorkbenchTrip(wbRow.getAttribute('data-wb-trip') || ''); return; }
   const schedYearSet = t.closest('[data-sched-yearset]');
   if(schedYearSet){ schedSetYear(parseInt(schedYearSet.getAttribute('data-sched-yearset'), 10) || 0); return; }
   const schedStep = t.closest('[data-sched-step]');
