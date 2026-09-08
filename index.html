@@ -940,9 +940,6 @@
     flex:0 0 96px; font-size:12px; color:var(--fog-300);
   }
   .ev-field > input[type=text], .ev-field > textarea{ flex:1 1 240px; min-width:0; }
-  /* The notes box is the one field where the value is longer than the label,
-     so it takes the whole row under its label rather than sitting beside it. */
-  .ev-field-notes > textarea{ flex:1 1 100%; }
   /* A save is a small confirming action, not the point of the page. Full-width
      amber read as the primary thing on screen. */
   .ev-actions{ display:flex; justify-content:flex-end; }
@@ -4489,7 +4486,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-07T23:05:00Z';
+const BUILD_VERSION = '2026-09-07T23:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8749,7 +8746,7 @@ function renderEventDetailView(){
           evLogisticsFieldHTML('Hotel',     'Hotel',      r.hotel,      canEdit) +
           evLogisticsFieldHTML('RentalCar', 'Rental car', r.rental_car, canEdit) +
           evLogisticsFieldHTML('Travel',    'Flights',    r.travel,     canEdit) +
-          '<div class="field ev-field ev-field-notes"><label>Notes</label>' +
+          '<div class="field ev-field"><label>Notes</label>' +
             '<textarea id="evNotes" rows="3" maxlength="1000" ' +
               (canEdit ? '' : 'disabled ') +
               'placeholder="' + escapeHtml(canEdit ? 'Anything the fields above do not cover' : 'Not set') + '">' +
@@ -8757,7 +8754,7 @@ function renderEventDetailView(){
             '</textarea>' +
           '</div>' +
           (canEdit
-            ? '<div class="ev-actions"><button type="button" class="btn-primary" id="evSaveLogisticsBtn">Save arrangements</button></div>'
+            ? '<div class="ev-actions"><button type="button" class="btn-primary" id="evSaveLogisticsBtn">Save</button></div>'
             : '<div class="ev-note">Only a department admin can change these.</div>') +
         '</div>'
       : '');
@@ -8776,83 +8773,107 @@ function evLogisticsFieldHTML(key, label, val, canEdit){
   '</div>';
 }
 
-async function saveEventLogistics(){
-  if(!eventDetail) return;
-  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can change these'); return; }
-  const g = function(id){ return document.getElementById(id); };
-  const hotelEl = g('evHotel'), carEl = g('evRentalCar'), travelEl = g('evTravel'), notesEl = g('evNotes');
-  if(!hotelEl || !carEl || !travelEl || !notesEl) return;
-  const patch = {
-    hotel:        hotelEl.value.trim()  || null,
-    rental_car:   carEl.value.trim()    || null,
-    travel:       travelEl.value.trim() || null,
-    detail_notes: notesEl.value.trim()  || null
-  };
-  const btn = g('evSaveLogisticsBtn');
-  if(btn) btn.disabled = true;
+// *** ONE SAVE FOR THE WHOLE PAGE, AND IT RUNS ON THE WAY OUT. ***
+// Two save functions became one: they wrote to the same row through the same
+// policy, and the only thing splitting them achieved was two chances to leave
+// half the page unsaved. Every navigation path in the app already calls
+// autoSaveIfEditing(), so the exit flush hangs off that rather than off
+// nineteen call sites -- the same argument the trip-note draft stash makes.
+//
+// Only CHANGED columns go in the patch. A no-op UPDATE still fires the history
+// trigger and still costs a round trip, and this is a page people open to read
+// far more often than to edit.
+//
+// Safe against the empty-box trap: renderEventDetailView paints the inputs only
+// after the fetch has landed -- until then the page is a loading line and there
+// is nothing to read -- so a flush cannot mistake an unhydrated field for a
+// cleared one. The eventDetailLoading guard says so out loud.
+let eventSaveInFlight = false;
+
+async function saveEventFields(opts){
+  opts = opts || {};
+  if(!eventDetail || eventDetailLoading || eventSaveInFlight) return;
+  if(!rosterViewerIsAdmin()){
+    if(!opts.silent) showToast('Only a department admin can change these');
+    return;
+  }
+  const cur = {};
+  [['evReason','reason'], ['evLocation','location'], ['evHotel','hotel'],
+   ['evRentalCar','rental_car'], ['evTravel','travel'], ['evNotes','detail_notes']
+  ].forEach(function(pair){
+    // A field the category does not render is simply absent, which is not the
+    // same as emptied. Skipping it is what stops a PTO block losing a location
+    // it was never shown.
+    const el = document.getElementById(pair[0]);
+    if(el) cur[pair[1]] = el.value.trim() || null;
+  });
+  const patch = {};
+  Object.keys(cur).forEach(function(k){
+    if((eventDetail[k] || null) !== cur[k]) patch[k] = cur[k];
+  });
+  if(!Object.keys(patch).length){
+    if(!opts.silent) showToast('Saved');
+    return;
+  }
+  const btns = ['evSaveDetailBtn','evSaveLogisticsBtn']
+    .map(function(id){ return document.getElementById(id); }).filter(Boolean);
+  btns.forEach(function(x){ x.disabled = true; });
+  eventSaveInFlight = true;
   try {
+    // Read back with .select(). A policy refusal returns no row rather than an
+    // error, so without this a blocked write would report success.
     const { data, error } = await sb.from('crew_exceptions')
       .update(patch)
       .eq('id', eventDetail.id)
-      .select('id,hotel,rental_car,travel,detail_notes')
+      .select('id,reason,location,hotel,rental_car,travel,detail_notes')
       .single();
     if(error) throw error;
     if(data) Object.assign(eventDetail, data);
-    showToast('Arrangements saved');
-  } catch(err){
-    console.error('event logistics save', err);
-    showToast('Could not save that \u2014 try again');
-  } finally {
-    if(btn) btn.disabled = false;
-  }
-}
-
-async function saveEventDetail(){
-  if(!eventDetail) return;
-  if(!rosterViewerIsAdmin()){ showToast('Only a department admin can change these'); return; }
-  const locEl = document.getElementById('evLocation');
-  const rsnEl = document.getElementById('evReason');
-  if(!rsnEl) return;
-  // Location only renders on a training block, so its absence is normal here
-  // and must not be written as a clear.
-  const loc = locEl ? locEl.value.trim() : null;
-  const rsn = rsnEl.value.trim();
-  const btn = document.getElementById('evSaveDetailBtn');
-  if(btn) btn.disabled = true;
-  try {
-    // Read back with .select(). A policy refusal returns no row rather than an
-    // error, so without this a blocked write would toast "Saved".
-    const patch = { reason: rsn || null };
-    if(loc !== null) patch.location = loc || null;
-    const { data, error } = await sb.from('crew_exceptions')
-      .update(patch)
-      .eq('id', eventDetail.id)
-      .select('id,location,reason').single();
-    if(error) throw error;
-    eventDetail.location = (data && data.location) || '';
-    eventDetail.reason   = (data && data.reason)   || '';
-    // The day panel reads both of these off the schedule fetch, so the cached
-    // rows are now stale. Drop them rather than patching.
-    schedData = null;
-    showToast('Saved');
+    // The day panel reads details and location off the schedule fetch, so the
+    // cached rows are now stale. Drop them rather than patching.
+    if('reason' in patch || 'location' in patch) schedData = null;
+    if(!opts.silent) showToast('Saved');
   } catch(err){
     console.error('event detail save', err);
-    // The reason trigger reports through here. Its own words are more use than
-    // a generic message.
     const msg = (err && err.message) ? String(err.message) : '';
+    // Reported even on a silent flush: we are already leaving the page, so a
+    // toast is the only way a failure can be seen at all.
     showToast(/reason/i.test(msg) ? 'That category needs details'
             : 'Could not save that \u2014 try again');
   } finally {
-    if(btn) btn.disabled = false;
+    eventSaveInFlight = false;
+    btns.forEach(function(x){ x.disabled = false; });
   }
 }
 
 document.addEventListener('click', function(e){
-  const b = e.target.closest && e.target.closest('#evSaveDetailBtn');
-  if(b){ saveEventDetail(); return; }
-  const l = e.target.closest && e.target.closest('#evSaveLogisticsBtn');
-  if(l) saveEventLogistics();
+  const b = e.target.closest && e.target.closest('#evSaveDetailBtn, #evSaveLogisticsBtn');
+  if(b) saveEventFields();
 });
+
+// *** A PHONE CALL IS A WAY OF LEAVING THE PAGE. ***
+// autoSaveIfEditing covers every route through the app -- Back, a nav tab,
+// opening something else. It does not cover the phone deciding for you: an
+// incoming call, the home button, a switch to Mail. None of those navigate,
+// so nothing ran, and whatever was typed since the last save was gone.
+//
+// visibilitychange -> hidden is the last moment the page is reliably alive on
+// iOS, so it is where the write goes. It fires on every app switch, which
+// sounds expensive and is not: saveEventFields sends only changed columns, so
+// a page that was read and not edited costs nothing at all.
+//
+// Deliberately not wired to the leg editor yet. One screen first, tested, and
+// the editor follows if this behaves.
+//
+// The close-the-tab case is still not covered and probably cannot be: the
+// write is an async round trip, and a browser tearing the page down does not
+// wait for it. Backgrounding is the case that actually happens.
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState !== 'hidden') return;
+  if(state.view !== 'eventDetail') return;
+  saveEventFields({ silent: true }).catch(function(e){ console.error('event save on hide', e); });
+});
+
 
 function goToListView(view){
   autoSaveIfEditing();
@@ -21632,6 +21653,11 @@ function autoSaveIfEditing(){
   // name only advertises the editor autosave. Kept here deliberately rather
   // than added to nineteen call sites, where it would drift out of step.
   stashTripNoteDraft();
+  // Same contract as the trip-note stash above: the event detail page has no
+  // Done button, and people leave it by tapping Back or a nav tab.
+  if(state.view === 'eventDetail'){
+    saveEventFields({ silent: true }).catch(function(e){ console.error('event autosave', e); });
+  }
   if(state.view === 'editor' && state.activeId && !autosaveInFlight){
     autosaveInFlight = true;
     collectAndSave(state.activeId, { silent: true, skipRender: true })
