@@ -915,9 +915,14 @@
     display:flex; flex-direction:column; gap:12px;
   }
   .ev-row{ display:flex; align-items:baseline; gap:12px; }
+  /* Both cards on this page put a label left and a value right, and they have
+     to share one left edge for the value column or the page looks like two
+     pages. The width is declared once here and used by both rules below --
+     changing it in one place used to move half the page. */
+  .ev-card{ --ev-lbl-w:64px; }
   .ev-lbl{
-    flex:0 0 64px; font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
-    color:var(--fog-500);
+    flex:0 0 var(--ev-lbl-w); font-size:11px; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--fog-500);
   }
   .ev-val{ flex:1 1 auto; min-width:0; color:var(--paper-050); }
   .ev-note{ font-size:12px; color:var(--fog-500); }
@@ -931,13 +936,20 @@
      card above already uses: label left, value right.
 
      There is deliberately NO media query here. The wrapping does the work: the
-     input asks for 240px and the label takes 96, so anything wide enough holds
-     them side by side and anything narrower drops the input onto its own line
-     at full width -- which is the phone layout, arrived at by the box itself
-     rather than by a number someone guessed at a breakpoint. */
+     input asks for 240px and the label takes --ev-lbl-w, so anything wide
+     enough holds them side by side and anything narrower drops the input onto
+     its own line at full width -- which is the phone layout, arrived at by the
+     box itself rather than by a number someone guessed at a breakpoint. */
   .ev-field{ flex-direction:row; align-items:center; flex-wrap:wrap; gap:10px 12px; }
+  /* nowrap because the width cannot be verified from here: the face is
+     system-ui, so "Rental car" is a different number of pixels on macOS, iOS
+     and Android. Left to wrap, the widest of those becomes a two-line label on
+     someone's phone. Allowed to overrun instead, the worst case is a tighter
+     gap on one row -- and the input's left edge, which is the thing being
+     aligned, does not move either way. */
   .ev-field > label{
-    flex:0 0 96px; font-size:12px; color:var(--fog-300);
+    flex:0 0 var(--ev-lbl-w); font-size:12px; color:var(--fog-300);
+    white-space:nowrap;
   }
   .ev-field > input[type=text], .ev-field > textarea{ flex:1 1 240px; min-width:0; }
   /* A save is a small confirming action, not the point of the page. Full-width
@@ -4484,7 +4496,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T00:20:00Z';
+const BUILD_VERSION = '2026-09-08T01:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8684,9 +8696,8 @@ function renderEventDetailView(){
   // went the same way for the same reason: Details already says what an Other
   // block or a soft day is, and a second empty box adds nothing.
   const isTraining = kind === 'training';
-  // The database refuses an 'other' block with no reason -- there is a trigger,
-  // and schedSaveEntry already reports it by name. Saying so on the label is
-  // cheaper than letting the write bounce.
+  // Only info_only is held to its text now. Saying so on the label is cheaper
+  // than letting the write bounce off the CHECK constraint.
   const needsReason = schedReasonRequired(kind);
   main.innerHTML =
     '<div class="ev-card">' +
@@ -8707,7 +8718,7 @@ function renderEventDetailView(){
       // way. "Reason" reads as a justification, which is right for Other and
       // wrong for PTO, training and a soft day -- the field actually holds what
       // the block IS. Same shape as "cabin crew" over 'flight attendant'.
-      '<div class="field ev-field"><label>Details' + (needsReason ? '' : ' (optional)') + '</label>' +
+      '<div class="field ev-field"><label>Details</label>' +
         '<input type="text" id="evReason" maxlength="120" ' +
           'value="' + escapeHtml(r.reason || '') + '" ' +
           (canEdit ? '' : 'disabled ') +
@@ -23813,9 +23824,19 @@ const SCHED_AC_TRIP_LABELS = {
 // The add panel and the event detail view both have to know which categories
 // the database will refuse without a reason. Written out twice they drift, and
 // a rule enforced in one place and missed in the other is how a save bounces
-// with no explanation on the screen that let you type it.
+// with no explanation on the screen that let you type it. The list has already
+// shrunk once for exactly this reason -- keep it in here.
 function schedReasonRequired(cat){
-  return cat === 'other' || cat === 'info_only';
+  // 'other' was on this list until 8 Sep 2026. It came off in migration 70:
+  // an Other block is often self-explanatory from the dates and the person,
+  // and being forced to type something to save one was friction with nothing
+  // behind it. Details are optional on every category now except this one.
+  //
+  // info_only stays, and for a different reason than 'other' ever had: an
+  // info-only marker has no meaning of its own. It paints a block on the
+  // schedule whose entire content IS the text, so an empty one tells nobody
+  // anything. That rule is a CHECK constraint (migration 53), not a trigger.
+  return cat === 'info_only';
 }
 
 function schedKindLabel(kind, ownerKind){
@@ -25338,12 +25359,10 @@ function renderSchedEntry(){
   if(!body || !schedEntry) return;
   const e = schedEntry;
   const cats = e.ownerKind === 'aircraft' ? SCHED_AC_CATS : SCHED_CREW_CATS;
-  // 'other' REQUIRES a reason, enforced by a BEFORE trigger on the table. The
-  // form says so out loud rather than letting the database refuse a save the
-  // person thought was fine -- but the trigger remains the rule, not this note.
-  // Both categories that mean nothing without their text. 'other' is enforced by
-  // a BEFORE trigger; info_only by a CHECK constraint added in migration 53. The
-  // form says so out loud either way rather than letting the save be refused.
+  // info_only is the one category that means nothing without its text, and it
+  // is held to that by a CHECK constraint from migration 53. The form says so
+  // out loud rather than letting the save be refused -- but the constraint is
+  // the rule, not this note.
   const needsReason = schedReasonRequired(e.category);
   let h = '<div class="sched-entry-who">' + escapeHtml(e.ownerLabel) + '</div>';
   h += '<div class="sched-entry-day">' + escapeHtml(schedPrettyDay(e.day)) + '</div>';
@@ -25793,11 +25812,10 @@ async function saveSchedEntry(){
   if(!e.category){ showToast('Pick a category first'); return; }
   if(!start || !end){ showToast('A start and an end date are needed'); return; }
   if(end < start){ showToast('The end date is before the start date'); return; }
-  // The database refuses both of these -- 'other' by trigger, info_only by the
-  // CHECK from migration 53. Caught here so the person gets a sentence rather
-  // than a constraint violation.
-  if(e.category === 'other' && !reason){ showToast('Other needs details'); return; }
-  if(e.category === 'info_only' && !reason){
+  // The database refuses this one -- info_only by the CHECK from migration 53.
+  // Caught here so the person gets a sentence rather than a constraint
+  // violation. 'other' used to be checked here too and no longer is.
+  if(schedReasonRequired(e.category) && !reason){
     showToast('An info marker needs something written in it'); return;
   }
 
@@ -25843,8 +25861,8 @@ async function saveSchedEntry(){
     await openScheduleView();
   } catch(err){
     console.error('schedule entry save', err);
-    // The 'other requires a reason' trigger and the date-order constraint both
-    // report through here. Their own words are more use than a generic message.
+    // The info_only reason CHECK and the date-order constraint both report
+    // through here. Their own words are more use than a generic message.
     const msg = (err && err.message) ? String(err.message) : '';
     showToast(/reason/i.test(msg) ? 'That category needs details'
             : /dates_ordered/i.test(msg) ? 'The end date is before the start date'
