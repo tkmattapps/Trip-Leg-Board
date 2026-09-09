@@ -4486,7 +4486,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T23:35:00Z';
+const BUILD_VERSION = '2026-09-08T23:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11925,7 +11925,7 @@ async function openPlanForCard(tripKey){
     if(!wb){ showToast('Trip plan created, but it could not be opened.'); return; }
     showToast('Trip plan created');
   }
-  openWorkbenchTrip(wb.id);
+  openWorkbenchTrip(wb.id, 'dashboard');
 }
 
 function wireCardClicks(originView){
@@ -13807,8 +13807,18 @@ function wbRepaint(){
 // Leave the panel for the trip's own page. wbExpandedId still means "the trip
 // whose editor is open" -- it is simply open on a page now rather than in a row,
 // so wbWireEditor and every [data-wb-editor] query work unchanged.
-function openWorkbenchTrip(id){
+// WHERE THE PLAN WAS OPENED FROM, so its back button returns there rather than
+// to a fixed destination. Kyle, 8 Sep 2026: the general rule is that back takes
+// you back to where you came from.
+//
+// Held as a plain string alongside wbExpandedId rather than pushed on a stack --
+// the plan is only ever one step deep from either doorway. It defaults to the
+// month's trips list, which is what every existing caller wants.
+let wbTripOrigin = 'workbench';
+
+function openWorkbenchTrip(id, origin){
   if(!id) return;
+  wbTripOrigin = origin || 'workbench';
   wbExpandedId = id;
   // The half-finished pickers belong to whatever was last open. Leaving either
   // set would paint a choose-an-aircraft row into the trip being opened.
@@ -13948,13 +13958,17 @@ function renderWorkbenchTripView(){
   const main = document.getElementById('mainPanel');
   if(!main) return;
   const mo = wbShownMonth();
-  const backLabel = schedTripsBtnLabel(mo.y, mo.m);
+  // BACK GOES WHERE YOU CAME FROM. Opened from a trip card via Plan it, that is
+  // Active Trips; opened from the month's list, it is that list.
+  const fromCard  = (wbTripOrigin === 'dashboard');
+  const backLabel = fromCard ? 'Active Trips' : schedTripsBtnLabel(mo.y, mo.m);
+  const backTo    = fromCard ? 'dashboard' : 'workbench';
   const t = (Array.isArray(workbenchCache) ? workbenchCache : [])
     .find(function(x){ return x.id === wbExpandedId; });
   // A trip that is no longer there. Says so rather than painting an empty form
   // that would save into nothing.
   if(!t){
-    setPageHeader({ title:'Trip Plan', backLabel:backLabel, backTo:'workbench' });
+    setPageHeader({ title:'Trip Plan', backLabel:backLabel, backTo:backTo });
     main.innerHTML = '<div class="empty-list">That trip is no longer on the list.</div>';
     return;
   }
@@ -13981,7 +13995,7 @@ function renderWorkbenchTripView(){
     title: 'Trip Plan',
     sub: bits.join(' \u00b7 '),
     backLabel: backLabel,
-    backTo: 'workbench'
+    backTo: backTo
   });
   main.innerHTML = wbTripFormHTML(t);
   // *** WIRED AFTER THE MARKUP, NEVER BEFORE. ***
