@@ -4513,7 +4513,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T01:05:00Z';
+const BUILD_VERSION = '2026-09-09T01:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -25511,39 +25511,23 @@ async function loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO){
   const srcKey   = ownerKind === 'aircraft' ? 'status' : 'source';
   const spanLo = (endISO && endISO < dayISO) ? endISO : dayISO;
   const spanHi = (endISO && endISO > dayISO) ? endISO : dayISO;
-  // One day EITHER SIDE, so a selection that merely TOUCHES a block still finds
-  // it -- the case that broke extending a block backwards.
+  // *** A DAY ANSWERS FOR ITSELF AND NOTHING ELSE. ***
   //
-  // *** THE REACH IS FOR TRIM AND EXTEND ONLY. IT IS NOT A WIDER DAY. ***
-  // Applied to every row, this reported neighbouring days as though they were
-  // the selected one: clicking 30 Aug listed the 31st's legs too, clicking the
-  // 31st listed both days, and clicking 1 Sep -- a day with no flying at all --
-  // reached back and listed the 31st's legs. Worse, those phantom rows made the
-  // panel non-empty, so the "Away on trip" line that SHOULD answer for 1 Sep
-  // never appeared.
+  // There used to be a one-day reach either side, so a single tap NEXT TO a
+  // block still found that block and could extend it. It was removed on
+  // 8 Sep 2026. Kyle: a drag that crosses into the block already finds it, so
+  // the reach bought one gesture that duplicates dragging -- and charged for it
+  // by reporting a neighbouring day's PTO, training or trip as though it were
+  // the day you tapped.
   //
-  // Flight duty is derived from the trip and can never be trimmed or extended,
-  // so it is reported for the SELECTED DAYS ONLY. The reach applies solely to
-  // hand-entered blocks, which are the only rows those controls can act on.
-  //
-  // *** EVERY TRIP KIND, NOT JUST 'flight'. *** Kyle, 8 Sep 2026, from the
-  // seat: tap the day before a trip starts and you get the trip; tap the day
-  // after it lands and you get it again. The test here was a literal
-  // === 'flight', so flight_assigned -- a workbench trip, which is now how
-  // every planned trip reaches the grid -- fell through to the reach and
-  // reported itself on both neighbouring days. flight_historical and
-  // away_on_trip had the same hole. SCHED_TRIP_KINDS is the list the rest of
-  // the schedule already uses for exactly this distinction.
-  const reachLo = schedShiftISO(spanLo, -1);
-  const reachHi = schedShiftISO(spanHi, 1);
+  // The same fault has now been found twice, once for flight duty and once for
+  // everything else. **Do not reintroduce it.** If tapping beside a block needs
+  // to extend it, that is a control on the panel, not a widened query.
   const seenRef = {};
   const cell = rows.filter(function(r){
     if(r[ownerKey] !== ownerId) return false;
     const dy = String(r.day || '').slice(0,10);
-    const isDerived = !!SCHED_TRIP_KINDS[String(r[srcKey])];
-    const lo = isDerived ? spanLo : reachLo;
-    const hi = isDerived ? spanHi : reachHi;
-    if(dy < lo || dy > hi) return false;
+    if(dy < spanLo || dy > spanHi) return false;
     // A five-day block returns one row PER DAY. Keeping them all would list the
     // same block five times in the panel.
     const k = String(r[srcKey]) + '|' + String(r.ref_id || dy);
