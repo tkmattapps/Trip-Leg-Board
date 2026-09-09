@@ -1152,6 +1152,9 @@
   .wb-days-chip:hover{ border-color:var(--amber-500); }
   .wb-days-x{ color:var(--fog-500); font-size:13px; }
   .wb-days-new{ display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; padding:8px 0; }
+  .wb-days-seat{ display:block; margin-top:2px; font-size:11px; color:var(--fog-500); }
+  .wb-days-gap{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0 6px; }
+  .wb-days-gap-text{ flex:1 1 auto; font-size:12px; color:var(--alert-600); }
   .import-leg-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; }
   .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
   /* NOTES PAGE. One surface, three doorways (bottom bar / Trip Brief / leg
@@ -4523,7 +4526,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T01:55:00Z';
+const BUILD_VERSION = '2026-09-09T02:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13277,6 +13280,10 @@ function wbCrewDaysHTML(t){
   (c.acm || []).forEach(add);
   (c.fa || []).forEach(add);
   (c.unassigned || []).forEach(add);
+  // Anyone covering days who is NOT on the crew list -- a replacement. Without
+  // this they would hold days on the grid and appear nowhere on the plan that
+  // gave them those days.
+  wbCrewDaysFor(t.id).forEach(function(r){ add(r.user_id); });
   if(!people.length) return '';
 
   const canEdit = wbCanEditTrips();
@@ -13285,8 +13292,14 @@ function wbCrewDaysHTML(t){
 
   people.forEach(function(id){
     const rows = wbCrewDaysFor(t.id, id);
+    const seat = wbSeatOf(t, id);
+    const covering = !seat && rows.length;
     h += '<div class="wb-days-row">'
-      + '<span class="wb-days-name">' + escHtml(wbCrewLabel(id)) + '</span>'
+      + '<span class="wb-days-name">' + escHtml(wbCrewLabel(id))
+        + (covering
+            ? ('<span class="wb-days-seat">' + escHtml(wbSeatLabel(rows[0].seat)) + ' cover</span>')
+            : '')
+      + '</span>'
       + '<span class="wb-days-span">'
         + (rows.length
             ? rows.map(function(r){
@@ -13317,15 +13330,117 @@ function wbCrewDaysHTML(t){
     }
   });
 
+  // *** AN UNCOVERED SEAT IS THE POINT OF ALL OF THIS. ***
+  // Shortening Luke's days opens his seat for the rest of the trip, and somebody
+  // has to fly it. The gap was computable before and simply never shown, which
+  // made the feature invisible -- Kyle, 8 Sep 2026.
+  //
+  // PIC AND SIC ONLY. They hold exactly one person, so "uncovered" has a single
+  // meaning. ACM and cabin crew are lists, where the right number of people is
+  // a judgement rather than a fact, and a gap line would be asserting one.
+  ['pic', 'sic'].forEach(function(seat){
+    const gaps = wbSeatGaps(t, seat);
+    if(!gaps.length) return;
+    h += '<div class="wb-days-gap">'
+      + '<span class="wb-days-gap-text">No ' + escHtml(wbSeatLabel(seat)) + ' on '
+        + gaps.map(function(g){
+            return escHtml(wbShortDate(g.start)) + (g.start === g.end ? '' : (' \u2013 ' + escHtml(wbShortDate(g.end))));
+          }).join(', ')
+      + '</span>'
+      + (canEdit
+          ? ('<button type="button" class="wb-ac-add" data-wb-cover="' + escHtml(seat) + '">+ Cover</button>')
+          : '')
+    + '</div>';
+
+    if(wbPendingCoverSeat === (t.id + '|' + seat)){
+      const choices = wbCrewChoices(seat, t, '');
+      let opts = '<option value="">Choose a person</option>';
+      choices.forEach(function(ch){
+        opts += '<option value="' + escHtml(ch.value) + '">' + escHtml(ch.label) + '</option>';
+      });
+      h += '<div class="wb-days-new">'
+        + '<div class="wb-field"><label>' + escHtml(wbSeatLabel(seat)) + '</label>'
+          + '<select id="wbCoverWho">' + opts + '</select></div>'
+        // Seeded to the FIRST gap, which is the days the button was pressed
+        // about. Editable, because a replacement often arrives a day early.
+        + '<div class="wb-field wb-field-day"><label>From</label>'
+          + '<input type="date" id="wbCoverFrom" value="' + escHtml(gaps[0].start) + '" /></div>'
+        + '<div class="wb-field wb-field-day"><label>To</label>'
+          + '<input type="date" id="wbCoverTo" value="' + escHtml(gaps[0].end) + '" /></div>'
+        + '<button type="button" class="wb-ac-add" data-wb-coversave="' + escHtml(seat) + '">Add</button>'
+        + '<button type="button" class="wb-ac-add" data-wb-covercancel="1">Cancel</button>'
+      + '</div>';
+    }
+  });
+
   return h + '</div>';
+}
+
+function wbSeatLabel(seat){
+  return seat === 'pic' ? 'PIC'
+       : seat === 'sic' ? 'SIC'
+       : seat === 'acm' ? 'ACM'
+       : seat === 'fa'  ? 'Cabin crew' : '';
+}
+
+// Which seat this person holds on the PLAN's crew list, or '' if they are not
+// on it at all -- which is what a replacement looks like.
+function wbSeatOf(t, userId){
+  const c = t.crew || {};
+  if(c.pic === userId) return 'pic';
+  if(c.sic === userId) return 'sic';
+  if((c.acm || []).indexOf(userId) !== -1) return 'acm';
+  if((c.fa  || []).indexOf(userId) !== -1) return 'fa';
+  return '';
+}
+
+// The days in the trip's span that nobody holds this seat on.
+//
+// A row with NO SEAT belongs to whoever wrote it, and counts for the seat that
+// person holds on the crew list -- every row written before migration 78 is one
+// of those, and reading them any other way would open a gap under a seat that
+// was never vacated.
+//
+// NO ROWS AT ALL MEANS NO GAP. The seat's holder is on the whole trip, which is
+// the default and the overwhelmingly common case.
+function wbSeatGaps(t, seat){
+  if(!t.start_date || !t.end_date) return [];
+  const holder = (t.crew || {})[seat] || '';
+  const rows = wbCrewDaysFor(t.id).filter(function(r){
+    if(r.seat) return r.seat === seat;
+    return holder && r.user_id === holder;
+  });
+  if(!rows.length) return [];
+
+  const covered = {};
+  rows.forEach(function(r){
+    let d  = r.start_date <= r.end_date ? r.start_date : r.end_date;
+    const hi = r.start_date <= r.end_date ? r.end_date : r.start_date;
+    // Bounded so a bad row cannot spin here: no trip is 400 days long.
+    let guard = 0;
+    while(d <= hi && guard++ < 400){ covered[d] = 1; d = schedShiftISO(d, 1); }
+  });
+
+  const gaps = [];
+  let cur = null, day = t.start_date, guard = 0;
+  while(day <= t.end_date && guard++ < 400){
+    if(covered[day]){ if(cur){ gaps.push(cur); cur = null; } }
+    else if(cur) cur.end = day;
+    else cur = { start: day, end: day };
+    day = schedShiftISO(day, 1);
+  }
+  if(cur) gaps.push(cur);
+  return gaps;
 }
 
 // Which person's date boxes are open, as 'tripId|userId', or ''. Panel state,
 // never stored -- an open pair of boxes is an intention, not a record. Same
 // shape and same reasoning as wbPendingAircraft.
 let wbPendingCrewDays = '';
+// Which seat's cover row is open, as 'tripId|seat', or ''. Same kind of state.
+let wbPendingCoverSeat = '';
 
-async function wbAddCrewDays(tripId, userId, fromISO, toISO){
+async function wbAddCrewDays(tripId, userId, fromISO, toISO, seat){
   if(!tripId || !userId) return;
   if(!fromISO || !toISO){ showToast('Both dates are needed.'); return; }
   // Swapped ends are a typo, not an error worth refusing over. The function
@@ -13342,6 +13457,10 @@ async function wbAddCrewDays(tripId, userId, fromISO, toISO){
       flight_department_id: deptId,
       start_date: lo,
       end_date: hi,
+      // Null for somebody already on the crew list -- their seat is whatever the
+      // plan says it is, and duplicating it here is a second copy to keep in
+      // step. Named only for a replacement, who is on no list to read it from.
+      seat: seat || null,
       created_by: user ? user.id : null
     }).select();
     if(error) throw error;
@@ -13349,6 +13468,7 @@ async function wbAddCrewDays(tripId, userId, fromISO, toISO){
     // and reporting that as saved is the failure this pattern exists to catch.
     if(!data || !data.length){ showToast('Not saved \u2014 admin only.'); return; }
     wbPendingCrewDays = '';
+    wbPendingCoverSeat = '';
     await loadWorkbenchTripCrewDays();
     // The grid derives days from this table now, so what it is showing is stale.
     schedData = null;
@@ -14181,7 +14301,26 @@ function wbWireEditor(){
       const from = document.getElementById('wbDayFrom');
       const to   = document.getElementById('wbDayTo');
       wbAddCrewDays(id, btn.getAttribute('data-wb-daysave') || '',
-                    from ? from.value : '', to ? to.value : '');
+                    from ? from.value : '', to ? to.value : '', '');
+    });
+  });
+  document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-cover]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      wbPendingCoverSeat = id + '|' + (btn.getAttribute('data-wb-cover') || '');
+      wbRepaint();
+    });
+  });
+  document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-covercancel]').forEach(function(btn){
+    btn.addEventListener('click', function(){ wbPendingCoverSeat = ''; wbRepaint(); });
+  });
+  document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-coversave]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      const who  = document.getElementById('wbCoverWho');
+      const from = document.getElementById('wbCoverFrom');
+      const to   = document.getElementById('wbCoverTo');
+      if(!who || !who.value){ showToast('Choose who is covering.'); return; }
+      wbAddCrewDays(id, who.value, from ? from.value : '', to ? to.value : '',
+                    btn.getAttribute('data-wb-coversave') || '');
     });
   });
   document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-daydel]').forEach(function(el){
@@ -14297,6 +14436,8 @@ function openWorkbenchTrip(id, origin){
   // set would paint a choose-an-aircraft row into the trip being opened.
   wbPendingAircraft = '';
   wbPendingCrewSlot = '';
+  wbPendingCrewDays = '';
+  wbPendingCoverSeat = '';
   // The sheet's DOM only. NOT closeWorkbench() -- that re-reads the schedule
   // when the grid is dirty, and openScheduleView sets state.view back to
   // 'schedule', which would land us on the grid instead of the trip.
@@ -14314,6 +14455,8 @@ async function wbBackToWorkbench(){
   wbExpandedId = '';
   wbPendingAircraft = '';
   wbPendingCrewSlot = '';
+  wbPendingCrewDays = '';
+  wbPendingCoverSeat = '';
   // A date or a tail edited on the page moves days on the grid. Drop the cache
   // here so the schedule behind the panel is re-read once, rather than sitting
   // stale until someone leaves the schedule entirely -- the fault Kyle found by
@@ -14352,6 +14495,8 @@ function openWorkbench(){
   wbExpandedId = '';
   wbPendingAircraft = '';
   wbPendingCrewSlot = '';
+  wbPendingCrewDays = '';
+  wbPendingCoverSeat = '';
   // Cleared here, and set again by openWorkbenchAtTrip immediately AFTER this
   // returns. A jump abandoned before its load landed would otherwise leave the
   // id sitting there and open the next plain visit onto the wrong trip.
