@@ -2424,10 +2424,30 @@
   .ab-mark{ display:inline-flex; align-items:center; justify-content:center;
     width:15px; height:15px; color:var(--amber-500); flex:0 0 auto; }
   .ab-mark svg{ width:100%; height:100%; }
-  .ab-subtabs{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
-  .ab-subtab{ background:none; border:1px solid var(--hairline); border-radius:14px;
-    font-family:system-ui,'Inter',sans-serif; font-size:12px; font-weight:600;
-    color:var(--fog-500); padding:5px 13px; cursor:pointer; }
+  /* The identifier field and the three subject buttons share one row. The field
+     takes four characters and no more; the buttons take what is left and wrap
+     under it on a phone. align-items:flex-start so the buttons sit level with
+     the field rather than being stretched by the hint line under it. */
+  .notes-pins-brief{ align-items:flex-start; }
+  .notes-pins-brief > .notes-pin-code{ flex:0 0 150px; }
+  .ab-subtabs{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:0; }
+  /* Glyph above, word below. The button is a column rather than a pill because
+     the icon is doing the identifying and the word is confirming it. */
+  .ab-subtab{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+    background:none; border:1px solid var(--hairline); border-radius:10px;
+    font-family:system-ui,'Inter',sans-serif; font-size:11px; font-weight:600;
+    color:var(--fog-500); padding:8px 12px 7px; cursor:pointer;
+    min-width:72px;
+  }
+  /* Stroked, not filled: a filled glyph at this size turns into a blob, and
+     the on-state needs the shape to survive being inverted. */
+  .ab-subtab svg{
+    width:22px; height:22px; display:block;
+    fill:none; stroke:currentColor; stroke-width:1.6;
+    stroke-linecap:round; stroke-linejoin:round;
+  }
+  .ab-subtab-label{ line-height:1; }
   .ab-subtab:hover{ color:var(--fog-300); border-color:var(--fog-500); }
   .ab-subtab.is-on{ color:var(--ink-900); background:var(--amber-500); border-color:var(--amber-500); }
   .ab-code-input{ text-transform:uppercase; letter-spacing:0.12em; max-width:150px; }
@@ -4559,7 +4579,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T04:05:00Z';
+const BUILD_VERSION = '2026-09-09T04:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -20117,8 +20137,11 @@ function paintAirportCodeNote(){
 
 function airportBriefPinHTML(){
   const code = notesIcao();
-  return '<div class="notes-pins">' +
-      '<div class="notes-pin">' +
+  // THE SUBJECT BUTTONS SIT ON THIS ROW. The identifier field is four
+  // characters wide and had a whole row to itself, with the three subject
+  // buttons taking another one below it. Kyle, 8 Sep 2026.
+  return '<div class="notes-pins notes-pins-brief">' +
+      '<div class="notes-pin notes-pin-code">' +
         '<label for="abCodeInput">Airport</label>' +
         '<input id="abCodeInput" class="ab-code-input" type="text" maxlength="4" ' +
           'autocomplete="off" autocapitalize="characters" spellcheck="false" ' +
@@ -20127,6 +20150,7 @@ function airportBriefPinHTML(){
         // the async loader always has something to paint into.
         '<div id="abCodeNote">' + abCodeNoteHTML() + '</div>' +
       '</div>' +
+      abSubtabsHTML() +
     '</div>';
 }
 
@@ -20158,6 +20182,11 @@ function syncAbSourceButton(btn){
 const AB_KIND_META = {
   ops: {
     tab: 'Airport brief',
+    // The word under the glyph. Its OWN field, not a substring of tab -- the
+    // comment on the heading below is the reason: a display label must never be
+    // load-bearing for anything else, and slicing 'Airport brief' would break
+    // the moment somebody renamed it.
+    short: 'Airport',
     head: 'Airport operations',
     sub: 'How this airport works \u2014 handlers, fuel, customs, flight plan processing.',
     body: 'What happened here\u2026',
@@ -20166,6 +20195,7 @@ const AB_KIND_META = {
   },
   city: {
     tab: 'City brief',
+    short: 'City',
     head: 'City recommendations',
     sub: 'Where to eat, hotels to avoid, getting around.',
     body: 'What you found here\u2026',
@@ -20174,6 +20204,7 @@ const AB_KIND_META = {
   },
   cabin: {
     tab: 'Cabin brief',
+    short: 'Cabin',
     head: 'Cabin reference',
     sub: 'Catering, provisioning and cabin service reference.',
     body: 'What you found here\u2026',
@@ -20184,11 +20215,42 @@ const AB_KIND_META = {
 function abKindMeta(){ return AB_KIND_META[notesKind()] || AB_KIND_META.ops; }
 function notesKind(){ return abKind((state.notes || {}).kind); }
 
+// *** THREE DIFFERENT SILHOUETTES, NOT THREE VARIATIONS ON A BUILDING. ***
+// Kyle picked these on 8 Sep 2026. Each is recognisable at 22px by its outline
+// alone, which is the whole test for an icon this small: a tower is tall and
+// narrow, a skyline is rectilinear and wide, a cabin window is the only curve.
+// A plane on any of them would have said "aviation" three times and nothing
+// else. Inline SVG so nothing new is fetched, and currentColor so the on-state
+// comes from the button rather than a second copy of the palette.
+const AB_KIND_GLYPH = {
+  // Control tower: splayed base, shaft, and a cab wider than what holds it up.
+  ops: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
+     + '<path d="M7 4h10l-1.5 5h-7L7 4z"/>'
+     + '<path d="M9.5 9 8 20M14.5 9 16 20"/>'
+     + '<path d="M6 20h12"/></svg>',
+  // Skyline: three blocks, uneven, sharing a baseline.
+  city: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
+      + '<path d="M3 20V11h5v9M8 20V6h8v14M16 20v-6h5v6"/>'
+      + '<path d="M2 20h20"/></svg>',
+  // Cabin window: the aircraft oval, and the only curve in the set.
+  cabin: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
+       + '<rect x="7" y="3" width="10" height="18" rx="5"/>'
+       + '<rect x="9.5" y="6" width="5" height="12" rx="2.5"/></svg>'
+};
+
 function abSubtabsHTML(){
   const cur = notesKind();
   return '<div class="ab-subtabs">' + AB_KINDS.map(function(k){
+    const m = AB_KIND_META[k];
     return '<button type="button" class="ab-subtab' + (k === cur ? ' is-on' : '') +
-      '" data-ab-kind="' + k + '">' + AB_KIND_META[k].tab + '</button>';
+      '" data-ab-kind="' + k + '"' +
+      // The long name still exists for anyone who needs it -- a screen reader,
+      // or a pointer resting on the glyph. The word under it is only the short
+      // one because the glyph is carrying the rest.
+      ' title="' + escapeHtml(m.tab) + '" aria-label="' + escapeHtml(m.tab) + '">' +
+      AB_KIND_GLYPH[k] +
+      '<span class="ab-subtab-label">' + escapeHtml(m.short || m.tab) + '</span>' +
+      '</button>';
   }).join('') + '</div>';
 }
 
@@ -20225,7 +20287,6 @@ function airportBriefBlockHTML(){
   const d = abDraftFor(notesKind());
   return '<div class="section" id="airportBriefSection" style="margin-top:18px;">' +
       '<div class="trip-log">' +
-        abSubtabsHTML() +
         '<div class="trip-log-head">' +
           // The heading is its OWN field on AB_KIND_META, never derived from
           // the pill label. It used to switch on m.tab, so renaming the pills
