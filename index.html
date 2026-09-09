@@ -1171,6 +1171,8 @@
   .wb-days-new .wb-ac-add{ align-self:flex-end; height:38px; padding:0 12px; width:auto; min-width:96px; }
   .wb-days-new .wb-field{ flex:0 0 160px; }
   .wb-days-new .wb-field-day{ flex:0 0 150px; }
+  .wb-days-new .wb-field-leg{ flex:0 0 96px; }
+  .wb-days-leg{ color:var(--fog-500); font-size:11px; }
   /* The add button sits directly under either the last day row or the "None on
      this trip" line, both of which end flush. margin-top:auto is what the crew
      and aircraft rows use, but that only works inside a stretched column -- out
@@ -4557,7 +4559,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T03:48:00Z';
+const BUILD_VERSION = '2026-09-09T04:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13474,6 +13476,7 @@ function wbCrewDaysHTML(t){
             ? rows.map(function(r){
                 return '<span class="wb-days-chip" data-wb-daydel="' + escHtml(r.id) + '">'
                   + escHtml(wbShortDate(r.start_date)) + ' \u2013 ' + escHtml(wbShortDate(r.end_date))
+                  + (r.start_leg ? ('<span class="wb-days-leg">from leg ' + escHtml(String(r.start_leg)) + '</span>') : '')
                   + (canEdit ? '<span class="wb-days-x">\u00d7</span>' : '')
                   + '</span>';
               }).join('')
@@ -13493,6 +13496,11 @@ function wbCrewDaysHTML(t){
           + '<input type="date" id="wbDayFrom" value="' + escHtml(t.start_date || '') + '" /></div>'
         + '<div class="wb-field wb-field-day"><label>To</label>'
           + '<input type="date" id="wbDayTo" value="' + escHtml(t.end_date || '') + '" /></div>'
+        // OPTIONAL, and empty means the whole first day. It only matters for a
+        // handover part way through a date -- a swap at a tech stop -- and it
+        // is left blank on almost every range.
+        + '<div class="wb-field wb-field-leg"><label>From leg</label>'
+          + '<input type="number" min="1" id="wbDayLeg" placeholder="all day" /></div>'
         + '<button type="button" class="wb-ac-add" data-wb-daysave="' + escHtml(id) + '">Add</button>'
         + '<button type="button" class="wb-ac-add" data-wb-daycancel="1">Cancel</button>'
       + '</div>';
@@ -13536,6 +13544,8 @@ function wbCrewDaysHTML(t){
           + '<input type="date" id="wbCoverFrom" value="' + escHtml(gaps[0].start) + '" /></div>'
         + '<div class="wb-field wb-field-day"><label>To</label>'
           + '<input type="date" id="wbCoverTo" value="' + escHtml(gaps[0].end) + '" /></div>'
+        + '<div class="wb-field wb-field-leg"><label>From leg</label>'
+          + '<input type="number" min="1" id="wbCoverLeg" placeholder="all day" /></div>'
         + '<button type="button" class="wb-ac-add" data-wb-coversave="' + escHtml(seat) + '">Add</button>'
         + '<button type="button" class="wb-ac-add" data-wb-covercancel="1">Cancel</button>'
       + '</div>';
@@ -13613,7 +13623,7 @@ let wbPendingPosDay = '';
 // Which positioning day has its person picker open, or ''.
 let wbPendingPosPerson = '';
 
-async function wbAddCrewDays(tripId, userId, fromISO, toISO, seat){
+async function wbAddCrewDays(tripId, userId, fromISO, toISO, seat, startLeg){
   if(!tripId || !userId) return;
   if(!fromISO || !toISO){ showToast('Both dates are needed.'); return; }
   // Swapped ends are a typo, not an error worth refusing over. The function
@@ -13634,6 +13644,10 @@ async function wbAddCrewDays(tripId, userId, fromISO, toISO, seat){
       // plan says it is, and duplicating it here is a second copy to keep in
       // step. Named only for a replacement, who is on no list to read it from.
       seat: seat || null,
+      // Null means the whole of the first day. A number means this person picks
+      // the seat up at that leg -- which is also what ends the previous
+      // holder's run on that date, so only one of the two is ever entered.
+      start_leg: (startLeg && Number(startLeg) >= 1) ? Number(startLeg) : null,
       created_by: user ? user.id : null
     }).select();
     if(error) throw error;
@@ -14164,11 +14178,73 @@ function wbSeatListText(ids){
   return (ids || []).map(wbSeatText).filter(Boolean).join(', ');
 }
 
+// *** WHO HOLDS EACH SEAT ON ONE PARTICULAR LEG. ***
+//
+// Three layers, in this order:
+//
+//   1. A range covering the leg's date, for that seat. If it names a start_leg,
+//      it only applies from that leg onward -- which is how a swap at a tech
+//      stop works: two ranges, same seat, same date, and the one with the
+//      HIGHEST start_leg not above this leg wins.
+//   2. Failing that, the plan's own crew list -- but only for somebody who has
+//      NO ranges on this trip at all. A person with ranges has said exactly
+//      which days are theirs, and falling back to the whole trip for them would
+//      undo that.
+//   3. Nothing. An empty seat on that leg is a real answer, not a gap to fill.
+function wbCrewForLeg(t, dateISO, legNo){
+  const c = t.crew || {};
+  const all = wbCrewDaysFor(t.id);
+  const hasRanges = {};
+  all.forEach(function(r){ hasRanges[r.user_id] = true; });
+
+  const n = Number(legNo || 0);
+  const covering = all.filter(function(r){
+    if(!dateISO) return false;
+    const lo = r.start_date <= r.end_date ? r.start_date : r.end_date;
+    const hi = r.start_date <= r.end_date ? r.end_date : r.start_date;
+    if(dateISO < lo || dateISO > hi) return false;
+    // A range that starts at a leg cannot be placed on a leg with no number, so
+    // it is left out rather than guessed at.
+    if(r.start_leg) return n >= Number(r.start_leg);
+    return true;
+  });
+  // A row with no seat belongs to whatever seat that person holds on the plan.
+  function seatOf(r){ return r.seat || wbSeatOf(t, r.user_id); }
+
+  const out = { pic: '', sic: '', acm: [], fa: [] };
+
+  ['pic', 'sic'].forEach(function(seat){
+    const cand = covering.filter(function(r){ return seatOf(r) === seat; });
+    if(cand.length){
+      // Latest handover at or before this leg wins. A row with no start_leg
+      // sorts lowest, which is right: it held the seat from the top of the day.
+      cand.sort(function(a, b){ return Number(a.start_leg || 0) - Number(b.start_leg || 0); });
+      out[seat] = cand[cand.length - 1].user_id;
+      return;
+    }
+    const holder = c[seat] || '';
+    if(holder && !hasRanges[holder]) out[seat] = holder;
+  });
+
+  ['acm', 'fa'].forEach(function(seat){
+    const ids = [];
+    covering.forEach(function(r){
+      if(seatOf(r) !== seat) return;
+      if(ids.indexOf(r.user_id) === -1) ids.push(r.user_id);
+    });
+    (c[seat] || []).forEach(function(id){
+      if(!hasRanges[id] && ids.indexOf(id) === -1) ids.push(id);
+    });
+    out[seat] = ids;
+  });
+
+  return out;
+}
+
 // Everything this push would do, as a flat list. Nothing is written here.
 function wbPushItemsForPlan(t){
   const items = [];
   const cards = cardsSharingWbTrip(t.id, '');
-  const crew  = (t.crew && typeof t.crew === 'object') ? t.crew : {};
 
   cards.forEach(function(card){
     (card.legs || []).slice()
@@ -14177,6 +14253,10 @@ function wbPushItemsForPlan(t){
         const label = 'Leg ' + (leg.legNumber || '?') + ' \u00b7 ' +
           ((leg.dep && leg.dep.airportId) || '?') + ' \u2192 ' + ((leg.arr && leg.arr.airportId) || '?');
         const lc = (leg.crew && typeof leg.crew === 'object') ? leg.crew : {};
+        // PER LEG, NOT PER TRIP. The plan's one crew list was applied to every
+        // leg, which cannot express a swap half way through a trip -- let alone
+        // one at a tech stop.
+        const crew = wbCrewForLeg(t, leg.date || '', leg.legNumber);
 
         // Tail
         const planTail = wbPlanTailForLegDate(t, leg.date || '');
@@ -14201,8 +14281,8 @@ function wbPushItemsForPlan(t){
         // a decision anyone made, so a reorder is not a conflict.
         [['fa', 'Cabin crew'], ['acm', 'ACM']].forEach(function(pair){
           const slot = pair[0];
-          const planIds = Array.isArray(crew[slot]) ? crew[slot].filter(Boolean) : [];
-          const legIds  = Array.isArray(lc[slot])   ? lc[slot].filter(Boolean)   : [];
+          const planIds = (crew[slot] || []).filter(Boolean);
+          const legIds  = Array.isArray(lc[slot]) ? lc[slot].filter(Boolean) : [];
           if(!planIds.length) return;
           const same = planIds.slice().sort().join('|') === legIds.slice().sort().join('|');
           if(same) return;
@@ -14588,8 +14668,9 @@ function wbWireEditor(){
     btn.addEventListener('click', function(){
       const from = document.getElementById('wbDayFrom');
       const to   = document.getElementById('wbDayTo');
+      const lg   = document.getElementById('wbDayLeg');
       wbAddCrewDays(id, btn.getAttribute('data-wb-daysave') || '',
-                    from ? from.value : '', to ? to.value : '', '');
+                    from ? from.value : '', to ? to.value : '', '', lg ? lg.value : '');
     });
   });
   document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-cover]').forEach(function(btn){
@@ -14606,9 +14687,10 @@ function wbWireEditor(){
       const who  = document.getElementById('wbCoverWho');
       const from = document.getElementById('wbCoverFrom');
       const to   = document.getElementById('wbCoverTo');
+      const lg   = document.getElementById('wbCoverLeg');
       if(!who || !who.value){ showToast('Choose who is covering.'); return; }
       wbAddCrewDays(id, who.value, from ? from.value : '', to ? to.value : '',
-                    btn.getAttribute('data-wb-coversave') || '');
+                    btn.getAttribute('data-wb-coversave') || '', lg ? lg.value : '');
     });
   });
   document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-posdaynew]').forEach(function(btn){
