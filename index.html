@@ -4493,7 +4493,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T00:05:00Z';
+const BUILD_VERSION = '2026-09-09T00:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8605,6 +8605,15 @@ function openTripDetail(tripKey, origin){
   updateNavTabs();
   renderList();
   renderMain();
+  // *** ALWAYS LEG 1. *** Kyle, 8 Sep 2026. Nothing here remembered a leg -- the
+  // WINDOW's scroll position simply survived the view swap, so arriving from a
+  // card left you part-way down the brief, and the header strip then described
+  // whichever band the scroll line happened to be on. Same call the nav tabs
+  // already make for the same reason.
+  //
+  // Deliberately NOT in the back-button path: state.view is set directly there,
+  // so returning from a leg still puts you back where you were on the list.
+  window.scrollTo(0, 0);
 }
 
 // ================= NON-FLYING EVENT DETAIL =================
