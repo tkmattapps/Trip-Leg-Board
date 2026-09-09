@@ -3470,6 +3470,9 @@
   }
   .trip-link-sep{ font-size:11px; color:var(--fog-500); }
   .trip-link-row .trip-link-line{ margin-top:0; }
+  /* The plan editor stacks it under the delete row, which has no bottom gap of
+     its own. Scoped so the brief's copy is untouched. */
+  .wb-edit .trip-link-row{ margin-top:14px; }
   .trip-link-none{ font-size:11px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
   .trip-link-btn{
     background:none; border:1px solid var(--hairline);
@@ -4484,7 +4487,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T22:45:00Z';
+const BUILD_VERSION = '2026-09-08T23:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13444,9 +13447,42 @@ function wbTripFormHTML(t){
           + '>Delete this trip</button>'
         + '</div>'
       + '</div>'
+      + wbTripLinkRowHTML(t)
       + '<div class="wb-edit-note">Changes save as you leave each field.</div>'
     + '</div>'
     + '</div>';
+}
+
+// LINKING LIVES ON THE PLAN. Kyle, 8 Sep 2026 -- everything build related lives
+// here, and saying this trip continues from another is framework work.
+//
+// NOTHING AT ALL WHEN THE PLAN HAS NO CARD, and that is Kyle's rule rather than
+// a limitation worked around. A link points at another trip CARD -- the legs'
+// group id is what is stored -- so a plan with no paperwork behind it has
+// nothing to point from. That is the NORMAL state of a plan built by hand
+// months ahead, so the row is absent rather than disabled: a disabled control
+// implies something to unlock, and there is nothing here to ask anyone for.
+//
+// TWO CARDS ON ONE PLAN IS A REAL STATE -- one journey the paperwork split into
+// two numbered trips -- so each gets its own row and its own button, named, or
+// the button could not say which trip it was about to link.
+function wbTripLinkRowHTML(t){
+  const cards = cardsSharingWbTrip(t.id, '');
+  if(!cards.length) return '';
+  return cards.map(function(c){
+    const facts = tripLinkLine(c) || '<span class="trip-link-none">Not linked</span>';
+    const name  = c.tripNumber ? ('Trip ' + c.tripNumber) : 'Unnumbered trip';
+    return '<div class="trip-link-row">'
+      + '<div class="trip-link-facts">'
+        + (cards.length > 1
+            ? ('<span class="trip-link-none">' + escHtml(name) + '</span><span class="trip-link-sep">\u00b7</span>')
+            : '')
+        + facts
+      + '</div>'
+      + '<button type="button" class="trip-link-btn" data-wb-linkcard="' + escHtml(c.key) + '">'
+        + (tripLinkCount(c) ? 'Change link' : 'Link trip') + '</button>'
+    + '</div>';
+  }).join('');
 }
 
 function workbenchTableHTML(trips){
@@ -13673,6 +13709,18 @@ async function wbChooseAircraft(tripId, aircraftId){
 function wbWireEditor(){
   const id = wbExpandedId;
   if(!id) return;
+  // The link button opens the same picker the brief used to. Resolved to a live
+  // card at click time rather than closed over at render time -- the legs can
+  // reload underneath this screen.
+  document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-linkcard]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      const key = btn.getAttribute('data-wb-linkcard') || '';
+      const card = groupIntoTrips((state.legs || []).filter(function(l){ return !l.deletedAt; }))
+        .find(function(t){ return t.key === key; });
+      if(!card){ showToast('That trip is no longer on the board.'); return; }
+      openTripLinkPicker(card);
+    });
+  });
   // Aircraft rows first: same change-not-blur rule, one column per write. A
   // date here moves days on the grid, so the grid cache is dropped.
   document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-seat]').forEach(function(el){
@@ -18187,10 +18235,11 @@ function renderTripDetailView(){
       // left that produces a card needing to be paired by hand afterwards.
       // The plan is still stated here as a fact; Plan it on the card is how you
       // travel to it.
+      // LINK TRIP IS GONE FROM HERE. Kyle, 8 Sep 2026 -- it lives on the plan
+      // with the rest of the build work. The facts stay: the brief is a read
+      // view and where this trip sits in a longer journey is worth reading.
       return '<div class="trip-link-row">' +
         '<div class="trip-link-facts">' + facts.join('<span class="trip-link-sep">\u00b7</span>') + '</div>' +
-        '<button type="button" class="trip-link-btn" id="tripLinkBtn">' +
-          (tripLinkCount(trip) ? 'Change link' : 'Link trip') + '</button>' +
       '</div>';
     })() +
     // NO .dash-grid. That grid puts two cards side by side on an iPad, which is
@@ -18204,13 +18253,6 @@ function renderTripDetailView(){
       '<div id="tripHistoryPanel" class="leg-history-panel" style="display:none;"></div>') : '') +
     tripArchiveBlockHTML(trip);
 
-  const linkBtn = document.getElementById('tripLinkBtn');
-  if(linkBtn){
-    linkBtn.addEventListener('click', function(){
-      autoSaveIfEditing();
-      openTripLinkPicker(trip);
-    });
-  }
   // The brief is not wired by wireCardClicks, so its own copy of the line needs
   // the jump bound here.
   main.querySelectorAll('.trip-link-row .trip-link-line[data-trip-link-to]').forEach(function(el){
