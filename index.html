@@ -1176,6 +1176,8 @@
      and aircraft rows use, but that only works inside a stretched column -- out
      here the block is full width, so it is a plain gap. */
   .wb-days-block > .wb-crew-adds{ margin-top:12px; }
+  /* Delete's own row at the foot of the card, pushed hard right. */
+  .wb-edit-delete-row{ display:flex; justify-content:flex-end; margin-top:16px; }
   .wb-days-seat{ display:block; margin-top:2px; font-size:11px; color:var(--fog-500); }
   .wb-days-gap{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0 6px; }
   .wb-days-gap-text{ flex:1 1 auto; font-size:12px; color:var(--alert-600); }
@@ -2781,13 +2783,6 @@
      which is what should happen to a crew that is not the normal one.
      The add buttons size to their own text here; 160px each would have put the
      wrap straight back. */
-  /* align-self:stretch is what puts Delete on the BOTTOM edge -- without it the
-     column is only as tall as the button and flex-end has nothing to push
-     against. */
-  .wb-edit-half-actions{
-    flex:0 0 auto; margin-left:auto; align-self:stretch;
-    justify-content:flex-end; align-items:flex-end;
-  }
   .wb-field{ display:flex; flex-direction:column; gap:5px; min-width:0; }
   .wb-field label{
     font-size:10px; font-weight:600; letter-spacing:0.06em;
@@ -4550,7 +4545,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T03:20:00Z';
+const BUILD_VERSION = '2026-09-09T03:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14026,21 +14021,14 @@ function wbTripFormHTML(t){
           + escHtml(t.notes || '') + '</textarea>'
         + '</div>'
       + '</div>'
-      // Line 3 -- tail, PIC and SIC across the left half; the delete control
-      // alone on the right. It sits on this line rather than below it because
-      // the editor had a whole row to itself for one button, and it is kept out
-      // of the fields' half because it is not a field: pressing it ends the trip
-      // rather than editing it. Disabled rather than hidden for a non-admin -- a
-      // crew member should see the trip can be deleted and know to ask.
+      // Line 3 -- tail and the seats. Delete used to sit on the right of this
+      // line; it now lives at the foot of the card, below everything, because
+      // that line is no longer the end of the editor and a control that ends
+      // the trip should not sit half way up it.
       + '<div class="wb-edit-line">'
         + '<div class="wb-edit-half">'
           + wbAircraftEditHTML(t)
           + wbCrewEditHTML(t)
-        + '</div>'
-        + '<div class="wb-edit-half wb-edit-half-actions">'
-          + '<button type="button" class="wb-trip-withdraw" data-wb-tripdel="'
-          + escHtml(t.id || '') + '"' + (wbCanEditTrips() ? '' : ' disabled')
-          + '>Delete this trip</button>'
         + '</div>'
       + '</div>'
       // *** THEIR OWN ROWS, NOT INSIDE THE CREW COLUMN. ***
@@ -14054,6 +14042,16 @@ function wbTripFormHTML(t){
       + wbPositioningHTML(t)
       + wbTripLinkRowHTML(t)
       + '<div class="wb-edit-note">Changes save as you leave each field.</div>'
+      // *** LAST THING ON THE CARD, HARD RIGHT. ***
+      // It is not a field -- pressing it ends the trip rather than editing one
+      // -- so it sits below the save note, past everything that does edit.
+      // Disabled rather than hidden for a non-admin: a crew member should see
+      // the trip can be deleted and know who to ask.
+      + '<div class="wb-edit-delete-row">'
+        + '<button type="button" class="wb-trip-withdraw" data-wb-tripdel="'
+        + escHtml(t.id || '') + '"' + (wbCanEditTrips() ? '' : ' disabled')
+        + '>Delete this trip</button>'
+      + '</div>'
     + '</div>'
     + '</div>';
 }
