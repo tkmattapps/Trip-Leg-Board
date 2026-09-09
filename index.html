@@ -4591,7 +4591,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T14:05:00Z';
+const BUILD_VERSION = '2026-09-09T14:25:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12004,18 +12004,25 @@ function tripCardHTML(trip){
           // work. Set crew and Set aircraft used to sit here; both are build
           // work, and build work lives on the plan. See the one-trip design.
           //
-          // WAS "Plan it" / "Fly it". Kyle, 9 Sep 2026: both told you to do work.
-          // Plan it read as "go and plan this" when dispatch had already planned
-          // it, and Fly it read as something you open on the day when a pilot is
-          // in there days ahead. Nouns name the door: Plan opens the Trip Plan,
-          // Brief opens the Trip Brief. The word you tap is the word you land on.
-          '<button type="button" class="trip-quick-btn" data-plan-key="' + escapeHtml(trip.key) + '">Plan</button>' +
-          '<button type="button" class="trip-quick-btn" data-fly-key="' + escapeHtml(trip.key) + '">Brief</button>' +
+          // WAS "Plan it" / "Fly it", then "Plan" / "Brief". Kyle, 9 Sep 2026.
+          // The verbs told you to do work: Plan it read as "go and plan this"
+          // when dispatch had already planned it, and Fly it read as something
+          // you open on the day, when a pilot is in there days ahead. The bare
+          // nouns fixed that but named a room rather than a door -- no sense of
+          // going anywhere. Gerunds carry the movement and still land on the
+          // screen they name: Planning -> Trip Plan, Briefing -> Trip Brief.
+          //
+          // OPEN, not settled. Neither word says "this half is mine". The crew
+          // side is where a pilot verifies sections and signs off, and Briefing
+          // still reads as something you go and read. This pair is an
+          // improvement, not a decision.
+          '<button type="button" class="trip-quick-btn" data-plan-key="' + escapeHtml(trip.key) + '">Planning</button>' +
+          '<button type="button" class="trip-quick-btn" data-fly-key="' + escapeHtml(trip.key) + '">Briefing</button>' +
         '</div>') +
   '</div>';
 }
 
-// PLAN. One button, one meaning: take me to this trip's plan.
+// PLANNING. One button, one meaning: take me to this trip's plan.
 //
 // Linked, it navigates. Not linked, it creates and then navigates. It does NOT
 // offer candidates, and that is a deliberate call by Kyle, 8 Sep 2026 --
@@ -12085,7 +12092,7 @@ function wireCardClicks(originView){
   document.querySelectorAll('.dash-card').forEach(card => {
     card.addEventListener('click', () => {
       // *** A TRIP CARD IS NOT A BUTTON. *** Kyle, 8 Sep 2026. It carries two
-      // named ones -- Plan and Brief -- and those are the only ways off it.
+      // named ones -- Planning and Briefing -- and those are the only ways off it.
       // A whole-card tap could only pick one of the two destinations, which
       // makes the card silently prefer a door the person did not choose.
       // Archived cards and single leg tiles are unaffected: each of those has
@@ -15022,7 +15029,7 @@ function openWorkbench(){
 // *** THE PAGE. ***
 // Header follows the leg checklist and the training event detail: the TITLE
 // names the screen, the line under it says which one you are on. "Trip Plan" is
-// the destination of the Plan button, so the word you tapped is the word at
+// the destination of the Planning button, so the word you tapped is the word at
 // the top of where you land.
 //
 // Back names the month list in the same words the button and the panel title
@@ -15033,7 +15040,7 @@ function renderWorkbenchTripView(){
   const main = document.getElementById('mainPanel');
   if(!main) return;
   const mo = wbShownMonth();
-  // BACK GOES WHERE YOU CAME FROM. Opened from a trip card via Plan, that is
+  // BACK GOES WHERE YOU CAME FROM. Opened from a trip card via Planning, that is
   // Active Trips; opened from the month's list, it is that list.
   const fromCard  = (wbTripOrigin === 'dashboard');
   const backLabel = fromCard ? 'Active Trips' : schedTripsBtnLabel(mo.y, mo.m);
@@ -19303,7 +19310,7 @@ function renderTripDetailView(){
     // Assign and Link buttons moved to the plan, what was left was a bordered
     // strip restating the tail and routing already in the header above it. The
     // brief is the flying view and the legs are what it is for. Both facts are
-    // on the plan, one tap away via Plan on the card.
+    // on the plan, one tap away via Planning on the card.
 
     // NO .dash-grid. That grid puts two cards side by side on an iPad, which is
     // exactly what stopped a leg reading as a single unit.
