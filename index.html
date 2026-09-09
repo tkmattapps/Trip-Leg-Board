@@ -2640,19 +2640,25 @@
      LABEL ON ONE LINE. "Trip Plan", not "Trip" over "Plan" -- white-space:nowrap
      so the two words can never come apart, which also means nothing here
      depends on knowing how wide the card is.
-     SIZED TO CONTENT, NOT STRETCHED. A bare control has no visible edges, so
-     splitting the row's width between two of them would only move edges nobody
-     can see. The row's gap does the separating instead.
+     EACH DOOR TAKES HALF THE ROW, glyph centred in its half. Kyle, 9 Sep 2026:
+     centred and equally spaced across the card, on a phone and on a Mac. Two
+     equal halves put the centres at a quarter and three quarters of the width
+     at every size, so nothing here depends on knowing what that width is. The
+     row gap is 0 for the same reason -- a fixed gap would eat a different
+     proportion of a 390px card than of a 1400px one.
+     Half a card is also a far bigger tap target than the 60px the glyph and
+     its label actually occupy.
      *** SPECIFICITY, AND IT MATTERS HERE. *** .trip-quick-row .trip-quick-btn
-     above is TWO classes and sets flex:1 1 0 and min-width:0. A single-class
-     override of either would be dead on arrival, so the two properties that
-     have to beat it are written at the same weight, in a descendant rule
-     placed after it. Do not move them into the plain .trip-quick-btn-stack
-     block "for tidiness" -- they will silently stop working.
+     above is TWO classes and sets min-width:0. A single-class override would be
+     dead on arrival, so min-width is written at the same weight in a descendant
+     rule placed after it. Do not move it into the plain .trip-quick-btn-stack
+     block "for tidiness" -- it will silently stop working. flex:1 1 0 is
+     deliberately NOT restated: it is inherited from that same rule and is
+     already what this needs.
      min-height is 44 because the glyph and its label only come to about 33,
      and a bare control still has to be a real tap target. */
-  .trip-quick-row-doors{ gap:24px; }
-  .trip-quick-row .trip-quick-btn-stack{ flex:0 0 auto; min-width:60px; min-height:44px; }
+  .trip-quick-row-doors{ gap:0; }
+  .trip-quick-row .trip-quick-btn-stack{ min-width:60px; min-height:44px; }
   .trip-quick-btn-stack{
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:3px;
@@ -4631,7 +4637,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T16:15:00Z';
+const BUILD_VERSION = '2026-09-09T16:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
