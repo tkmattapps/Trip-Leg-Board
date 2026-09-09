@@ -4586,7 +4586,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T04:42:00Z';
+const BUILD_VERSION = '2026-09-09T04:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -20233,10 +20233,10 @@ function notesKind(){ return abKind((state.notes || {}).kind); }
 // *** THREE DIFFERENT SILHOUETTES, NOT THREE VARIATIONS ON A BUILDING. ***
 // Kyle picked these on 8 Sep 2026. Each is recognisable at 20px by its outline
 // alone, which is the whole test for an icon this small: a tower is tall and
-// narrow, a skyline is rectilinear and wide, a seat is the only one with a
-// corner in it. A plane on any of them would have said "aviation" three times
-// and nothing else. Inline SVG so nothing new is fetched, and currentColor so
-// the on-state comes from the button rather than a second copy of the palette.
+// narrow, a skyline is rectilinear and wide, a cup is the only round one. A
+// plane on any of them would have said "aviation" three times and nothing
+// else. Inline SVG so nothing new is fetched, and currentColor so the on-state
+// comes from the button rather than a second copy of the palette.
 const AB_KIND_GLYPH = {
   // Control tower: splayed base, shaft, and a cab wider than what holds it up.
   ops: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
@@ -20247,14 +20247,14 @@ const AB_KIND_GLYPH = {
   city: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
       + '<path d="M3 20V11h5v9M8 20V6h8v14M16 20v-6h5v6"/>'
       + '<path d="M2 20h20"/></svg>',
-  // Cabin: a seat in side profile. The oval that was here first read as a
-  // generic rounded rectangle -- at 20px it had no feature to tell it apart.
-  // The seat's back-and-base L is the only shape in the set with a corner in
-  // it, so it separates from the tower and the skyline on outline alone.
+  // Cabin: a cup and saucer. Catering, provisioning and cabin service is what
+  // the brief actually holds, and a cup is the only round-with-a-handle shape
+  // in the set -- it separates from the tower and the skyline on outline alone,
+  // which the oval that was here first could not do.
   cabin: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
-       + '<path d="M8 4h3a2 2 0 0 1 2 2v7H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/>'
-       + '<path d="M6 13h11a2 2 0 0 1 2 2v1H8"/>'
-       + '<path d="M6 16v4M19 16v4"/></svg>'
+       + '<path d="M5 6h11v5a5.5 5.5 0 0 1-11 0V6z"/>'
+       + '<path d="M16 7.5h1.5a2.5 2.5 0 0 1 0 5H16"/>'
+       + '<path d="M3 19h15"/></svg>'
 };
 
 function abSubtabsHTML(){
