@@ -1136,6 +1136,12 @@
   .import-plan-opt{ display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border:1px solid var(--hairline); border-radius:6px; background:var(--panel-800); cursor:pointer; color:var(--paper-050); }
   .import-plan-opt input{ margin-top:2px; flex:0 0 auto; }
   .import-plan-opt-sub{ display:block; margin-top:2px; color:var(--fog-500); font-size:12px; }
+  .wb-push-head{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); margin:12px 0 6px; }
+  .wb-push-head:first-child{ margin-top:0; }
+  .wb-push-fill{ font-size:13px; color:var(--paper-050); padding:6px 0; border-bottom:1px solid var(--hairline); }
+  .wb-push-sub{ display:block; margin-top:2px; font-size:12px; color:var(--amber-500); }
+  .wb-push-conflict{ margin-bottom:12px; }
+  .wb-push-conflict-title{ font-size:13px; color:var(--paper-050); margin-bottom:6px; }
   .import-leg-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; }
   .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
   /* NOTES PAGE. One surface, three doorways (bottom bar / Trip Brief / leg
@@ -4435,6 +4441,20 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   </div>
 </div>
 
+<div class="feedback-overlay" id="wbPushOverlay">
+  <div class="feedback-modal" style="max-width:460px;">
+    <div class="feedback-modal-head">
+      <span class="feedback-modal-title">Push to the trip card</span>
+    </div>
+    <p id="wbPushMessage" style="font-size:13px; color:var(--paper-050); line-height:1.6; margin:0 0 14px;"></p>
+    <div id="wbPushBody" style="max-height:46vh; overflow-y:auto;"></div>
+    <div style="display:flex; gap:10px; margin-top:16px;">
+      <button class="btn" id="wbPushApplyBtn" style="flex:1;">Push</button>
+      <button class="btn" id="wbPushCancelBtn" style="flex:1;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="feedback-overlay" id="tripLinkOverlay">
   <div class="feedback-modal" style="max-width:380px;">
     <div class="feedback-modal-head">
@@ -4493,7 +4513,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T00:20:00Z';
+const BUILD_VERSION = '2026-09-09T00:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13487,7 +13507,7 @@ function wbTripFormHTML(t){
 function wbTripLinkRowHTML(t){
   const cards = cardsSharingWbTrip(t.id, '');
   if(!cards.length) return '';
-  return cards.map(function(c){
+  let out = cards.map(function(c){
     const facts = tripLinkLine(c) || '<span class="trip-link-none">Not linked</span>';
     const name  = c.tripNumber ? ('Trip ' + c.tripNumber) : 'Unnumbered trip';
     return '<div class="trip-link-row">'
@@ -13501,6 +13521,229 @@ function wbTripLinkRowHTML(t){
         + (tripLinkCount(c) ? 'Change link' : 'Link trip') + '</button>'
     + '</div>';
   }).join('');
+
+  // THE PUSH SITS WITH THE LINK because both speak about the trip as a whole
+  // rather than a field on it, and both only exist once there is a card. The
+  // label is Kyle's words, not "sync" -- a sync implies two-way, and this only
+  // ever goes one way.
+  const pending = wbPushItemsForPlan(t).length;
+  out += '<div class="trip-link-row">'
+    + '<div class="trip-link-facts"><span class="trip-link-none">'
+      + (pending
+          ? (pending + (pending === 1 ? ' thing' : ' things') + ' on the legs this plan can fill in or correct')
+          : 'The legs already match this plan')
+    + '</span></div>'
+    + '<button type="button" class="trip-link-btn" data-wb-push="1"'
+      + (pending ? '' : ' disabled') + '>Push to trip card</button>'
+  + '</div>';
+  return out;
+}
+
+// *** PUSHING THE PLAN DOWN ONTO THE LEGS. ***
+//
+// The card and the brief read crew and tail off the LEGS. The plan's own crew
+// and aircraft are what the grid reads and they never touch a leg, so a trip
+// built by hand and then met by an itinerary with no crew on it shows seated on
+// the plan and empty on the card. Kyle, 8 Sep 2026 -- that is the divergence
+// this closes.
+//
+// FILL ONLY, NEVER OVERWRITE SILENTLY. Kyle's rule: an empty seat or a blank
+// tail is filled; a leg that already names somebody else is a CONFLICT and is
+// put to the person. A leg is a record of what the paperwork said, and quietly
+// replacing it would lose a fact nobody chose to change.
+
+// Which tail the plan commits for a given day. An assignment row with no dates
+// covers the whole trip; dated rows are a handover, so the day picks one.
+// TWO ANSWERS MEANS NO ANSWER -- an overlap is returned as blank rather than
+// guessed at, and the leg is simply left alone.
+function wbPlanTailForLegDate(t, iso){
+  const fleet = aircraftCache || [];
+  const rows  = wbAircraftFor(t.id);
+  if(!rows.length) return String(t.tailNumber || '').trim().toUpperCase();
+  const tails = [];
+  rows.forEach(function(r){
+    const undated = !r.start_date && !r.end_date;
+    if(!undated){
+      if(!iso) return;
+      if(r.start_date && iso < String(r.start_date)) return;
+      if(r.end_date   && iso > String(r.end_date))   return;
+    }
+    const ac = fleet.find(function(a){ return a.id === r.aircraft_id; });
+    const tail = ac ? String(ac.tail_number || '').trim().toUpperCase() : '';
+    if(tail && tails.indexOf(tail) === -1) tails.push(tail);
+  });
+  return tails.length === 1 ? tails[0] : '';
+}
+
+function wbSeatText(id){ return id ? (wbCrewLabel(id) || 'someone no longer on the roster') : ''; }
+function wbSeatListText(ids){
+  return (ids || []).map(wbSeatText).filter(Boolean).join(', ');
+}
+
+// Everything this push would do, as a flat list. Nothing is written here.
+function wbPushItemsForPlan(t){
+  const items = [];
+  const cards = cardsSharingWbTrip(t.id, '');
+  const crew  = (t.crew && typeof t.crew === 'object') ? t.crew : {};
+
+  cards.forEach(function(card){
+    (card.legs || []).slice()
+      .sort(function(a, b){ return Number(a.legNumber || 0) - Number(b.legNumber || 0); })
+      .forEach(function(leg){
+        const label = 'Leg ' + (leg.legNumber || '?') + ' \u00b7 ' +
+          ((leg.dep && leg.dep.airportId) || '?') + ' \u2192 ' + ((leg.arr && leg.arr.airportId) || '?');
+        const lc = (leg.crew && typeof leg.crew === 'object') ? leg.crew : {};
+
+        // Tail
+        const planTail = wbPlanTailForLegDate(t, leg.date || '');
+        const legTail  = String(leg.tailNumber || '').trim().toUpperCase();
+        if(planTail && legTail !== planTail){
+          items.push({ legId: leg.id, legLabel: label, field: 'tail', fieldLabel: 'Tail',
+            value: planTail, planText: planTail, legText: legTail,
+            kind: legTail ? 'conflict' : 'fill' });
+        }
+
+        // The two single seats
+        ['pic', 'sic'].forEach(function(slot){
+          const planId = crew[slot] || '';
+          const legId  = lc[slot] || '';
+          if(!planId || legId === planId) return;
+          items.push({ legId: leg.id, legLabel: label, field: slot, fieldLabel: slot.toUpperCase(),
+            value: planId, planText: wbSeatText(planId), legText: wbSeatText(legId),
+            kind: legId ? 'conflict' : 'fill' });
+        });
+
+        // The two lists. Compared as a SET -- the order these are held in is not
+        // a decision anyone made, so a reorder is not a conflict.
+        [['fa', 'Cabin crew'], ['acm', 'ACM']].forEach(function(pair){
+          const slot = pair[0];
+          const planIds = Array.isArray(crew[slot]) ? crew[slot].filter(Boolean) : [];
+          const legIds  = Array.isArray(lc[slot])   ? lc[slot].filter(Boolean)   : [];
+          if(!planIds.length) return;
+          const same = planIds.slice().sort().join('|') === legIds.slice().sort().join('|');
+          if(same) return;
+          items.push({ legId: leg.id, legLabel: label, field: slot, fieldLabel: pair[1],
+            value: planIds.slice(), planText: wbSeatListText(planIds), legText: wbSeatListText(legIds),
+            kind: legIds.length ? 'conflict' : 'fill' });
+        });
+      });
+  });
+  return items;
+}
+
+// The sheet. Fills are listed and happen; conflicts get a choice each, and the
+// leg keeps what it has unless the person says otherwise.
+let _wbPushItems = [];
+
+function openWbPushSheet(t){
+  const overlay = document.getElementById('wbPushOverlay');
+  const msgEl   = document.getElementById('wbPushMessage');
+  const body    = document.getElementById('wbPushBody');
+  const applyBtn  = document.getElementById('wbPushApplyBtn');
+  const cancelBtn = document.getElementById('wbPushCancelBtn');
+  if(!overlay || !body) return;
+
+  _wbPushItems = wbPushItemsForPlan(t);
+  const fills     = _wbPushItems.filter(function(i){ return i.kind === 'fill'; });
+  const conflicts = _wbPushItems.filter(function(i){ return i.kind === 'conflict'; });
+
+  body.innerHTML = '';
+  if(!_wbPushItems.length){
+    msgEl.textContent = 'The legs already carry everything this plan holds. Nothing to push.';
+    applyBtn.style.display = 'none';
+    cancelBtn.textContent = 'Close';
+    cancelBtn.onclick = function(){ overlay.classList.remove('open'); };
+    overlay.classList.add('open');
+    return;
+  }
+
+  applyBtn.style.display = '';
+  cancelBtn.textContent = 'Cancel';
+  msgEl.textContent = conflicts.length
+    ? 'Empty seats and blank tails will be filled from this plan. Where a leg already says something different, pick which one is right.'
+    : 'These legs have empty seats or no tail. The plan fills them in.';
+
+  let html = '';
+  if(fills.length){
+    html += '<div class="wb-push-head">Will be filled in</div>';
+    fills.forEach(function(i){
+      html += '<div class="wb-push-fill">' + escapeHtml(i.legLabel) +
+              '<span class="wb-push-sub">' + escapeHtml(i.fieldLabel) + ' \u2014 ' + escapeHtml(i.planText) + '</span></div>';
+    });
+  }
+  if(conflicts.length){
+    html += '<div class="wb-push-head">Disagreements</div>';
+    conflicts.forEach(function(i){
+      const idx = _wbPushItems.indexOf(i);
+      html += '<div class="wb-push-conflict">' +
+        '<div class="wb-push-conflict-title">' + escapeHtml(i.legLabel) + ' \u00b7 ' + escapeHtml(i.fieldLabel) + '</div>' +
+        '<div class="import-plan-opts">' +
+          // THE LEG WINS BY DEFAULT. It is what the paperwork said, and a
+          // default has to be the option that changes nothing.
+          '<label class="import-plan-opt">' +
+            '<input type="radio" name="wbPushPick' + idx + '" value="leg" checked />' +
+            '<span>Keep the leg<span class="import-plan-opt-sub">' + escapeHtml(i.legText || 'empty') + '</span></span>' +
+          '</label>' +
+          '<label class="import-plan-opt">' +
+            '<input type="radio" name="wbPushPick' + idx + '" value="plan" />' +
+            '<span>Use the plan<span class="import-plan-opt-sub">' + escapeHtml(i.planText) + '</span></span>' +
+          '</label>' +
+        '</div>' +
+      '</div>';
+    });
+  }
+  body.innerHTML = html;
+
+  applyBtn.onclick = async function(){
+    const chosen = _wbPushItems.filter(function(i, idx){
+      if(i.kind === 'fill') return true;
+      const picked = document.querySelector('input[name="wbPushPick' + idx + '"]:checked');
+      return !!(picked && picked.value === 'plan');
+    });
+    overlay.classList.remove('open');
+    await wbApplyPush(chosen);
+  };
+  cancelBtn.onclick = function(){ overlay.classList.remove('open'); };
+  overlay.classList.add('open');
+}
+
+// ONE PATCH PER LEG, not one per field. A leg is never written whole, and
+// batching a leg's fields into one diff keeps the change log reading as one act
+// rather than four.
+async function wbApplyPush(items){
+  if(!items.length){ showToast('Nothing pushed.'); return; }
+  const byLeg = {};
+  items.forEach(function(i){ (byLeg[i.legId] = byLeg[i.legId] || []).push(i); });
+
+  let touched = 0, failed = 0;
+  for(const legId of Object.keys(byLeg)){
+    const leg = (state.legs || []).find(function(l){ return l.id === legId; });
+    if(!leg) continue;
+    if(!leg.crew || typeof leg.crew !== 'object') leg.crew = { pic:'', sic:'', acm:[], fa:[] };
+    byLeg[legId].forEach(function(i){
+      if(i.field === 'tail') leg.tailNumber = i.value;
+      else if(i.field === 'pic' || i.field === 'sic') leg.crew[i.field] = i.value;
+      else leg.crew[i.field] = i.value.slice();
+    });
+    // Names stamped so the record survives an account being removed. Same call
+    // every other crew write makes.
+    if(typeof stampCrewSnapshots === 'function') stampCrewSnapshots(leg);
+    leg.updatedAt = Date.now();
+    try {
+      const p = buildLegPatch(_legSnapshots[leg.id], leg);
+      await storage.patchLeg(leg.id, p.patch, p.remove);
+      snapshotLeg(leg);
+      touched++;
+    } catch(e){
+      console.error('wbApplyPush', e);
+      failed++;
+    }
+  }
+  await loadLegs();
+  renderMain();
+  showToast(failed
+    ? ('Pushed to ' + touched + ' leg' + (touched === 1 ? '' : 's') + ', ' + failed + ' failed')
+    : ('Pushed to ' + touched + ' leg' + (touched === 1 ? '' : 's')));
 }
 
 function workbenchTableHTML(trips){
@@ -13739,6 +13982,13 @@ function wbWireEditor(){
       openTripLinkPicker(card);
     });
   });
+  const pushBtn = document.querySelector('[data-wb-editor="' + id + '"] [data-wb-push]');
+  if(pushBtn && !pushBtn.disabled){
+    pushBtn.addEventListener('click', function(){
+      const t = (workbenchCache || []).find(function(x){ return x.id === id; });
+      if(t) openWbPushSheet(t);
+    });
+  }
   // Aircraft rows first: same change-not-blur rule, one column per write. A
   // date here moves days on the grid, so the grid cache is dropped.
   document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-seat]').forEach(function(el){
