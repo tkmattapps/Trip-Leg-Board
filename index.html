@@ -2633,32 +2633,46 @@
   }
   .trip-quick-btn:hover{ border-color:var(--amber-500); color:var(--amber-500); }
   .trip-quick-btn:active{ background:var(--panel-700); }
-  /* THE TWO TRIP-CARD DOORS stack their labels deliberately -- "Trip" over
-     "Plan", "Crew" over "Brief" -- rather than being left to wrap. A natural
-     wrap depends on card width, so at some sizes one label would break and the
-     other would not, and there is no browser here to find out which. An
-     explicit break is the same shape at every width, and the widest word left
-     standing is "Brief", which fits anything.
-     GLYPH OVER LABEL, the house pattern from .nav-btn and .ab-subtab: a 20px
-     stroked icon above the words, currentColor so the icon lights with them.
-     Unlike those two this control keeps its hairline border -- it is a door on
-     a card, not a bare tab in a row.
-     Height adds up: 20 glyph + 4 gap + two 15px lines (12px text at 1.25) = 54,
-     plus 7 + 7 padding and 1 + 1 border = 70px.
-     Scoped to its own class: .trip-quick-btn is shared with the leg tile's
-     Set status / Airport brief buttons, which stay single-line and glyphless. */
+  /* *** THE TWO TRIP-CARD DOORS ARE BARE. *** Kyle, 9 Sep 2026. No border, no
+     fill, no box -- the glyph and its words ARE the control, the same way the
+     bottom bar and the airport-brief subject tabs already work. Same shape as
+     .nav-btn and .ab-subtab: a 20px stroked icon over a 10px label, 3px apart.
+     LABEL ON ONE LINE. "Trip Plan", not "Trip" over "Plan" -- white-space:nowrap
+     so the two words can never come apart, which also means nothing here
+     depends on knowing how wide the card is.
+     SIZED TO CONTENT, NOT STRETCHED. A bare control has no visible edges, so
+     splitting the row's width between two of them would only move edges nobody
+     can see. The row's gap does the separating instead.
+     *** SPECIFICITY, AND IT MATTERS HERE. *** .trip-quick-row .trip-quick-btn
+     above is TWO classes and sets flex:1 1 0 and min-width:0. A single-class
+     override of either would be dead on arrival, so the two properties that
+     have to beat it are written at the same weight, in a descendant rule
+     placed after it. Do not move them into the plain .trip-quick-btn-stack
+     block "for tidiness" -- they will silently stop working.
+     min-height is 44 because the glyph and its label only come to about 33,
+     and a bare control still has to be a real tap target. */
+  .trip-quick-row-doors{ gap:24px; }
+  .trip-quick-row .trip-quick-btn-stack{ flex:0 0 auto; min-width:60px; min-height:44px; }
   .trip-quick-btn-stack{
     display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:4px;
+    gap:3px;
+    background:none; border:none; padding:0;
+    font-size:10px; font-weight:500; letter-spacing:0.02em; line-height:1;
+    white-space:nowrap;
   }
   /* Stroked, not filled, exactly as .ab-subtab svg: a filled glyph at 20px
-     turns into a blob. */
+     turns into a blob, and with no box behind it the outline is the only thing
+     carrying the shape. */
   .trip-quick-btn-stack svg{
     width:20px; height:20px; display:block;
     fill:none; stroke:currentColor; stroke-width:1.6;
     stroke-linecap:round; stroke-linejoin:round;
   }
-  .trip-quick-btn-stack .tq-lbl{ line-height:1.25; }
+  .trip-quick-btn-stack .tq-lbl{ line-height:1; }
+  /* The base rule flashes a panel fill on press. On a bordered button that
+     reads as the button depressing; on a bare one it is a grey rectangle
+     appearing out of nothing. The colour shift is the whole feedback. */
+  .trip-quick-btn-stack:active{ background:none; }
 
   /* ---- BOTTOM SHEET -----------------------------------------------------
      Thumb-reachable on a phone and it keeps the trip list visible behind it,
@@ -4617,7 +4631,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T15:40:00Z';
+const BUILD_VERSION = '2026-09-09T16:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12025,7 +12039,7 @@ function tripCardHTML(trip){
     '<div class="dash-card-spacer"></div>' +
     (archived
       ? '<div class="trip-quick-row trip-quick-row-sealed">Sealed record</div>'
-      : '<div class="trip-quick-row">' +
+      : '<div class="trip-quick-row trip-quick-row-doors">' +
           // TWO WINDOWS INTO ONE TRIP, named for the destination rather than the
           // work. Set crew and Set aircraft used to sit here; both are build
           // work, and build work lives on the plan. See the one-trip design.
@@ -12066,7 +12080,7 @@ function tripCardHTML(trip){
               '<path d="M9 3h6v4H9z"/>' +
               '<path d="M9 12h6M9 16h4"/>' +
             '</svg>' +
-            '<span class="tq-lbl">Trip<br>Plan</span>' +
+            '<span class="tq-lbl">Trip Plan</span>' +
           '</button>' +
           '<button type="button" class="trip-quick-btn trip-quick-btn-stack" data-fly-key="' + escapeHtml(trip.key) + '" aria-label="Crew Brief">' +
             '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
@@ -12075,7 +12089,7 @@ function tripCardHTML(trip){
               '<path d="M16.2 5.3a3.2 3.2 0 0 1 0 5.4"/>' +
               '<path d="M17.6 15c2 .5 3.4 1.7 3.4 3.7v.8"/>' +
             '</svg>' +
-            '<span class="tq-lbl">Crew<br>Brief</span>' +
+            '<span class="tq-lbl">Crew Brief</span>' +
           '</button>' +
         '</div>') +
   '</div>';
