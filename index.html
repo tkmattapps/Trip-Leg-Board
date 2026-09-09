@@ -4487,7 +4487,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-08T23:10:00Z';
+const BUILD_VERSION = '2026-09-08T23:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -18216,8 +18216,10 @@ function renderTripDetailView(){
       const shared = wb ? cardsSharingWbTrip(wb.id, tripGroupIdOf(trip)) : [];
       const facts = [];
       const linkHTML = tripLinkLine(trip);
+      // NO "Not linked" PLACEHOLDER. Kyle, 8 Sep 2026. Most trips are not part
+      // of a longer journey, so it announced a non-fact on nearly every brief.
+      // A link is worth saying; the absence of one is not.
       if(linkHTML) facts.push(linkHTML);
-      else facts.push('<span class="trip-link-none">Not linked</span>');
       if(wb){
         facts.push('<span class="trip-link-line" data-wb-assigned="1">Plan \u00b7 ' +
           escapeHtml(wbTripPickerLabel(wb)) +
