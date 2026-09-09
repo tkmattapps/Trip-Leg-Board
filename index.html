@@ -557,7 +557,7 @@
      The one thing that property DID do was make .main a scroll container for
      position:sticky, so any sticky descendant pinned itself to a scrollport
      that never moves and scrolled away with the page. That is why .info-strip
-     could not be made sticky on either the leg checklist or the Trip Brief.
+     could not be made sticky on either the leg checklist or the Crew Brief.
      It also made overflow-x compute to auto: over-wide content used to scroll
      sideways inside .main and will now push the page instead. Anything that
      needs it owns its own scroller (see .sched-scroll). */
@@ -630,7 +630,7 @@
     padding:28px 36px 14px;
     background:var(--panel-800);
     border-bottom:1px solid var(--hairline);
-    /* STICKS UNDER THE FIXED HEADER, on the leg checklist and the Trip Brief
+    /* STICKS UNDER THE FIXED HEADER, on the leg checklist and the Crew Brief
        alike -- one rule, because both pages use this strip and both want the
        same behaviour: the trip, leg, tail and crew stay legible while the page
        scrolls behind them.
@@ -1185,7 +1185,7 @@
   .wb-days-gap-text{ flex:1 1 auto; font-size:12px; color:var(--alert-600); }
   .import-leg-card-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; }
   .import-leg-title{ font-weight:600; font-size:14px; color:var(--paper-050); }
-  /* NOTES PAGE. One surface, three doorways (bottom bar / Trip Brief / leg
+  /* NOTES PAGE. One surface, three doorways (bottom bar / Crew Brief / leg
      checklist). A PAGE rather than a sheet because notes have to be
      RETRIEVABLE -- a sheet is fine for writing four lines and poor for reading
      twenty, and it has nowhere to put search later. */
@@ -1211,7 +1211,7 @@
   .notes-pin-auto{ font-size:11px; color:var(--amber-500); }
   .notes-empty-hint{ font-size:12px; color:var(--fog-500); line-height:1.5; }
   /* THE DOORWAY. One glyph, the same glyph, everywhere notes can be entered --
-     the bottom bar, the leg checklist and (next) the Trip Brief. Recognising
+     the bottom bar, the leg checklist and (next) the Crew Brief. Recognising
      the mark should be enough; you should never have to read the surrounding
      page to work out that this is the way in.
      Left-justified and large, NOT a right-aligned pill: a pill reads as one
@@ -2633,6 +2633,17 @@
   }
   .trip-quick-btn:hover{ border-color:var(--amber-500); color:var(--amber-500); }
   .trip-quick-btn:active{ background:var(--panel-700); }
+  /* THE TWO TRIP-CARD DOORS stack their labels deliberately -- "Trip" over
+     "Plan", "Crew" over "Brief" -- rather than being left to wrap. A natural
+     wrap depends on card width, so at some sizes one label would break and the
+     other would not, and there is no browser here to find out which. An
+     explicit break is the same shape at every width.
+     Height adds up: 12px text at line-height 1.25 = 15px a line, two lines
+     = 30, plus 7 + 7 padding and 1 + 1 border = 46px. Taller than the 31px
+     single-line button, and a better tap target for it.
+     Scoped to its own class: .trip-quick-btn is shared with the leg tile's
+     Set status / Airport brief buttons, which stay on one line. */
+  .trip-quick-btn-stack{ line-height:1.25; }
 
   /* ---- BOTTOM SHEET -----------------------------------------------------
      Thumb-reachable on a phone and it keeps the trip list visible behind it,
@@ -3039,11 +3050,11 @@
     text-transform:uppercase; color:var(--fog-500); margin-bottom:8px;
   }
 /* Stickiness now lives on .info-strip, which both pages share. This class
-   carries only what the Trip Brief needs on top of it: the bands sit closer
+   carries only what the Crew Brief needs on top of it: the bands sit closer
    under the strip than the checklist's first section does. */
   .tb-strip{ margin-bottom:16px; }
 
-/* ---- TRIP BRIEF: one full-width band per leg -------------------------------
+/* ---- CREW BRIEF: one full-width band per leg -------------------------------
    NOT a card grid. The dashboard uses .dash-grid, which puts two cards side by
    side on an iPad -- that is exactly what stops a leg reading as one unit.
 
@@ -4591,7 +4602,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T14:25:00Z';
+const BUILD_VERSION = '2026-09-09T15:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -5157,7 +5168,7 @@ const NOTES_DOOR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentCol
   '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 
 // THE DOORWAY, shared by every entry point. One builder so the leg checklist
-// and the Trip Brief cannot drift apart (trap 30).
+// and the Crew Brief cannot drift apart (trap 30).
 //
 // The subtext has to say that this is the way IN to notes, not merely a way to
 // add one. The glyph alone reads as "compose" -- a pencil always does -- so
@@ -5270,7 +5281,7 @@ async function hydrateNotesDoor(tripNo, opts){
   //
   // Only the LEG door gets a count. There the list below shows just this leg's
   // notes, so "6 notes on this trip" tells you about the ones you cannot see. On
-  // the Trip Brief the list is complete and a count would restate it.
+  // the Crew Brief the list is complete and a count would restate it.
   if(sub && o.legId){
     const next = notesDoorSubText(rows, o.legId);
     if(sub.textContent !== next) sub.textContent = next;
@@ -5283,7 +5294,7 @@ async function hydrateNotesDoor(tripNo, opts){
   }
 }
 
-// DOORWAY 2 of 3, on the Trip Brief, in the slot the inline composer used to
+// DOORWAY 2 of 3, on the Crew Brief, in the slot the inline composer used to
 // occupy.
 //
 // The composer was REMOVED here rather than kept alongside. Two composers for
@@ -5744,7 +5755,7 @@ async function refreshLegAttachBadge(legId){
 
 const LEG_PAPERCLIP_BADGE_SVG = '<svg class="doc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
 
-// Batch-fill paperclip badges for all leg bands on the Trip Brief page.
+// Batch-fill paperclip badges for all leg bands on the Crew Brief page.
 async function hydrateTripLegAttachBadges(trip){
   if(!trip || !trip.legs || !trip.legs.length) return;
   let counts = {};
@@ -5761,7 +5772,7 @@ async function hydrateTripLegAttachBadges(trip){
   });
 }
 
-/* ---- Trip-level Documents (Trip Brief page) ---- */
+/* ---- Trip-level Documents (Crew Brief page) ---- */
 function tripDocsBlockHTML(trip){
   return '' +
     '<div class="section" id="tripDocSection">' +
@@ -5902,7 +5913,7 @@ function wireTripDocs(trip){
   });
 }
 
-/* ---- Trip-level catch-all Notes (Trip Brief page) ---- */
+/* ---- Trip-level catch-all Notes (Crew Brief page) ---- */
 async function fetchTripNotes(tripId){
   const { data, error } = await sb.from('trip_notes').select('*').eq('trip_id', tripId);
   if(error) throw error;
@@ -6065,7 +6076,7 @@ function tripNotesBlockHTML(trip){
   // A FEED, not a field. One composer at the top, entries below it newest
   // first.
   //
-  // THE app's only composer, since the Trip Brief's inline copy was replaced
+  // THE app's only composer, since the Crew Brief's inline copy was replaced
   // by a doorway glyph. Visibility IS decided here, at compose time, and is
   // committed on save -- see noteVisButtonHTML.
   return '<div class="section" id="tripNotesSection" style="margin-top:18px;">' +
@@ -6571,7 +6582,7 @@ function paintAirportBriefMarks(){
   });
 }
 
-// One read for the whole trip brief, not one per band. Every airport on the
+// One read for the whole crew brief, not one per band. Every airport on the
 // page goes into a single query; the marks are painted when it lands.
 async function hydrateAirportBriefMarks(legs){
   const codes = [];
@@ -8716,7 +8727,7 @@ function openTripDetail(tripKey, origin){
 }
 
 // ================= NON-FLYING EVENT DETAIL =================
-// The second instance of a pattern the trip brief already established: a
+// The second instance of a pattern the crew brief already established: a
 // full-screen view reached from a card, with a back link in the page header
 // and nothing added to the bottom nav. Reached from the day panel, returns to
 // the schedule.
@@ -11315,7 +11326,7 @@ function lastEditedCompact(leg){
   return 'Edited by ' + leg.lastEditedByName;
 }
 
-/* THE TRIP BRIEF STRIP -- the same .info-strip the leg checklist uses.
+/* THE CREW BRIEF STRIP -- the same .info-strip the leg checklist uses.
 
    Reused rather than reinvented: it is already Trip / Leg / Tail / crew, laid
    out full-bleed and sized for four-character crew abbreviations.
@@ -11325,7 +11336,7 @@ function lastEditedCompact(leg){
    throughout, and a mid-trip change simply happens as that leg comes into
    view. A printed 909 needs a crew matrix because paper cannot do this.
 
-   Trip number stays here because the page title is now "Trip Brief" -- the
+   Trip number stays here because the page title is now "Crew Brief" -- the
    number would otherwise have nowhere to live.
 
    NO CHEVRONS YET. The checklist's leg-nav cell navigates between editors;
@@ -11757,7 +11768,7 @@ function tripBriefFigHTML(label, value){
     '</span>';
 }
 
-/* A TRIP BRIEF BAND -- one leg, TWO LINES, full width.
+/* A CREW BRIEF BAND -- one leg, TWO LINES, full width.
 
    Line one: leg number, readiness, controls.
    Line two: both ends and the leg's figures.
@@ -12004,20 +12015,26 @@ function tripCardHTML(trip){
           // work. Set crew and Set aircraft used to sit here; both are build
           // work, and build work lives on the plan. See the one-trip design.
           //
-          // WAS "Plan it" / "Fly it", then "Plan" / "Brief". Kyle, 9 Sep 2026.
+          // WAS "Plan it" / "Fly it", then "Plan" / "Brief", then "Planning" /
+          // "Briefing". Kyle, 9 Sep 2026.
+          //
           // The verbs told you to do work: Plan it read as "go and plan this"
           // when dispatch had already planned it, and Fly it read as something
           // you open on the day, when a pilot is in there days ahead. The bare
-          // nouns fixed that but named a room rather than a door -- no sense of
-          // going anywhere. Gerunds carry the movement and still land on the
-          // screen they name: Planning -> Trip Plan, Briefing -> Trip Brief.
+          // nouns named a room rather than a door. The gerunds moved but still
+          // did not say whose half was whose.
           //
-          // OPEN, not settled. Neither word says "this half is mine". The crew
-          // side is where a pilot verifies sections and signs off, and Briefing
-          // still reads as something you go and read. This pair is an
-          // improvement, not a decision.
-          '<button type="button" class="trip-quick-btn" data-plan-key="' + escapeHtml(trip.key) + '">Planning</button>' +
-          '<button type="button" class="trip-quick-btn" data-fly-key="' + escapeHtml(trip.key) + '">Briefing</button>' +
+          // THE BUTTON IS NOW THE SCREEN'S NAME. Trip Plan opens the Trip Plan;
+          // Crew Brief opens the Crew Brief. The label stops describing the
+          // destination and simply is it, so there is nothing to get wrong.
+          //
+          // "Crew" is what "my" was reaching for and could not say without
+          // sounding like a phone app. Kyle: a brief is a communal act -- crew
+          // sit down and brief the trip together -- while the checklist inside
+          // it stays each person's own. So the crew side is named for the
+          // people and the plan side for the object.
+          '<button type="button" class="trip-quick-btn trip-quick-btn-stack" data-plan-key="' + escapeHtml(trip.key) + '">Trip<br>Plan</button>' +
+          '<button type="button" class="trip-quick-btn trip-quick-btn-stack" data-fly-key="' + escapeHtml(trip.key) + '">Crew<br>Brief</button>' +
         '</div>') +
   '</div>';
 }
@@ -14057,7 +14074,7 @@ function wbAircraftEditHTML(t){
 // <table>, which cost four consecutive pushes to a dead media query and a crew
 // block squeezed to two seats. It also had nowhere to put per-leg tail and crew,
 // which the one-trip model needs. A full-screen view has precedent twice over --
-// the trip brief and the training event detail -- so the header, the back
+// the crew brief and the training event detail -- so the header, the back
 // behaviour and the layout are copies rather than decisions.
 function wbTripFormHTML(t){
   return '<div class="wb-page">'
@@ -17066,7 +17083,7 @@ function buildLegFromExtraction(extracted, groupId){
     notes: ea.notes || ''
   });
   // cityPair is COMPOSED, never extracted. The extractor returns dep.city and
-  // arr.city separately, because the Trip Brief needs each end on its own and
+  // arr.city separately, because the Crew Brief needs each end on its own and
   // splitting one 'A -> B' string is fragile when a city is 'Jijoca de
   // Jericoacoara'. Composing here means every existing consumer of cityPair --
   // search, import diffing, the card renderers, the editor's hidden input --
@@ -19272,7 +19289,7 @@ function renderTripDetailView(){
   setPageHeader({
     // The trip NUMBER moved into the strip below, so the title is free to name
     // the document. This page is what a crew reads on the way out the door.
-    title: 'Trip Brief',
+    title: 'Crew Brief',
     // The gesture hint is GONE. It read "tap a leg for its checklist", which
     // existed only because a card tap opened the checklist and nothing on the
     // band said so. The pill says it now, on every band, so the header is free
@@ -19358,7 +19375,7 @@ function renderTripDetailView(){
     const maxLegNum = Math.max(0, ...trip.legs.map(l => parseInt(l.legNumber, 10) || 0));
     newLeg.legNumber = String(maxLegNum + 1);
     state.legs.unshift(newLeg);
-    // Stay on the Trip Brief page: keep the view + trip key pinned, persist the
+    // Stay on the Crew Brief page: keep the view + trip key pinned, persist the
     // new leg so it survives refresh / reaches other devices, then re-render in place.
     state.view = 'tripDetail';
     // Always the group key now -- groupIntoTrips returns '__grp_<gid>' for every
@@ -19370,7 +19387,7 @@ function renderTripDetailView(){
   wireTripHistory(trip);
   // Bound BEFORE the card handler and stops propagation, or tapping a quick
   // action would also open the leg editor behind the sheet.
-  // NOT scoped to .trip-quick-btn any more: on the Trip Brief the status dot
+  // NOT scoped to .trip-quick-btn any more: on the Crew Brief the status dot
   // itself carries data-leg-quick, so the selector keys on the ATTRIBUTE that
   // declares the intent rather than on the class that happens to style it.
   document.querySelectorAll('[data-leg-quick][data-leg-id]').forEach(btn => {
@@ -19835,7 +19852,7 @@ document.addEventListener('click', function(e){
 // your place every time. With return-to-origin the page behaves like a sheet
 // that happens to be full width.
 //
-// SAFE TO SHARE IDS with the Trip Brief's inline feed: they are different
+// SAFE TO SHARE IDS with the Crew Brief's inline feed: they are different
 // views, renderMain() replaces #mainPanel wholesale, and the two can never be
 // in the document at the same time. That reuse is deliberate -- two composers
 // would drift (trap 30).
@@ -19911,7 +19928,7 @@ function closeNotesPage(){
 function notesBackLabel(){
   const v = (state.notesOrigin || {}).view || '';
   if(v === 'editor') return 'Leg Checklist';
-  if(v === 'tripDetail') return 'Trip Brief';
+  if(v === 'tripDetail') return 'Crew Brief';
   if(v === 'history') return 'Archived Trips';
   if(v === 'schedule') return 'Schedule';
   if(v === 'home') return 'Home';
@@ -20853,7 +20870,7 @@ function renderMain(){
   let backLabel = 'Active Trips';
   if(state.previousView === 'tripDetail' && state.previousTripKey){
     const prevTrip = groupIntoTrips(state.legs).find(t => t.key === state.previousTripKey);
-    backLabel = prevTrip ? 'Trip Brief' : 'Active Trips';
+    backLabel = prevTrip ? 'Crew Brief' : 'Active Trips';
   } else if(state.previousView === 'history'){
     backLabel = 'Archived Trips';
   }
@@ -22301,7 +22318,7 @@ function airportPlaceName(code){
    Carries coordinates and an IANA timezone for 27,748 airports.
 
    WHY IT EXISTS
-   Two features need it: great circle distance on the Trip Brief, and the
+   Two features need it: great circle distance on the Crew Brief, and the
    UTC offset derived on a leg. Before this, the timezone half was answered
    by fetching mwgg/Airports from raw.githubusercontent.com AT RUNTIME --
    a 9MB / 1.28MB-gzipped download, larger than the whole app, from a
@@ -23486,7 +23503,7 @@ function legendBodyHTML(){
       '<div class="lg-group-title">Notes</div>',
       '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">Shared</span></span><span class="lg-body">Everyone in the department reads it, and your name is on it. Use it for anything the next crew needs.</span></div>',
       '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">Private</span></span><span class="lg-body">Yours alone. Not visible to anyone else in the department, including an admin, and never frozen into the archive.</span></div>',
-      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">Airport brief</span></span><span class="lg-body">On the leg band, top right of the Trip Brief. Recalls what your department has written before about either airport on that leg. Coming soon.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">Airport brief</span></span><span class="lg-body">On the leg band, top right of the Crew Brief. Recalls what your department has written before about either airport on that leg. Coming soon.</span></div>',
     '</div>',
     '<div class="lg-group">',
       '<div class="lg-group-title">The archive</div>',
@@ -29076,7 +29093,7 @@ document.addEventListener('click', async function(e){
   if(t.closest('#quickNotePostBtn')){ postQuickNote(); return; }
   const tripNotesBtn = t.closest('[data-trip-notes]');
   if(tripNotesBtn){
-    // Doorway 2. Trip pin only -- the Trip Brief is not about any one leg.
+    // Doorway 2. Trip pin only -- the Crew Brief is not about any one leg.
     openNotesPage({ tripId: tripNotesBtn.getAttribute('data-trip-notes') });
     return;
   }
