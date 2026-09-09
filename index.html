@@ -3521,7 +3521,15 @@
      owns the spacing now, or three margins compound into a hand's width of
      nothing between short lines. */
   .wb-trip-meta{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
-  .wb-trip-meta > .trip-link-row{ flex:1 1 260px; margin:0; min-width:0; }
+  /* flex:1 1 auto, NOT a fixed basis. With a 260px floor every card got the same
+     share whatever was in it, so the longest one -- "Trip 415543 - Continues
+     from trip 415531" -- ran out of room and dropped its button to a second
+     line. Sized to content, each takes what it needs and they still wrap onto
+     separate lines when the card is narrow. */
+  .wb-trip-meta > .trip-link-row{ flex:1 1 auto; margin:0; min-width:0; flex-wrap:nowrap; }
+  /* The text may shrink and wrap within itself; the button never leaves the
+     line, which is the thing that looked broken. */
+  .wb-trip-meta > .trip-link-row > .trip-link-btn{ flex:0 0 auto; }
   .trip-link-none{ font-size:11px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
   .trip-link-btn{
     background:none; border:1px solid var(--hairline);
@@ -4549,7 +4557,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T03:40:00Z';
+const BUILD_VERSION = '2026-09-09T03:48:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
