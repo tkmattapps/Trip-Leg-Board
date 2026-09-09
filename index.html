@@ -3515,9 +3515,13 @@
   }
   .trip-link-sep{ font-size:11px; color:var(--fog-500); }
   .trip-link-row .trip-link-line{ margin-top:0; }
-  /* The plan editor stacks it under the delete row, which has no bottom gap of
-     its own. Scoped so the brief's copy is untouched. */
-  .wb-edit .trip-link-row{ margin-top:14px; }
+  /* The plan's link and push rows, wrapped rather than stacked. Each sizes to
+     its own content down to a 260px floor, so two fit on a wide card and they
+     stack on a phone. The rows' own bottom margin is dropped here -- the strip
+     owns the spacing now, or three margins compound into a hand's width of
+     nothing between short lines. */
+  .wb-trip-meta{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .wb-trip-meta > .trip-link-row{ flex:1 1 260px; margin:0; min-width:0; }
   .trip-link-none{ font-size:11px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
   .trip-link-btn{
     background:none; border:1px solid var(--hairline);
@@ -4545,7 +4549,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T03:30:00Z';
+const BUILD_VERSION = '2026-09-09T03:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14101,7 +14105,14 @@ function wbTripLinkRowHTML(t){
     + '<button type="button" class="trip-link-btn" data-wb-push="1"'
       + (pending ? '' : ' disabled') + '>Push to trip card</button>'
   + '</div>';
-  return out;
+
+  // *** ONE STRIP, NOT THREE FULL-WIDTH ROWS. ***
+  // Each of these is a short fact and a button, and each was taking a whole row
+  // with 40px of air between it and the next -- .wb-edit's own 12px gap, plus
+  // the row's 14px bottom margin, plus the 14px top margin added when the row
+  // moved here. Wrapped, they sit side by side on a wide screen and stack on a
+  // phone without any of it being measured.
+  return '<div class="wb-trip-meta">' + out + '</div>';
 }
 
 // *** PUSHING THE PLAN DOWN ONTO THE LEGS. ***
