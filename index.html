@@ -4637,7 +4637,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T16:45:00Z';
+const BUILD_VERSION = '2026-09-09T17:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11266,8 +11266,21 @@ function parseETEToMinutes(str){
   return Math.round(num * 60);
 }
 
+// A SIGN IS ALWAYS SHOWN, INCLUDING THE PLUS. Kyle, 9 Sep 2026 (raised 4 Sep).
+// This already printed a minus, so the westbound case was arithmetically right
+// and unreadable anyway: a bare "3:00" never tells you the field HAS a
+// direction, so the first time somebody meets "-2:00" it reads as a fault
+// rather than as the answer. Flying Asia to the US you land before you left in
+// local time, and the field has to say so out loud.
+//
+// Zero takes no sign. A destination that is neither ahead nor behind is not
+// "+0:00", and a plus there would be noise.
+//
+// One caller: updateRelativeTime in the leg checklist. The value is computed on
+// open and is in no save key list, so there is nothing stored anywhere that
+// parses this string back.
 function formatDurationSigned(totalMinutes){
-  const sign = totalMinutes < 0 ? '-' : '';
+  const sign = totalMinutes < 0 ? '-' : (totalMinutes > 0 ? '+' : '');
   const abs = Math.abs(totalMinutes);
   const hh = Math.floor(abs / 60);
   const mm = abs % 60;
