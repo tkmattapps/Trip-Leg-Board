@@ -1171,6 +1171,11 @@
   .wb-days-new .wb-ac-add{ align-self:flex-end; height:38px; padding:0 12px; width:auto; min-width:96px; }
   .wb-days-new .wb-field{ flex:0 0 160px; }
   .wb-days-new .wb-field-day{ flex:0 0 150px; }
+  /* The add button sits directly under either the last day row or the "None on
+     this trip" line, both of which end flush. margin-top:auto is what the crew
+     and aircraft rows use, but that only works inside a stretched column -- out
+     here the block is full width, so it is a plain gap. */
+  .wb-days-block > .wb-crew-adds{ margin-top:12px; }
   .wb-days-seat{ display:block; margin-top:2px; font-size:11px; color:var(--fog-500); }
   .wb-days-gap{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0 6px; }
   .wb-days-gap-text{ flex:1 1 auto; font-size:12px; color:var(--alert-600); }
@@ -4545,7 +4550,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T03:15:00Z';
+const BUILD_VERSION = '2026-09-09T03:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
