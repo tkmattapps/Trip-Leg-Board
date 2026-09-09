@@ -4513,7 +4513,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T00:50:00Z';
+const BUILD_VERSION = '2026-09-09T01:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -25525,13 +25525,22 @@ async function loadSchedDayRecords(ownerId, ownerKind, dayISO, endISO){
   // Flight duty is derived from the trip and can never be trimmed or extended,
   // so it is reported for the SELECTED DAYS ONLY. The reach applies solely to
   // hand-entered blocks, which are the only rows those controls can act on.
+  //
+  // *** EVERY TRIP KIND, NOT JUST 'flight'. *** Kyle, 8 Sep 2026, from the
+  // seat: tap the day before a trip starts and you get the trip; tap the day
+  // after it lands and you get it again. The test here was a literal
+  // === 'flight', so flight_assigned -- a workbench trip, which is now how
+  // every planned trip reaches the grid -- fell through to the reach and
+  // reported itself on both neighbouring days. flight_historical and
+  // away_on_trip had the same hole. SCHED_TRIP_KINDS is the list the rest of
+  // the schedule already uses for exactly this distinction.
   const reachLo = schedShiftISO(spanLo, -1);
   const reachHi = schedShiftISO(spanHi, 1);
   const seenRef = {};
   const cell = rows.filter(function(r){
     if(r[ownerKey] !== ownerId) return false;
     const dy = String(r.day || '').slice(0,10);
-    const isDerived = String(r[srcKey]) === 'flight';
+    const isDerived = !!SCHED_TRIP_KINDS[String(r[srcKey])];
     const lo = isDerived ? spanLo : reachLo;
     const hi = isDerived ? spanHi : reachHi;
     if(dy < lo || dy > hi) return false;
