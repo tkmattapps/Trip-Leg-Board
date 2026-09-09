@@ -2637,13 +2637,28 @@
      "Plan", "Crew" over "Brief" -- rather than being left to wrap. A natural
      wrap depends on card width, so at some sizes one label would break and the
      other would not, and there is no browser here to find out which. An
-     explicit break is the same shape at every width.
-     Height adds up: 12px text at line-height 1.25 = 15px a line, two lines
-     = 30, plus 7 + 7 padding and 1 + 1 border = 46px. Taller than the 31px
-     single-line button, and a better tap target for it.
+     explicit break is the same shape at every width, and the widest word left
+     standing is "Brief", which fits anything.
+     GLYPH OVER LABEL, the house pattern from .nav-btn and .ab-subtab: a 20px
+     stroked icon above the words, currentColor so the icon lights with them.
+     Unlike those two this control keeps its hairline border -- it is a door on
+     a card, not a bare tab in a row.
+     Height adds up: 20 glyph + 4 gap + two 15px lines (12px text at 1.25) = 54,
+     plus 7 + 7 padding and 1 + 1 border = 70px.
      Scoped to its own class: .trip-quick-btn is shared with the leg tile's
-     Set status / Airport brief buttons, which stay on one line. */
-  .trip-quick-btn-stack{ line-height:1.25; }
+     Set status / Airport brief buttons, which stay single-line and glyphless. */
+  .trip-quick-btn-stack{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:4px;
+  }
+  /* Stroked, not filled, exactly as .ab-subtab svg: a filled glyph at 20px
+     turns into a blob. */
+  .trip-quick-btn-stack svg{
+    width:20px; height:20px; display:block;
+    fill:none; stroke:currentColor; stroke-width:1.6;
+    stroke-linecap:round; stroke-linejoin:round;
+  }
+  .trip-quick-btn-stack .tq-lbl{ line-height:1.25; }
 
   /* ---- BOTTOM SHEET -----------------------------------------------------
      Thumb-reachable on a phone and it keeps the trip list visible behind it,
@@ -4602,7 +4617,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T15:05:00Z';
+const BUILD_VERSION = '2026-09-09T15:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12033,8 +12048,35 @@ function tripCardHTML(trip){
           // sit down and brief the trip together -- while the checklist inside
           // it stays each person's own. So the crew side is named for the
           // people and the plan side for the object.
-          '<button type="button" class="trip-quick-btn trip-quick-btn-stack" data-plan-key="' + escapeHtml(trip.key) + '">Trip<br>Plan</button>' +
-          '<button type="button" class="trip-quick-btn trip-quick-btn-stack" data-fly-key="' + escapeHtml(trip.key) + '">Crew<br>Brief</button>' +
+          // *** TWO SILHOUETTES, DISTINCT AT 20px. *** The same test the airport
+          // brief subject tabs had to pass: recognisable by outline alone. A
+          // clipboard is rectilinear and upright; two figures are round-topped
+          // and wide. Nothing here says "aviation" -- everything on this card
+          // already does, and a plane on both would have carried no information.
+          //
+          // The clipboard is the department's working document: dates, tail,
+          // crew, the thing dispatch fills in. The figures are the people, which
+          // is the whole reason "Crew" won the word over "My".
+          //
+          // Inline SVG so nothing is fetched, currentColor so the glyph takes
+          // the button's hover and never holds a second copy of the palette.
+          '<button type="button" class="trip-quick-btn trip-quick-btn-stack" data-plan-key="' + escapeHtml(trip.key) + '" aria-label="Trip Plan">' +
+            '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+              '<path d="M8 5H5v16h14V5h-3"/>' +
+              '<path d="M9 3h6v4H9z"/>' +
+              '<path d="M9 12h6M9 16h4"/>' +
+            '</svg>' +
+            '<span class="tq-lbl">Trip<br>Plan</span>' +
+          '</button>' +
+          '<button type="button" class="trip-quick-btn trip-quick-btn-stack" data-fly-key="' + escapeHtml(trip.key) + '" aria-label="Crew Brief">' +
+            '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+              '<circle cx="9" cy="8" r="3.2"/>' +
+              '<path d="M3 19.5v-.8c0-2.5 2.7-4.1 6-4.1s6 1.6 6 4.1v.8"/>' +
+              '<path d="M16.2 5.3a3.2 3.2 0 0 1 0 5.4"/>' +
+              '<path d="M17.6 15c2 .5 3.4 1.7 3.4 3.7v.8"/>' +
+            '</svg>' +
+            '<span class="tq-lbl">Crew<br>Brief</span>' +
+          '</button>' +
         '</div>') +
   '</div>';
 }
