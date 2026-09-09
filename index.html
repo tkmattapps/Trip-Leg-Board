@@ -1152,6 +1152,25 @@
   .wb-days-chip:hover{ border-color:var(--amber-500); }
   .wb-days-x{ color:var(--fog-500); font-size:13px; }
   .wb-days-new{ display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; padding:8px 0; }
+  /* *** THE SAME BOX AS EVERY OTHER PICKER IN THE APP. ***
+     These selects sit in .wb-days-new, not in .wb-crew-grid, so they were
+     picking up the browser's default control instead of the Beacon one. Same
+     declarations as .wb-crew-grid select, plus the 38px the date inputs are
+     pinned to, so a picker and a date box on one row are the same height. */
+  .wb-days-new select{
+    background:var(--ink-900); color:var(--paper-050);
+    border:1px solid var(--hairline); border-radius:6px;
+    padding:8px 10px; font-size:14px; font-family:inherit; width:100%;
+    box-sizing:border-box; height:38px;
+    -webkit-appearance:none; appearance:none;
+  }
+  .wb-days-new select:focus{ outline:none; border-color:var(--amber-500); }
+  /* The row is align-items:flex-end, so a field bottom-aligns on its INPUT --
+     its label sits above. A button has no label, so it needs the same height as
+     the input to land on the same line rather than floating. */
+  .wb-days-new .wb-ac-add{ align-self:flex-end; height:38px; padding:0 12px; width:auto; min-width:96px; }
+  .wb-days-new .wb-field{ flex:0 0 160px; }
+  .wb-days-new .wb-field-day{ flex:0 0 150px; }
   .wb-days-seat{ display:block; margin-top:2px; font-size:11px; color:var(--fog-500); }
   .wb-days-gap{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0 6px; }
   .wb-days-gap-text{ flex:1 1 auto; font-size:12px; color:var(--alert-600); }
@@ -4526,7 +4545,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T02:50:00Z';
+const BUILD_VERSION = '2026-09-09T03:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13303,9 +13322,6 @@ function wbCrewEditHTML(t){
        '<button type="button" class="wb-ac-add" data-wb-crewadd="fa">+ Cabin crew</button>')
     + '</div>';
 
-  h += wbCrewDaysHTML(t);
-  h += wbPositioningHTML(t);
-
   return h + '</div>';
 }
 
@@ -14022,6 +14038,15 @@ function wbTripFormHTML(t){
           + '>Delete this trip</button>'
         + '</div>'
       + '</div>'
+      // *** THEIR OWN ROWS, NOT INSIDE THE CREW COLUMN. ***
+      // They started inside .wb-crew-block, which is align-self:stretch beside
+      // the aircraft column -- so every positioning day made the crew block
+      // taller, the aircraft column stretched to match, and .wb-ac-block's
+      // margin-top:auto pushed + Aircraft to the bottom of it, hundreds of
+      // pixels below the tail field it belongs under. Out here they are full
+      // width and change nothing above them.
+      + wbCrewDaysHTML(t)
+      + wbPositioningHTML(t)
       + wbTripLinkRowHTML(t)
       + '<div class="wb-edit-note">Changes save as you leave each field.</div>'
     + '</div>'
