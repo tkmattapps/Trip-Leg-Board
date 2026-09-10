@@ -4618,7 +4618,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T02:15:00Z';
+const BUILD_VERSION = '2026-09-10T02:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -6616,7 +6616,7 @@ async function hydrateAirportBriefMarks(legs){
 //
 //   ops    how the airport works -- handlers, fuel, customs, flight plan
 //   city   where to eat, hotels to avoid, ground transport
-//   cabin  catering, provisioning, cabin service reference
+//   cabin  catering, provisioning, FBO services
 //
 // Untyped text in the database so a fourth subject needs no migration; this
 // function is the only thing that decides what is valid.
@@ -20298,7 +20298,7 @@ const AB_KIND_META = {
     // the moment somebody renamed it.
     short: 'Airport',
     head: 'Airport operations',
-    sub: 'How this airport works \u2014 handlers, fuel, customs, flight plan processing.',
+    sub: 'Handlers, fuel, customs, flight plan processing.',
     body: 'What happened here\u2026',
     advice: 'What should the next crew do about it\u2026',
     empty: 'Nothing written about operations at '
@@ -20316,7 +20316,7 @@ const AB_KIND_META = {
     tab: 'Cabin brief',
     short: 'Cabin',
     head: 'Cabin reference',
-    sub: 'Catering, provisioning and cabin service reference.',
+    sub: 'Catering, provisioning, FBO services.',
     body: 'What you found here\u2026',
     advice: 'What should the next crew know\u2026',
     empty: 'Nothing written for the cabin at '
@@ -20408,11 +20408,18 @@ function airportBriefBlockHTML(){
           // and every subject fell through to the Cabin heading. A display
           // label must never be load-bearing for anything else.
           '<label>' + escapeHtml(m.head || '') + '</label>' +
-          // The description the tab is too short to carry. Shared/private is
-          // repeated here rather than only on the toggle, because the default
-          // is the thing people get wrong.
-          '<span class="trip-log-sub">' + escapeHtml(m.sub) +
-            ' Shared with the flight department unless you say otherwise.</span>' +
+          // The description the tab is too short to carry.
+          //
+          // *** THE SHARING SENTENCE USED TO LIVE HERE AND WAS REMOVED ON
+          // PURPOSE (Kyle, 10 Sep 2026). *** "Shared with the flight department
+          // unless you say otherwise" was 61 characters -- longer than any of
+          // the three descriptions -- and it pushed every subject to two lines
+          // on a phone. The Shared/Private button still carries the default,
+          // and it is the control that actually sets it. If the default turns
+          // out to be something people get wrong, fix it AT THE BUTTON rather
+          // than by putting the sentence back: the button appears only once
+          // there is text to post, and that is the thing to change.
+          '<span class="trip-log-sub">' + escapeHtml(m.sub) + '</span>' +
         '</div>' +
         '<div class="trip-log-compose">' +
           // .field is LOAD-BEARING -- see the note on tripNoteTextarea. Without
