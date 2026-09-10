@@ -2372,7 +2372,10 @@
      .sched-del-btn) so the word and the x cannot be mistaken for each other. */
   .sched-existing-go{ cursor:pointer; }
   .sched-existing-open{ margin-left:auto; flex:0 0 auto; white-space:nowrap;
-    font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); }
+    font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500);
+    /* 22px disc at right:-8px covers 14px of the card; 6px more so the word does
+       not touch it. 14 + 6 = 20, less the row's 10px padding already there = 10. */
+    margin-right:10px; }
   .sched-existing-go:hover{ border-color:var(--fog-500); background:var(--panel-800); }
   .sched-existing-go:focus-visible{ outline:2px solid var(--fog-300); outline-offset:1px; }
   /* The remove x sits ON the top-right corner, half over the border, not in the
@@ -4729,7 +4732,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T17:35:00Z';
+const BUILD_VERSION = '2026-09-10T18:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -27181,7 +27184,7 @@ function schedExistingHTML(e){
                '<span>' + escapeHtml(label) + '</span>' +
                // Same test as the class above: any destination, one word.
                (goTrip || goWb || goEvent
-                 ? '<span class="sched-existing-open" aria-hidden="true">View details</span>'
+                 ? '<span class="sched-existing-open" aria-hidden="true">Details \u203a</span>'
                  : '') +
              '</div>' +
              '<div class="sched-existing-sub">' +
