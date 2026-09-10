@@ -1357,13 +1357,36 @@
      The head cell no longer needs its own background override, and neither does
      .sched-head .sched-tally -- both were setting the value the base rule now
      carries, and a rule that changes nothing is a rule that hides a change. */
+  /* *** touch-action:manipulation IS WHY THIS COLUMN OPENS AT ALL ON iOS. ***
+     10 Sep 2026, and it was found by measuring, not by reading. The tally opened
+     perhaps one tap in twenty on an iPhone. The probe reported the same element
+     under the finger every time, ZERO finger movement and ZERO scroll -- and a
+     click on one tap and none on the next. Identical input, different outcome,
+     so nothing about the element was the variable. Safari was.
+
+     The viewport meta permits zoom, and nothing in this file ever set
+     touch-action, so DOUBLE-TAP-TO-ZOOM is live on every element in the app.
+     Tap the same spot twice in quick succession and WebKit holds the second tap
+     back in case a zoom is starting; the click never arrives. Tapping again
+     makes it worse rather than better, which is exactly how it presented --
+     Kyle, fifteen taps in a row with nothing happening.
+
+     manipulation means: pan and pinch as normal, no double-tap zoom. It is the
+     narrowest thing that fixes it, and it is applied to the control rather than
+     to the page so ordinary zoom is untouched everywhere else.
+
+     *** THE FAULT IS APP-WIDE; ONLY THIS CONTROL EXPOSED IT. *** A day cell is
+     tapped once and always works. Anything a person taps REPEATEDLY -- a
+     stepper, a toggle, a counter -- has the same problem waiting in it and wants
+     the same line. */
   .sched-tally{ position:sticky; right:0; z-index:2; flex:0 0 auto;
     width:var(--sched-tally-w);
     display:flex; align-items:stretch;
     background:var(--panel-700);
     border-left:1px solid var(--hairline); border-bottom:1px solid var(--hairline);
     font-size:12px; color:var(--paper-050);
-    font-variant-numeric:tabular-nums; white-space:nowrap; cursor:pointer; }
+    font-variant-numeric:tabular-nums; white-space:nowrap; cursor:pointer;
+    touch-action:manipulation; }
   /* The deviation itself -- the part that is pinned whether the panel is open or
      shut. Kyle, 4 Sep 2026: the column slides out to the LEFT and this stays put. */
   .sched-tdev{ flex:0 0 auto; width:var(--sched-tally-w);
@@ -4686,7 +4709,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T06:30:00Z';
+const BUILD_VERSION = '2026-09-10T06:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
