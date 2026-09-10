@@ -4686,7 +4686,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T06:05:00Z';
+const BUILD_VERSION = '2026-09-10T06:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -26535,17 +26535,40 @@ function schedDbgDesc(el){
   const inT = (el.closest && el.closest('[data-sched-tally]')) ? '+T' : '';
   return (el.tagName ? el.tagName.toLowerCase() : '?') + (first ? '.' + first : '') + inT;
 }
+// ROUND TWO. Round one proved the touch lands on the tally and no click follows.
+// The SVG glyph was one cause and is fixed; a plain div in the same column still
+// reports click:N sometimes, so this round measures the GESTURE instead of the
+// target: how far the finger travelled, and how far the scroller moved under it.
+// WebKit fires no click for a touch that scrolled its container, and the tally
+// sits at the far edge of the screen where a thumb reaches in an arc.
+//   mv:  finger travel in px, x,y
+//   scr: how far .sched-scroll moved during the touch, left,top
+let schedDbgSX = 0, schedDbgSY = 0, schedDbgSL = 0, schedDbgST = 0;
+document.addEventListener('touchstart', function(ev){
+  const t = ev.touches && ev.touches[0];
+  if(!t) return;
+  if(t.clientX < window.innerWidth - 70) return;
+  schedDbgSX = t.clientX; schedDbgSY = t.clientY;
+  const sc = document.querySelector('.sched-scroll');
+  schedDbgSL = sc ? sc.scrollLeft : 0;
+  schedDbgST = sc ? sc.scrollTop  : 0;
+}, { passive: true });
 document.addEventListener('touchend', function(ev){
   if(!document.querySelector('.sched-wrap')) return;
   const t = ev.changedTouches && ev.changedTouches[0];
   if(!t) return;
   if(t.clientX < window.innerWidth - 70) return;
-  const tgt = schedDbgDesc(ev.target);
   const at  = schedDbgDesc(document.elementFromPoint(t.clientX, t.clientY));
+  const mvx = Math.round(t.clientX - schedDbgSX);
+  const mvy = Math.round(t.clientY - schedDbgSY);
+  const sc  = document.querySelector('.sched-scroll');
+  const dsl = sc ? Math.round(sc.scrollLeft - schedDbgSL) : 0;
+  const dst = sc ? Math.round(sc.scrollTop  - schedDbgST) : 0;
   schedDbgClickSeen = false;
   // 450ms is comfortably past the click a touch would synthesise.
   setTimeout(function(){
-    showToast('at:' + at + ' | tgt:' + tgt + ' | click:' + (schedDbgClickSeen ? 'Y' : 'N'));
+    showToast(at + ' | click:' + (schedDbgClickSeen ? 'Y' : 'N') +
+              ' | mv:' + mvx + ',' + mvy + ' | scr:' + dsl + ',' + dst);
   }, 450);
 });
 // ============================================================================
