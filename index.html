@@ -4618,7 +4618,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-09T23:55:00Z';
+const BUILD_VERSION = '2026-09-10T01:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15458,8 +15458,7 @@ function renderSettingsView(){
     '</div>' +
     '<div class="set-section">' +
       '<div class="set-section-head"><div class="set-section-title">Aircraft</div></div>' +
-      '<p class="set-section-note">Tails are chosen from this list when you build a leg. ' +
-        'Status is what\u2019s true right now, not a schedule.</p>' +
+      '<p class="set-section-note">Tails are chosen from this list when you build a leg.</p>' +
       listHTML +
       // Admin only, matching migration 24: aircraft_insert now requires
       // is_department_admin(). A non-admin typing a tail and pressing Add would
@@ -15477,11 +15476,6 @@ function renderSettingsView(){
           ? '<button type="button" class="set-btn" id="personAddBtn">Add person</button>'
           : '') +
       '</div>' +
-      '<p class="set-section-note">Job titles decide who appears in each crew slot. ' +
-        'Pilots fill PIC, SIC and ACM; cabin crew fill FA. Titles are set in Supabase.' +
-        (rosterViewerIsAdmin()
-          ? ' As an admin you can add people, edit names and crew abbreviations, and reset passwords here.'
-          : '') + '</p>' +
       rosterHTML +
     '</div>' +
     '<div class="set-section">' +
