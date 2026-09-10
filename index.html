@@ -4739,7 +4739,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T18:30:00Z';
+const BUILD_VERSION = '2026-09-10T19:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -18046,14 +18046,27 @@ async function processImportFile(file){
   renderMain();
   try{
     const fileBase64 = await fileToBase64(file);
+    // The function is being closed to anonymous callers (10 Sep 2026). It needs
+    // the caller's own token: the gateway checks it is a real session, and the
+    // function reads the caller's department switch through it. No token means
+    // the request would be refused at the door, so say so here instead of
+    // sending a document that goes nowhere.
+    const { data: { session } } = await sb.auth.getSession();
+    if(!session || !session.access_token){
+      throw new Error('Not signed in. Sign in again and retry the upload.');
+    }
     const res = await fetch(EXTRACT_TRIP_DOC_URL, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'authorization': 'Bearer ' + session.access_token
+      },
       body: JSON.stringify({ fileName: file.name, fileBase64: fileBase64 })
     });
     const data = await res.json();
     if(!res.ok || data.error){
-      console.error('AI raw response that failed to parse:', JSON.stringify(data));
+      // Do NOT log the body. On a parse failure it carries the raw AI output,
+      // which is a trip sheet's contents sitting in the console.
       throw new Error(data.error || ('Extraction failed (' + res.status + ')'));
     }
     state.importDocType = data.documentType || 'unknown';
