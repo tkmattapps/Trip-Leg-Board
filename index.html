@@ -2357,12 +2357,21 @@
     background:var(--panel-700); border:1px solid var(--hairline); border-radius:4px; padding:9px 10px; }
   .sched-existing-row .sched-key-dot{ margin-top:4px; flex:0 0 auto; }
   .sched-existing-txt{ flex:1; min-width:0; }
-  .sched-existing-lbl{ font-size:13px; color:var(--paper-050); }
+  .sched-existing-lbl{ font-size:13px; color:var(--paper-050);
+    display:flex; align-items:baseline; gap:8px; }
   .sched-existing-sub{ font-size:11px; color:var(--fog-500); margin-top:2px; }
-  /* A flight row that can reach its trip. Cursor and a hover lift are the whole
-     affordance -- no chevron, because the row is already dense and the pointer
-     change says it on a desk screen. */
+  /* A row that goes somewhere -- a flight to its brief, an assigned trip to the
+     workbench, a hand-entered day to its detail view.
+     This used to say "no chevron, the pointer change says it on a desk screen".
+     Reversed 10 Sep 2026 (Kyle): on a phone there is no hover and no cursor, so
+     the row gave nothing away. The affordance is now a trailing word on the
+     label line, in the panel's own section-heading register so it reads as an
+     invitation rather than a heading for the text under it. It lives on the
+     label line and not the sub line because the sub line wraps on a phone. Not a
+     right-edge chevron, because that is where the remove x already sits. */
   .sched-existing-go{ cursor:pointer; }
+  .sched-existing-open{ margin-left:auto; flex:0 0 auto; white-space:nowrap;
+    font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); }
   .sched-existing-go:hover{ border-color:var(--fog-500); background:var(--panel-800); }
   .sched-existing-go:focus-visible{ outline:2px solid var(--fog-300); outline-offset:1px; }
   .sched-del-btn{ background:none; border:0; color:var(--fog-500); font-size:18px; line-height:1;
@@ -4709,7 +4718,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T07:25:00Z';
+const BUILD_VERSION = '2026-09-10T17:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -27158,7 +27167,11 @@ function schedExistingHTML(e){
            '<span class="sched-key-dot" style="background:' + col + '"></span>' +
            '<div class="sched-existing-txt">' +
              '<div class="sched-existing-lbl">' +
-               escapeHtml(label) +
+               '<span>' + escapeHtml(label) + '</span>' +
+               // Same test as the class above: any destination, one word.
+               (goTrip || goWb || goEvent
+                 ? '<span class="sched-existing-open" aria-hidden="true">View details</span>'
+                 : '') +
              '</div>' +
              '<div class="sched-existing-sub">' +
                escapeHtml(schedExistingSubText(r, isAwayRow, e.ownerKind)) +
