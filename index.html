@@ -1169,7 +1169,7 @@
   .wb-days-block > .wb-crew-adds{ margin-top:12px; }
   /* The foot of the card: save note left, Delete hard right, one line.
      The note SHRINKS AND WRAPS ITS OWN TEXT rather than letting the row wrap --
-     same technique as .wb-trip-meta > .trip-link-row, and for the same reason.
+     same technique as .trip-link-main, and for the same reason.
      With flex-wrap on the row instead, a narrow card would push Delete onto a
      second line where space-between then aligns it LEFT, which is the one place
      it must not be. Nothing here is measured. */
@@ -3575,32 +3575,36 @@
   .trip-link-line{ font-size:11px; color:var(--amber-500); font-family:system-ui,'Inter',sans-serif; margin-top:4px; }
   .trip-link-line[data-trip-link-to]{ cursor:pointer; text-decoration:underline; }
   .trip-link-line[data-trip-link-dead]{ color:var(--fog-500); font-style:italic; }
+  /* *** THE ROW IS NOW A COLUMN. *** Kyle, 10 Sep 2026. A row may carry a
+     sentence explaining its button, and that sentence has to sit WITH the
+     button -- outside the strip it ended up under whichever row happened to
+     land last, which on a narrow card was the wrong one entirely. So the row
+     stacks: the working line, then the note. */
   .trip-link-row{
-    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    display:flex; flex-direction:column; gap:6px;
     margin:0 0 14px; padding:8px 12px;
     border:1px solid var(--hairline); border-radius:6px;
   }
+  /* The working line -- facts on the left, button on the right, never wrapped.
+     This is where .trip-link-row's own flex used to live. */
+  .trip-link-main{ display:flex; align-items:center; gap:8px; flex-wrap:nowrap; }
+  .trip-link-note{ font-size:11px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
   .trip-link-facts{
     flex:1 1 auto; min-width:0;
     display:flex; align-items:center; flex-wrap:wrap; gap:2px 6px;
   }
   .trip-link-sep{ font-size:11px; color:var(--fog-500); }
   .trip-link-row .trip-link-line{ margin-top:0; }
-  /* The plan's link and push rows, wrapped rather than stacked. Each sizes to
-     its own content down to a 260px floor, so two fit on a wide card and they
-     stack on a phone. The rows' own bottom margin is dropped here -- the strip
-     owns the spacing now, or three margins compound into a hand's width of
-     nothing between short lines. */
   .wb-trip-meta{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
-  /* flex:1 1 auto, NOT a fixed basis. With a 260px floor every card got the same
-     share whatever was in it, so the longest one -- "Trip 415543 - Continues
-     from trip 415531" -- ran out of room and dropped its button to a second
-     line. Sized to content, each takes what it needs and they still wrap onto
-     separate lines when the card is narrow. */
-  .wb-trip-meta > .trip-link-row{ flex:1 1 auto; margin:0; min-width:0; flex-wrap:nowrap; }
-  /* The text may shrink and wrap within itself; the button never leaves the
-     line, which is the thing that looked broken. */
-  .wb-trip-meta > .trip-link-row > .trip-link-btn{ flex:0 0 auto; }
+  /* *** FULL WIDTH EACH, NOT SIDE BY SIDE. *** They used to size to their own
+     content so two fit on a wide card. A row carrying a sentence cannot do that
+     -- the sentence is the widest thing in the strip and it would set the share
+     for everything -- so each row now takes a line of its own. Kyle accepted
+     losing the side-by-side to keep each sentence under its own button. */
+  .wb-trip-meta > .trip-link-row{ flex:1 1 100%; margin:0; min-width:0; }
+  /* The facts may shrink and wrap within themselves; the button never leaves
+     the line, which is the thing that looked broken. */
+  .trip-link-main > .trip-link-btn{ flex:0 0 auto; }
   .trip-link-none{ font-size:11px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
   .trip-link-btn{
     background:none; border:1px solid var(--hairline);
@@ -4559,7 +4563,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 <div class="feedback-overlay" id="wbPushOverlay">
   <div class="feedback-modal" style="max-width:460px;">
     <div class="feedback-modal-head">
-      <span class="feedback-modal-title">Push to the trip card</span>
+      <span class="feedback-modal-title">Push to the active trip</span>
     </div>
     <p id="wbPushMessage" style="font-size:13px; color:var(--paper-050); line-height:1.6; margin:0 0 14px;"></p>
     <div id="wbPushBody" style="max-height:46vh; overflow-y:auto;"></div>
@@ -4628,7 +4632,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T03:20:00Z';
+const BUILD_VERSION = '2026-09-10T03:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14280,59 +14284,58 @@ function wbTripLinkRowHTML(t){
     const facts = tripLinkLine(c) || '<span class="trip-link-none">Not linked</span>';
     const name  = c.tripNumber ? ('Trip ' + c.tripNumber) : 'Unnumbered trip';
     return '<div class="trip-link-row">'
-      + '<div class="trip-link-facts">'
-        + (cards.length > 1
-            ? ('<span class="trip-link-none">' + escHtml(name) + '</span><span class="trip-link-sep">\u00b7</span>')
-            : '')
-        + facts
+      + '<div class="trip-link-main">'
+        + '<div class="trip-link-facts">'
+          + (cards.length > 1
+              ? ('<span class="trip-link-none">' + escHtml(name) + '</span><span class="trip-link-sep">\u00b7</span>')
+              : '')
+          + facts
+        + '</div>'
+        + '<button type="button" class="trip-link-btn" data-wb-linkcard="' + escHtml(c.key) + '">'
+          + (tripLinkCount(c) ? 'Change link' : 'Link trip numbers') + '</button>'
       + '</div>'
-      + '<button type="button" class="trip-link-btn" data-wb-linkcard="' + escHtml(c.key) + '">'
-        + (tripLinkCount(c) ? 'Change link' : 'Link trip numbers') + '</button>'
+      // *** THE SENTENCE BELONGS IN THE ROW WITH ITS BUTTON. ***
+      // Kyle, 10 Sep 2026. "Link trip" told a first-time reader nothing, and in
+      // an app that also has chat LINKS it read as attaching a URL. The button
+      // now says what it joins; this says why anyone would.
+      //
+      // It was tried once as a full-width line under the whole strip and that
+      // was wrong: the rows wrap, so on a narrow card the sentence came out
+      // under Push rather than under Link. A note that explains the button
+      // beside it has to travel with it.
+      + '<div class="trip-link-note">Tie this trip to another trip number, so '
+      + 'crew can see they\u2019re part of the same journey.</div>'
     + '</div>';
   }).join('');
 
   // THE PUSH SITS WITH THE LINK because both speak about the trip as a whole
-  // rather than a field on it, and both only exist once there is a card. The
-  // label is Kyle's words, not "sync" -- a sync implies two-way, and this only
-  // ever goes one way.
+  // rather than a field on it, and both only exist once there is a card.
+  //
+  // *** NOT "PUSH TO TRIP CARD". *** Kyle, 10 Sep 2026 -- "trip card" is an
+  // internal name for the thing crew just call the trip. Still not "sync": a
+  // sync implies two-way and this only ever goes one way.
   const pending = wbPushItemsForPlan(t).length;
   out += '<div class="trip-link-row">'
-    + '<div class="trip-link-facts"><span class="trip-link-none">'
-      + (pending
-          ? (pending + (pending === 1 ? ' thing' : ' things') + ' on the legs this plan can fill in or correct')
-          : 'The legs already match this plan')
-    + '</span></div>'
-    + '<button type="button" class="trip-link-btn" data-wb-push="1"'
-      + (pending ? '' : ' disabled') + '>Push to trip card</button>'
+    + '<div class="trip-link-main">'
+      + '<div class="trip-link-facts"><span class="trip-link-none">'
+        + (pending
+            ? (pending + (pending === 1 ? ' thing' : ' things') + ' on the legs this plan can fill in or correct')
+            : 'The legs already match this plan')
+      + '</span></div>'
+      + '<button type="button" class="trip-link-btn" data-wb-push="1"'
+        + (pending ? '' : ' disabled') + '>Push to active trip</button>'
+    + '</div>'
   + '</div>';
 
-  // *** ONE STRIP, NOT THREE FULL-WIDTH ROWS. ***
-  // Each of these is a short fact and a button, and each was taking a whole row
-  // with 40px of air between it and the next -- .wb-edit's own 12px gap, plus
-  // the row's 14px bottom margin, plus the 14px top margin added when the row
-  // moved here. Wrapped, they sit side by side on a wide screen and stack on a
-  // phone without any of it being measured.
-  //
-  // *** THE SENTENCE GOES UNDER THE STRIP, NOT IN THE ROW. ***
-  // Kyle, 10 Sep 2026 -- "Link trip" told a first-time reader nothing, and in an
-  // app that also has chat LINKS it read as attaching a URL. The button now says
-  // what it joins; this line says why anyone would.
-  //
-  // It sits outside .wb-trip-meta on purpose. The row is flex-wrap:nowrap with a
-  // flex:0 0 auto button, tuned so the fact text shrinks and the button never
-  // drops to a second line -- see the comments on .wb-trip-meta, where exactly
-  // that broke once. A sentence inside the row would put the pressure straight
-  // back on. Out here it is a plain full-width line and fights nothing.
-  //
-  // .wb-edit-note is the class the save note below already uses, and both are
-  // siblings in the same grid, so this matches it without a new rule.
-  //
-  // Returned WITH the strip rather than added by the caller, so it disappears
-  // when the strip does -- a plan with no card behind it has no link row, and an
-  // orphaned sentence explaining a button that is not there is worse than none.
-  return '<div class="wb-trip-meta">' + out + '</div>'
-    + '<div class="wb-edit-note">Tie this trip to another trip number, so crew '
-    + 'can see they\u2019re part of the same journey.</div>';
+  // *** ONE STRIP, FULL-WIDTH ROWS. ***
+  // These were side by side until 10 Sep 2026, sized to their own content so
+  // two fit on a wide card. Once a row carried a sentence that stopped working:
+  // the sentence is the widest thing in the strip, so it set the share for
+  // everything, and the note ended up under whichever row wrapped last rather
+  // than under its own button. The strip still owns the spacing -- the rows'
+  // own bottom margin is dropped, or three margins compound into a hand's width
+  // of nothing between short lines.
+  return '<div class="wb-trip-meta">' + out + '</div>';
 }
 
 // *** PUSHING THE PLAN DOWN ONTO THE LEGS. ***
