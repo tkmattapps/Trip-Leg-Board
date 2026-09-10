@@ -4661,7 +4661,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T05:05:00Z';
+const BUILD_VERSION = '2026-09-10T05:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -26483,6 +26483,48 @@ document.addEventListener('touchcancel', function(){
   if(schedDrag) schedDragEnd();
 });
 
+// ============================================================================
+// *** TEMPORARY DIAGNOSTIC -- THE FAIRNESS TALLY COLUMN GOES INTERMITTENTLY
+// *** DEAD TO TAPS ON iOS. REMOVE THIS WHOLE BLOCK ONCE THE CAUSE IS KNOWN.
+// Added 10 Sep 2026. Every theory read out of the file was wrong: the click
+// handler, the open/close state, the per-scroll rewrite and every fixed layer
+// are all sound, so this measures the gesture instead of guessing about it.
+//
+// Fires only for a touch that ENDS in the right-hand 70px of the viewport --
+// the tally's band -- and only while the schedule is on screen, so tapping day
+// cells is unaffected.
+//
+// The toast reports three things:
+//   at:    what document.elementFromPoint says is actually AT that point. This
+//          is the answer to "is something over the column", and it is
+//          independent of which element received the event.
+//   tgt:   the element the touch was delivered to.
+//   click: whether a click event followed at all.
+// A +T suffix on either means that element is inside a tally cell.
+let schedDbgClickSeen = false;
+function schedDbgDesc(el){
+  if(!el) return 'none';
+  const raw = (el.className && el.className.baseVal !== undefined)
+    ? el.className.baseVal : (el.className || '');
+  const first = String(raw).split(/\s+/).filter(Boolean)[0] || '';
+  const inT = (el.closest && el.closest('[data-sched-tally]')) ? '+T' : '';
+  return (el.tagName ? el.tagName.toLowerCase() : '?') + (first ? '.' + first : '') + inT;
+}
+document.addEventListener('touchend', function(ev){
+  if(!document.querySelector('.sched-wrap')) return;
+  const t = ev.changedTouches && ev.changedTouches[0];
+  if(!t) return;
+  if(t.clientX < window.innerWidth - 70) return;
+  const tgt = schedDbgDesc(ev.target);
+  const at  = schedDbgDesc(document.elementFromPoint(t.clientX, t.clientY));
+  schedDbgClickSeen = false;
+  // 450ms is comfortably past the click a touch would synthesise.
+  setTimeout(function(){
+    showToast('at:' + at + ' | tgt:' + tgt + ' | click:' + (schedDbgClickSeen ? 'Y' : 'N'));
+  }, 450);
+});
+// ============================================================================
+
 // Reads back the REAL records behind a day's blocks.
 //
 // crew_busy_days expands a record into one row per day, so a five-day block
@@ -29021,6 +29063,9 @@ document.addEventListener('input', function(e){
 });
 
 document.addEventListener('click', async function(e){
+  // TEMPORARY DIAGNOSTIC -- see the tally probe above. Set before any early
+  // return so a click that is swallowed further down still counts as fired.
+  if(e.clientX >= window.innerWidth - 70) schedDbgClickSeen = true;
   const t = e.target;
   if(!t || !t.closest) return;
 
