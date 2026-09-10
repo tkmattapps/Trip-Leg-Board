@@ -1167,8 +1167,18 @@
      and aircraft rows use, but that only works inside a stretched column -- out
      here the block is full width, so it is a plain gap. */
   .wb-days-block > .wb-crew-adds{ margin-top:12px; }
-  /* Delete's own row at the foot of the card, pushed hard right. */
-  .wb-edit-delete-row{ display:flex; justify-content:flex-end; margin-top:16px; }
+  /* The foot of the card: save note left, Delete hard right, one line.
+     The note SHRINKS AND WRAPS ITS OWN TEXT rather than letting the row wrap --
+     same technique as .wb-trip-meta > .trip-link-row, and for the same reason.
+     With flex-wrap on the row instead, a narrow card would push Delete onto a
+     second line where space-between then aligns it LEFT, which is the one place
+     it must not be. Nothing here is measured. */
+  .wb-edit-delete-row{
+    display:flex; justify-content:space-between; align-items:center;
+    gap:12px; margin-top:16px;
+  }
+  .wb-edit-delete-row > .wb-edit-note{ flex:1 1 auto; min-width:0; }
+  .wb-edit-delete-row > .wb-trip-withdraw{ flex:0 0 auto; }
   .wb-days-seat{ display:block; margin-top:2px; font-size:11px; color:var(--fog-500); }
   .wb-days-gap{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0 6px; }
   .wb-days-gap-text{ flex:1 1 auto; font-size:12px; color:var(--alert-600); }
@@ -4618,7 +4628,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T03:05:00Z';
+const BUILD_VERSION = '2026-09-10T03:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14230,13 +14240,18 @@ function wbTripFormHTML(t){
       + wbCrewDaysHTML(t)
       + wbPositioningHTML(t)
       + wbTripLinkRowHTML(t)
-      + '<div class="wb-edit-note">Changes save as you leave each field.</div>'
-      // *** LAST THING ON THE CARD, HARD RIGHT. ***
-      // It is not a field -- pressing it ends the trip rather than editing one
-      // -- so it sits below the save note, past everything that does edit.
-      // Disabled rather than hidden for a non-admin: a crew member should see
-      // the trip can be deleted and know who to ask.
+      // *** THE FOOT OF THE CARD -- SAVE NOTE LEFT, DELETE RIGHT. ***
+      // Kyle, 10 Sep 2026. The save note used to be its own full-width line
+      // above this row, so the card ended with two stacked lines of grey and a
+      // button off on its own. Sharing the row pins the note to the bottom left
+      // and costs no vertical space.
+      //
+      // Delete is still hard right and still last in the DOM: it is not a field
+      // -- pressing it ends the trip rather than editing one -- and it is
+      // disabled rather than hidden for a non-admin, so a crew member sees the
+      // trip can be deleted and knows who to ask.
       + '<div class="wb-edit-delete-row">'
+        + '<div class="wb-edit-note">Changes save as you leave each field.</div>'
         + '<button type="button" class="wb-trip-withdraw" data-wb-tripdel="'
         + escHtml(t.id || '') + '"' + (wbCanEditTrips() ? '' : ' disabled')
         + '>Delete this trip</button>'
