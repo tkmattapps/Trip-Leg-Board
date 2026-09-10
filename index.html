@@ -1802,23 +1802,52 @@
      Every tint in this file is a background-IMAGE for that reason: it layers over
      whatever background-color the element already has instead of destroying it.
      That applies to .sched-col-on and .sched-cell-today below. */
-  /* *** THE WORKING MONTH IS LIT. THE REST IS NOT DIMMED. ***
-     This replaces .sched-cell-out, which dimmed everything outside the anchor
-     month. That was right for a one-month window with a few overhang days, and
-     wrong for a fourteen-month strip: thirteen months dimmed read as the grid
-     being switched off rather than as one month being current. It also cost the
-     trip colours -- teal and green carry MEANING, and dropping their opacity
-     made them look less real instead of further away.
-     So the contrast is made by LIFTING the current month rather than sinking the
-     other thirteen. Nothing outside it is degraded; the working month glows.
-     background-IMAGE, not background-color, for the same reason the weekend tint
-     uses one: it LAYERS over whatever the cell already has, so a weekend inside
-     the lit month keeps its own tint and a sticky header cell stays opaque. Two
-     tints simply stack, which is the correct appearance.
-     NO OPACITY ANYWHERE IN THIS RULE. Opacity on a sticky header cell makes it
-     see-through and the grid scrolls through it -- the trap that cost real time
-     in chat 3. A tint cannot do that. */
-  .sched-col-on{ background-image:linear-gradient(rgba(184,196,217,0.07), rgba(184,196,217,0.07)); }
+  /* *** THE FOCAL MONTH IS THE ONE LEFT ALONE. THE OTHER THIRTEEN ARE WASHED. ***
+     INVERTED 10 SEP 2026, KYLE'S CALL, AND IT REVERSES THE RULE THAT USED TO SIT
+     HERE. What was here before washed the FOCAL month's body cells at 0.07 and
+     left the rest plain. On device that read backwards: the month you were looking
+     at had the flattest-looking contents, and the months either side of it stood
+     out hardest. Kyle, in one sentence -- "right now the focal month has a wash on
+     the grid and the non-focal month has no wash on the grid" -- and the fix is to
+     swap which side carries it.
+
+     *** WHY THE OLD DIRECTION COULD NEVER HAVE WORKED. Do not put it back. ***
+     The wash paints the CELL. The category blocks are opaque children sitting on
+     top of it, and .sched-cell leaves a 2px gutter round each one, so the wash only
+     ever lifted the SURROUND. Contrast on this grid is block-against-surround, and
+     lifting the surround toward the block colour can only REDUCE it. The more lit
+     the month, the flatter its contents -- the rule fought itself. The header
+     escapes this because it brightens surround and TEXT together (.sched-dnum goes
+     #fff below); the body has no equivalent move, because brightening a trip
+     colour would change what it means.
+
+     *** THIS IS NOT THE OLD .sched-cell-out, WHICH WAS RIGHTLY REMOVED. ***
+     That one dropped OPACITY on the other months, so the trip colours -- teal and
+     green carry MEANING -- went pale and unreal, and thirteen faded months read as
+     the grid being switched off. A wash does not touch the block at all. It closes
+     the gap between block and surround, so a non-focal month goes FLAT rather than
+     faded, and the focal month gets back the honest full-contrast rendering that
+     every month used to have.
+
+     0.07 IS THE OLD VALUE, KEPT DELIBERATELY. The visible step between washed and
+     plain is exactly what it was; only which side gets it has changed. If this
+     wants tuning, tune it here and nowhere else.
+
+     background-IMAGE, not background-color, for the reason in the comment above:
+     it LAYERS over whatever the cell already has instead of destroying it, and a
+     `background` shorthand on a sticky element is a known trap in this file.
+     NO OPACITY ANYWHERE IN THIS RULE -- opacity on a sticky header cell makes the
+     grid scroll through it, the trap that cost real time in chat 3.
+
+     *** THE HEADER AND THE DATE STRIP ARE UNTOUCHED BY THIS. ***
+     schedSyncMonthToScroll is unchanged: .sched-col-on still lands on the focal
+     month's header cells and body cells alike, and .sched-hcell.sched-col-on below
+     still lights the date strip at 0.10 with a white day number. Only the BODY's
+     reading of the class is inverted -- which is why these two rules name
+     .sched-cell explicitly instead of sharing a bare .sched-col-on. A bare rule
+     here would have had to be removed from under the header as well. */
+  .sched-cell{ background-image:linear-gradient(rgba(184,196,217,0.07), rgba(184,196,217,0.07)); }
+  .sched-cell.sched-col-on{ background-image:none; }
 
   /* *** YOUR OWN ROW. ***
      The grid is a department view, but the question people arrive with is "what
@@ -4632,7 +4661,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T03:40:00Z';
+const BUILD_VERSION = '2026-09-10T05:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -25989,8 +26018,11 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   void isMe;
   // *** THE `outside` PARAMETER IS GONE, NOT VOIDED. ***
   // It marked a day as belonging to a month other than the anchor's, so the cell
-  // could be dimmed. Nothing dims now -- the working month is LIT instead, via
-  // .sched-col-on applied by schedSyncMonthToScroll. Keeping the argument and
+  // could be dimmed. Nothing dims now. The focal month is marked by .sched-col-on,
+  // applied by schedSyncMonthToScroll, and the BODY reads that class as "leave this
+  // cell plain" -- every other month carries a flat wash instead. See the comment
+  // over .sched-cell in the stylesheet for why that direction and not the reverse.
+  // A wash is not a dim: it never touches the category block. Keeping the argument and
   // voiding it would leave the caller computing a value that goes nowhere, which
   // is the same dead-code pattern that hid an unused monthLabel earlier today.
   // Derived from the date itself rather than passed in, so every row draws the
@@ -28447,12 +28479,20 @@ function schedSyncMonthToScroll(){
     c.classList.toggle('sched-mcell-on', c.getAttribute('data-sched-mkey') === key);
   });
 
-  // *** LIGHT THE WHOLE COLUMN, EVERY ROW. ***
-  // The band alone was not the ask: the working month should read as a lit
+  // *** MARK THE WHOLE COLUMN, EVERY ROW. ***
+  // The band alone was not the ask: the working month should read as its own
   // vertical slice down the entire grid -- crew rows and aircraft rows alike --
   // so it announces itself as the area being worked in. Aircraft are in that
   // month just as much as crew are, so the slice is full height with no
   // exceptions.
+  //
+  // *** THIS MARKS THE MONTH. IT DOES NOT DECIDE THE APPEARANCE. ***
+  // The class used to mean "wash this cell" and now means "this is the focal
+  // month", which the two surfaces answer differently: the date strip lights up
+  // (.sched-hcell.sched-col-on), and the body cells go PLAIN while every other
+  // month carries the wash (.sched-cell / .sched-cell.sched-col-on). Inverted
+  // 10 Sep 2026 -- the stylesheet holds the reasoning. Nothing here changed with
+  // it, and nothing here needs to change if it is tuned again.
   //
   // Only the OUTGOING and INCOMING months are touched, never all 6,400 cells.
   // Clearing by class and setting by attribute keeps each scroll to roughly two
