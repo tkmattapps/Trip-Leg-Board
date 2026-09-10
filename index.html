@@ -4618,7 +4618,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T02:45:00Z';
+const BUILD_VERSION = '2026-09-10T03:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14272,7 +14272,7 @@ function wbTripLinkRowHTML(t){
         + facts
       + '</div>'
       + '<button type="button" class="trip-link-btn" data-wb-linkcard="' + escHtml(c.key) + '">'
-        + (tripLinkCount(c) ? 'Change link' : 'Link trip') + '</button>'
+        + (tripLinkCount(c) ? 'Change link' : 'Link trip numbers') + '</button>'
     + '</div>';
   }).join('');
 
@@ -14297,7 +14297,27 @@ function wbTripLinkRowHTML(t){
   // the row's 14px bottom margin, plus the 14px top margin added when the row
   // moved here. Wrapped, they sit side by side on a wide screen and stack on a
   // phone without any of it being measured.
-  return '<div class="wb-trip-meta">' + out + '</div>';
+  //
+  // *** THE SENTENCE GOES UNDER THE STRIP, NOT IN THE ROW. ***
+  // Kyle, 10 Sep 2026 -- "Link trip" told a first-time reader nothing, and in an
+  // app that also has chat LINKS it read as attaching a URL. The button now says
+  // what it joins; this line says why anyone would.
+  //
+  // It sits outside .wb-trip-meta on purpose. The row is flex-wrap:nowrap with a
+  // flex:0 0 auto button, tuned so the fact text shrinks and the button never
+  // drops to a second line -- see the comments on .wb-trip-meta, where exactly
+  // that broke once. A sentence inside the row would put the pressure straight
+  // back on. Out here it is a plain full-width line and fights nothing.
+  //
+  // .wb-edit-note is the class the save note below already uses, and both are
+  // siblings in the same grid, so this matches it without a new rule.
+  //
+  // Returned WITH the strip rather than added by the caller, so it disappears
+  // when the strip does -- a plan with no card behind it has no link row, and an
+  // orphaned sentence explaining a button that is not there is worse than none.
+  return '<div class="wb-trip-meta">' + out + '</div>'
+    + '<div class="wb-edit-note">Tie this trip to another trip number, so crew '
+    + 'can see they\u2019re part of the same journey.</div>';
 }
 
 // *** PUSHING THE PLAN DOWN ONTO THE LEGS. ***
