@@ -4618,7 +4618,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T01:35:00Z';
+const BUILD_VERSION = '2026-09-10T02:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -23569,6 +23569,22 @@ function legendBodyHTML(){
       '<div class="lg-group-title">The archive</div>',
       '<div class="lg-row"><span class="lg-key"><span class="lg-sample ring-ok">Sealed</span></span><span class="lg-body">Archiving is done <b>per trip, by an admin, and it cannot be undone</b>. It freezes the trip exactly as it stood: every field, who verified what, the crew in each seat, and the shared notes.</span></div>',
       '<div class="lg-row"><span class="lg-key"></span><span class="lg-body">A trip does not archive itself. Flown legs sit on the board until somebody decides the record is finished. A trip can be archived with legs still unflown &mdash; it is marked incomplete if so.</span></div>',
+    '</div>',
+    // *** THE TALLY IS THE ONE PART OF THE SCHEDULE THAT IS NOT SELF-EVIDENT. ***
+    // The grid's colours already have a key ON the schedule page (see keyRow in
+    // the schedule render), so nothing about fills belongs here -- it would be a
+    // second copy to keep in step. The tally has no such key: it is a bare
+    // figure beside a person's name, and a bare figure invites being read as a
+    // target or a score. Every claim below is read out of tallyDeviations,
+    // tallyCountRange and tallyAircraftRange -- if those change, this changes.
+    '<div class="lg-group">',
+      '<div class="lg-group-title">The schedule tally</div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">+4</span></span><span class="lg-body"><b>Duty Ave</b> &mdash; duty days above or below the average for <b>your own job title</b>. Pilots and cabin crew are averaged separately. It is worked out per day you were available, so somebody who joined in July is not measured against a full year.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">&mdash;</span></span><span class="lg-body">A dash means there is nothing to compare you against yet &mdash; no available days on record, or you are the only person in the department with that job title.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">Duty</span></span><span class="lg-body">The arrow at the top of the column opens the detail: <b>Duty</b>, <b>PTO</b> and <b>Home</b>, each as a figure for the month on screen and one for the year.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">Home</span></span><span class="lg-body"><b>Home is every available day that is not duty</b>, whether or not anything is written on it. PTO sits <b>inside</b> home, not beside it &mdash; the two are not piles to add together.</span></div>',
+      '<div class="lg-row"><span class="lg-key"><span class="lg-sample human">Away</span></span><span class="lg-body">A tail reads <b>Away</b> and <b>Maint</b> instead, and carries no average. An aeroplane has no job title to be compared against.</span></div>',
+      '<div class="lg-row"><span class="lg-key"></span><span class="lg-body">One day is only ever counted once. Where a day is both, duty wins.</span></div>',
     '</div>',
     '<p class="lg-note">Verification is a human decision. Opening a leg to read it never removes a sign-off &mdash; only a real edit does.</p>'
   ].join('');
