@@ -2346,6 +2346,12 @@
     color:var(--fog-300); font-family:system-ui,'Inter',sans-serif; font-size:13px;
     padding:9px 12px; cursor:pointer; }
   .sched-cat-on{ border-color:var(--amber-500); color:var(--paper-050); }
+  /* Hover ring on every Add button, the trip route included -- same lift the
+     clickable rows above get. Grey, not amber: amber means "chosen", and a
+     hover must not look like a selection. Selected keeps its amber on hover. */
+  .sched-cat:hover{ border-color:var(--fog-500); background:var(--panel-800); }
+  .sched-cat-on:hover{ border-color:var(--amber-500); }
+  .sched-cat:focus-visible{ outline:2px solid var(--fog-300); outline-offset:1px; }
   .sched-entry-span{ font-size:12px; color:var(--fog-500); margin-top:10px; }
   .sched-entry-span-bad{ color:var(--alert-600); }
   .sched-entry-day{ font-size:12px; color:var(--fog-500); margin:-8px 0 14px; }
@@ -4732,7 +4738,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T18:05:00Z';
+const BUILD_VERSION = '2026-09-10T18:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
