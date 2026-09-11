@@ -1720,8 +1720,13 @@
      child and auto margins centre it. pointer-events:none for the reason in
      the operating rules: WebKit fires no click for a tap that lands on a
      child of a plain div, and the cell underneath is the tap target. */
-  .sched-info-glyph{ margin:auto; font-size:14px; line-height:1;
+  .sched-info-glyph{ margin:auto; font-size:14px; line-height:normal;
     pointer-events:none; user-select:none; }
+  /* line-height:normal, NOT 1: Apple Color Emoji paints taller than its font
+     size and hangs below the baseline, so a 14px line box centred the box and
+     let the picture spill out the bottom. Rendered low on iOS, fine on a Mac
+     (Kyle, 10 Sep 2026). Letting the line box take the font's own height
+     centres the glyph as iOS actually draws it, with no number to get wrong. */
   /* The emoji box on the Add panel and the event detail page. Both the base
      input rule (width:100%) and .ev-field's flex-basis are overridden here;
      this rule sits later in the sheet at equal specificity, so it wins on
@@ -4760,7 +4765,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T22:05:00Z';
+const BUILD_VERSION = '2026-09-10T22:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
