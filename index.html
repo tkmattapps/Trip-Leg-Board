@@ -3135,7 +3135,10 @@
   .wb-card-label{ font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
     color:var(--fog-300); margin:0 0 6px 4px; }
   .wb-card-label-legs{ margin-top:16px; }
-  .wb-card-sub{ font-size:12px; color:var(--fog-300); margin:-2px 0 8px 4px; line-height:1.4; }
+  /* Subtext sits a step duller than the label above it (fog-500 under fog-300)
+     so the two read as heading and note rather than two lines of the same thing.
+     Kyle, 11 Sep 2026. */
+  .wb-card-sub{ font-size:12px; color:var(--fog-500); margin:-2px 0 8px 4px; line-height:1.4; }
   .wb-legs-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .wb-legs-title{ font-size:13px; font-weight:600; color:var(--paper-050); }
   .wb-legs-sub{ font-size:12px; color:var(--fog-500); }
@@ -4824,7 +4827,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T05:20:00Z';
+const BUILD_VERSION = '2026-09-11T05:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
