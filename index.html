@@ -4833,7 +4833,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T06:05:00Z';
+const BUILD_VERSION = '2026-09-11T06:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12381,6 +12381,13 @@ async function openPlanForCard(tripKey){
     await loadWorkbenchTrips();
     await loadWorkbenchTripAircraft();
     await loadTripWorkbenchAssignments();
+    // The plan also paints crew date ranges and positioning days out of their
+    // caches, which only the workbench sheet used to fill. Entering from the
+    // card first thing in a session left both empty, and an empty cache
+    // renders as "None on this trip" for days that are plainly on the grid.
+    // Kyle, 11 Sep 2026.
+    await loadWorkbenchTripCrewDays();
+    await loadPositioningDays();
   } catch(e){ console.warn('openPlanForCard', e); showToast('Could not read trip plans.'); return; }
 
   let wb = wbTripForCard(trip);
