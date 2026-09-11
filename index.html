@@ -4809,7 +4809,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T03:35:00Z';
+const BUILD_VERSION = '2026-09-11T03:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -15428,6 +15428,9 @@ function openWorkbenchTrip(id, origin){
   state.activeId = null;
   if(typeof updateNavTabs === 'function') updateNavTabs();
   renderMain();
+  // Top of the plan, always -- the window's scroll survives the view swap,
+  // same as the brief and the leg editor. Kyle, 11 Sep 2026.
+  window.scrollTo(0, 0);
 }
 
 // Back from the trip page. It rebuilds the origin rather than naming a fixed
