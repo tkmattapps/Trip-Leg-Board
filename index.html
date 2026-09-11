@@ -1720,25 +1720,17 @@
      child and auto margins centre it. pointer-events:none for the reason in
      the operating rules: WebKit fires no click for a tap that lands on a
      child of a plain div, and the cell underneath is the tap target. */
-  .sched-info-glyph{ margin:auto; font-size:14px; line-height:0; height:0;
-    display:block; overflow:visible; white-space:nowrap;
+  .sched-info-glyph{ margin:auto; font-size:14px; line-height:normal;
     font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;
     pointer-events:none; user-select:none; }
-  /* *** MEASURED, NOT GUESSED. *** (10 Sep 2026)
-     Probe on the phone: cell 30px, glyph box 24px, 2.5px above and 3.5px
-     below -- the BOX was centred, and the picture was still low. Apple Color
-     Emoji draws the ink low inside its own line box, and line-height moves
-     the box, never the ink. Two line-height theories failed on exactly that.
-     So: line-height:0 collapses the box to a line at the font's em centre,
-     margin:auto puts that line at the cell centre, and schedGlyphShift()
-     measures the glyph's real ink on a canvas and slides it by the difference
-     between ink centre and em centre. Nothing here is a typed-in number.
-     Emoji font named first so both devices measure and draw the same face. */
-  /* line-height:normal, NOT 1: Apple Color Emoji paints taller than its font
-     size and hangs below the baseline, so a 14px line box centred the box and
-     let the picture spill out the bottom. Rendered low on iOS, fine on a Mac
-     (Kyle, 10 Sep 2026). Letting the line box take the font's own height
-     centres the glyph as iOS actually draws it, with no number to get wrong. */
+  /* Emoji font FIRST so both devices draw the same face. Centred on the Mac.
+     KNOWN: sits a few px low on iOS. Probed 10 Sep 2026 -- the span's box is
+     centred to within a pixel (cell 30, box 24, 2.5 above / 3.5 below); the
+     ink is low INSIDE Apple Color Emoji's box. line-height:1, line-height:
+     normal, and a canvas-measured ink shift were all tried; the last one
+     lifted everything on the Mac and nothing on iOS (Safari's canvas does not
+     report the font box). Do not retry those. The remaining fix is an
+     iOS-only nudge with a number read off the phone, which is on the backlog. */
   /* The emoji box on the Add panel and the event detail page. Both the base
      input rule (width:100%) and .ev-field's flex-basis are overridden here;
      this rule sits later in the sheet at equal specificity, so it wins on
@@ -4777,7 +4769,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T23:05:00Z';
+const BUILD_VERSION = '2026-09-10T23:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -26172,34 +26164,6 @@ function schedRunLabel(e, dayRuns){
 //
 // A run that is not found in the map draws closed on both sides, which is the
 // correct fallback -- a one-day ring, never an open-ended one.
-// How far to slide a glyph so its INK is centred where its em box is centred.
-// The span is a zero-height line at the font's em centre (see .sched-info-glyph);
-// canvas measureText gives the ink's ascent/descent and the font's, in the same
-// face and size, so the difference of the two centres is the shift. Cached per
-// glyph; returns 0 when the browser cannot measure, which leaves the em-centred
-// placement -- never worse than before. Font string must match the stylesheet.
-const _glyphShift = {};
-function schedGlyphShift(g){
-  if(g in _glyphShift) return _glyphShift[g];
-  let dy = 0;
-  try {
-    const c = document.createElement('canvas').getContext('2d');
-    c.font = '14px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-    const m = c.measureText(g);
-    if(typeof m.actualBoundingBoxAscent === 'number' && typeof m.fontBoundingBoxAscent === 'number'){
-      const inkC = (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2; // above baseline
-      const emC  = (m.fontBoundingBoxAscent   - m.fontBoundingBoxDescent)   / 2; // above baseline
-      // Ink sitting BELOW the em centre (inkC < emC) must move UP: negative y.
-      dy = Math.round((inkC - emC) * 10) / 10;
-      // inkC < emC means the ink is lower on the page; translateY needs a
-      // negative value to lift it, and (inkC - emC) is negative then. Sign is
-      // therefore already right.
-    }
-  } catch(err){ dy = 0; }
-  _glyphShift[g] = dy;
-  return dy;
-}
-
 function schedInfoRingHTML(e, dayRuns){
   const r = schedRunAt(e, dayRuns);
   let c = 'sched-info-ring';
@@ -26324,12 +26288,7 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   // still clearer than a ring with a glyph on its first day only.
   if(ring && ownerKind !== 'aircraft'){
     const g = schedData && schedData.emoji ? schedData.emoji[String(info[0].ref)] : '';
-    if(g){
-      const dy = schedGlyphShift(g);
-      ring += '<span class="sched-info-glyph" aria-hidden="true"' +
-              (dy ? ' style="transform:translateY(' + dy + 'px)"' : '') + '>' +
-              escapeHtml(g) + '</span>';
-    }
+    if(g) ring += '<span class="sched-info-glyph" aria-hidden="true">' + escapeHtml(g) + '</span>';
   }
   // A day holding ONLY a marker is not a filled cell -- nothing is committed on
   // it -- so it keeps the empty cell's styling and just wears the ring.
