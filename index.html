@@ -1773,14 +1773,19 @@
      against the PADDING box, so right:0 stops 1px short of the next cell and
      the top and bottom lines would come out dashed. -1px bridges exactly that
      border. The last day pulls back to 0 so the run closes on the cell edge. */
+  /* Kyle, 11 Sep 2026: amber-500 read as loud on both crew and tail rows --
+     an info-only marker outshouted the duty blocks it sits beside. Dropped to
+     amber-700 (already in the palette); 2px kept so it survives a phone. The
+     key swatch and the Add-panel mark share the colour below so the legend
+     shows what the grid draws. */
   .sched-info-ring{ position:absolute; top:0; bottom:0; left:0; right:-1px;
     pointer-events:none;
-    border-top:2px solid var(--amber-500);
-    border-bottom:2px solid var(--amber-500); }
-  .sched-info-ring.sched-info-first{ border-left:2px solid var(--amber-500);
+    border-top:2px solid var(--amber-700);
+    border-bottom:2px solid var(--amber-700); }
+  .sched-info-ring.sched-info-first{ border-left:2px solid var(--amber-700);
     border-top-left-radius:3px; border-bottom-left-radius:3px; }
   .sched-info-ring.sched-info-last{ right:0;
-    border-right:2px solid var(--amber-500);
+    border-right:2px solid var(--amber-700);
     border-top-right-radius:3px; border-bottom-right-radius:3px; }
 
   /* The key's swatch for it, and the same mark on the Add button that creates
@@ -1788,7 +1793,7 @@
      stands for sits ON TOP of whatever the day already holds rather than
      replacing it, so a filled dot would misdescribe it. */
   .sched-key-ring{ width:10px; height:10px; border-radius:2px; flex:0 0 auto;
-    box-shadow:inset 0 0 0 2px var(--amber-500); }
+    box-shadow:inset 0 0 0 2px var(--amber-700); }
   /* Two blocks in one cell IS the collision the grid exists to show, so they
      stack rather than merging or overwriting each other. */
   .sched-blk{ flex:1 1 auto; min-height:9px; border-radius:2px; display:flex;
@@ -4849,7 +4854,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T08:00:00Z';
+const BUILD_VERSION = '2026-09-11T08:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
