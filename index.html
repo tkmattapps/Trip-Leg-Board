@@ -3129,7 +3129,12 @@
   /* THE PLAN IS TWO CARDS. Kyle, 11 Sep 2026: the overview above, the legs
      below. Same card styling, so the split reads as two things rather than as
      a form with a footer. Stacked with a gap, no grid. */
-  .wb-page .wb-legs{ margin-top:12px; }
+  .wb-page .wb-legs{ margin-top:0; }
+  /* Card names, outside the box, top-left. The legs label carries the 12px
+     gap that used to sit on .wb-legs itself. */
+  .wb-card-label{ font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--fog-300); margin:0 0 6px 4px; }
+  .wb-card-label-legs{ margin-top:16px; }
   .wb-legs-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .wb-legs-title{ font-size:13px; font-weight:600; color:var(--paper-050); }
   .wb-legs-sub{ font-size:12px; color:var(--fog-500); }
@@ -4818,7 +4823,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T04:05:00Z';
+const BUILD_VERSION = '2026-09-11T04:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14432,6 +14437,9 @@ function wbAircraftEditHTML(t){
 // behaviour and the layout are copies rather than decisions.
 function wbTripFormHTML(t){
   return '<div class="wb-page">'
+    // Kyle, 11 Sep 2026: the two cards are different enough to need names,
+    // and the names sit OUTSIDE the boxes, top-left, above each card.
+    + '<div class="wb-card-label">Trip overview</div>'
     + '<div class="wb-edit" data-wb-editor="' + escHtml(t.id || '') + '">'
       // Line 1 -- when and where. The dates first because that is the order the
       // question gets asked: which days, then what routing on them.
@@ -14500,6 +14508,7 @@ function wbTripFormHTML(t){
         + '>Delete this trip</button>'
       + '</div>'
     + '</div>'
+    + '<div class="wb-card-label wb-card-label-legs">Leg details</div>'
     + wbLegsCardHTML(t)
     + '</div>';
 }
