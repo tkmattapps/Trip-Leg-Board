@@ -3135,6 +3135,7 @@
   .wb-card-label{ font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
     color:var(--fog-300); margin:0 0 6px 4px; }
   .wb-card-label-legs{ margin-top:16px; }
+  .wb-card-sub{ font-size:12px; color:var(--fog-300); margin:-2px 0 8px 4px; line-height:1.4; }
   .wb-legs-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .wb-legs-title{ font-size:13px; font-weight:600; color:var(--paper-050); }
   .wb-legs-sub{ font-size:12px; color:var(--fog-500); }
@@ -4823,7 +4824,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T04:20:00Z';
+const BUILD_VERSION = '2026-09-11T04:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12781,6 +12782,9 @@ async function loadSchedSmart(){
     schedSmartCache = 'unknown';
   }
   if(state.view === 'settings') renderSettingsView();
+  // The Leg details label on the Trip Plan states the switch's position, so
+  // the plan re-renders once it is known. Kyle, 11 Sep 2026.
+  if(state.view === 'wbTrip') renderMain();
 }
 
 // The extraction flag's own read. Called from Settings AND from the import
@@ -14509,6 +14513,7 @@ function wbTripFormHTML(t){
       + '</div>'
     + '</div>'
     + '<div class="wb-card-label wb-card-label-legs">Leg details</div>'
+    + '<div class="wb-card-sub">' + wbLegsSmartSentence() + '</div>'
     + wbLegsCardHTML(t)
     + '</div>';
 }
@@ -14523,6 +14528,20 @@ function wbTripFormHTML(t){
 //
 // TWO CARDS ON ONE PLAN IS A REAL STATE (see wbTripLinkRowHTML), so the legs
 // are grouped by card and named when there is more than one.
+// The sentence under "Leg details". Kyle, 11 Sep 2026: a first-time scheduler
+// has to know that the overview writes to the grid and the legs do not --
+// unless Smart Schedule is on, in which case leg tail and crew days are let
+// through by loadScheduleData. The wording follows the switch, and it is
+// never painted in a position that was not read: null is "checking",
+// 'unknown' says the read failed.
+function wbLegsSmartSentence(){
+  if(schedSmartCache === null) return 'Checking the Smart Schedule setting\u2026';
+  if(schedSmartCache === 'unknown') return 'Smart Schedule setting could not be read.';
+  return schedSmartCache === true
+    ? 'Smart Schedule is on. Changes to tail and crew here will also post to the schedule grid.'
+    : 'Smart Schedule is off. Changes in this section will not post to the schedule grid.';
+}
+
 function wbLegsCardHTML(t){
   // Cards arrive in link-row order, which is arrival order and can run
   // chronologically backwards (415543 listed above 415531, 11 Sep 2026). Sort
@@ -15472,6 +15491,10 @@ function openWorkbenchTrip(id, origin){
   state.view = 'wbTrip';
   state.activeId = null;
   if(typeof updateNavTabs === 'function') updateNavTabs();
+  // The switch is otherwise only read when Settings opens. Read it once so the
+  // Leg details label can say where it sits; the label reads "Checking" until
+  // it lands, never a guessed position.
+  if(schedSmartCache === null) loadSchedSmart();
   renderMain();
   // Top of the plan, always -- the window's scroll survives the view swap,
   // same as the brief and the leg editor. Kyle, 11 Sep 2026.
