@@ -3150,21 +3150,24 @@
      checklist. One row open at a time. The body is the leg's tail and seats
      with Change buttons that open the existing single-leg quick sheet. */
   .wb-leg-row.is-open{ border-radius:8px 8px 0 0; border-bottom-color:transparent; }
+  /* Kyle, 11 Sep 2026: the buttons are independent of the value lines --
+     values on the left, three buttons stacked on the right. */
   .wb-leg-body{
     border:1px solid var(--hairline); border-top:0; border-radius:0 0 8px 8px;
     background:var(--panel-800); padding:8px 10px 10px; margin-bottom:8px;
-    display:grid; grid-template-columns:auto 1fr auto; gap:6px 12px; align-items:center;
+    display:flex; gap:12px; align-items:flex-start;
   }
+  .wb-leg-vals{ flex:1 1 auto; min-width:0; display:grid; grid-template-columns:auto 1fr; gap:6px 12px; align-items:center; }
   .wb-leg-k{ font-size:12px; color:var(--fog-500); }
   .wb-leg-v{ font-size:14px; color:var(--paper-050); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .wb-leg-v.is-empty{ color:var(--fog-500); }
+  .wb-leg-btns{ flex:0 0 auto; display:flex; flex-direction:column; gap:6px; }
   .wb-leg-change{
-    font-size:12px; padding:6px 10px; border-radius:6px; cursor:pointer;
+    font-size:12px; padding:6px 10px; border-radius:6px; cursor:pointer; white-space:nowrap;
     background:transparent; color:var(--amber-500); border:1px solid var(--amber-700);
   }
   .wb-leg-change:disabled{ opacity:.4; cursor:default; }
-  .wb-leg-open-full{ grid-column:1 / -1; font-size:12px; color:var(--fog-300); margin-top:4px; }
-  .wb-leg-open-full a{ color:var(--amber-500); cursor:pointer; }
+  .wb-leg-sealed{ grid-column:1 / -1; font-size:12px; color:var(--fog-300); }
   .wb-legs-add-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .wb-legs-add-note{ font-size:12px; color:var(--fog-500); }
 
@@ -4806,7 +4809,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T02:40:00Z';
+const BUILD_VERSION = '2026-09-11T03:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14552,20 +14555,27 @@ function wbLegBodyHTML(leg, card){
   const c = leg.crew || {};
   function seat(v){ return v ? crewDisplayName(v, leg) : ''; }
   function list(v){ return (Array.isArray(v) ? v : []).filter(Boolean).map(function(id){ return crewDisplayName(id, leg); }).join(', '); }
-  function line(k, v, mode){
+  function line(k, v){
     return '<div class="wb-leg-k">' + k + '</div>'
-      + '<div class="wb-leg-v' + (v ? '' : ' is-empty') + '">' + escHtml(v || 'None') + '</div>'
-      + (mode
-          ? '<button type="button" class="wb-leg-change" data-wb-legquick="' + mode + '" data-wb-legquick-id="' + escHtml(String(leg.id)) + '" data-wb-legquick-key="' + escHtml(String(card.key)) + '"' + (canEdit ? '' : ' disabled') + '>Change</button>'
-          : '<span></span>');
+      + '<div class="wb-leg-v' + (v ? '' : ' is-empty') + '">' + escHtml(v || 'None') + '</div>';
+  }
+  function quick(mode, label){
+    return '<button type="button" class="wb-leg-change" data-wb-legquick="' + mode + '" data-wb-legquick-id="' + escHtml(String(leg.id)) + '" data-wb-legquick-key="' + escHtml(String(card.key)) + '"' + (canEdit ? '' : ' disabled') + '>' + label + '</button>';
   }
   return '<div class="wb-leg-body" data-wb-legbody="' + escHtml(String(leg.id)) + '">'
-    + line('Tail', leg.tailNumber || '', 'aircraft')
-    + line('PIC', seat(c.pic), 'crew')
-    + line('SIC', seat(c.sic), null)
-    + line('FA',  list(c.fa), null)
-    + line('ACM', list(c.acm), null)
-    + '<div class="wb-leg-open-full">' + (sealed ? 'This leg is sealed. ' : '') + '<a data-wb-legfull="' + escHtml(String(leg.id)) + '">Open the full checklist</a></div>'
+    + '<div class="wb-leg-vals">'
+      + line('Tail', leg.tailNumber || '')
+      + line('PIC', seat(c.pic))
+      + line('SIC', seat(c.sic))
+      + line('FA',  list(c.fa))
+      + line('ACM', list(c.acm))
+      + (sealed ? '<div class="wb-leg-sealed">This leg is sealed.</div>' : '')
+    + '</div>'
+    + '<div class="wb-leg-btns">'
+      + quick('aircraft', 'Change tail')
+      + quick('crew', 'Change crew')
+      + '<button type="button" class="wb-leg-change" data-wb-legfull="' + escHtml(String(leg.id)) + '">Open full leg</button>'
+    + '</div>'
     + '</div>';
 }
 
