@@ -1144,20 +1144,16 @@
   .wb-days-name{ font-size:13px; color:var(--paper-050); min-width:72px; }
   .wb-days-span{ flex:1 1 auto; display:flex; gap:6px; flex-wrap:wrap; }
   .wb-days-all{ font-size:12px; color:var(--fog-500); }
-  .wb-days-chip{ position:relative; display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--amber-500);
-                 border:1px solid var(--hairline); border-radius:6px; padding:2px 8px; }
+  .wb-days-chip{ display:inline-flex; align-items:center; gap:4px; font-size:12px; color:var(--amber-500);
+                 border:1px solid var(--hairline); border-radius:6px; padding:2px 4px 2px 8px; }
   /* Kyle, 11 Sep 2026: tapping the chip used to delete it outright, with the x
-     inside as decoration. Now the chip is inert and the delete is the corner
-     disc, same family as .wb-leg-x and .sched-del-btn, red on hover.
-     Sizing is arithmetic, not feel: the disc is 18px and sits at -6px. Above,
-     6px pokes into .wb-days-row's 6px top padding and stops at the row's
-     border. Right, 6px pokes into .wb-days-span's 6px gap and stops at the
-     next chip's edge. Nothing overlaps. */
-  .wb-days-x{ position:absolute; top:-6px; right:-6px; width:18px; height:18px;
-    display:flex; align-items:center; justify-content:center; padding:0;
-    background:var(--panel-800); border:1px solid var(--hairline); border-radius:50%;
-    color:var(--fog-500); font-size:13px; line-height:1; cursor:pointer; }
-  .wb-days-x:hover{ color:var(--alert-600); border-color:var(--alert-600); }
+     inside as decoration. A corner disc was tried and looked bolted on at this
+     size. Now the x lives inside the chip as its own button, and only the x
+     deletes; the chip itself is inert. 22px square so a thumb can find it. */
+  .wb-days-x{ display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
+    margin:-3px 0; padding:0; background:none; border:0; border-radius:4px;
+    color:var(--fog-500); font-size:15px; line-height:1; cursor:pointer; }
+  .wb-days-x:hover{ color:var(--alert-600); background:var(--panel-700); }
   .wb-days-new{ display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; padding:8px 0; }
   /* *** THE SAME BOX AS EVERY OTHER PICKER IN THE APP. ***
      These selects sit in .wb-days-new, not in .wb-crew-grid, so they were
@@ -4837,7 +4833,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T05:55:00Z';
+const BUILD_VERSION = '2026-09-11T06:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
