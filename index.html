@@ -3126,6 +3126,27 @@
      for is gone, not because anyone judged it wrong. */
   .wb-page{ padding:12px; }
   .wb-page .wb-edit{ border:1px solid var(--hairline); border-radius:10px; }
+  /* THE PLAN IS TWO CARDS. Kyle, 11 Sep 2026: the overview above, the legs
+     below. Same card styling, so the split reads as two things rather than as
+     a form with a footer. Stacked with a gap, no grid. */
+  .wb-page .wb-legs{ margin-top:12px; }
+  .wb-legs-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .wb-legs-title{ font-size:13px; font-weight:600; color:var(--paper-050); }
+  .wb-legs-sub{ font-size:12px; color:var(--fog-500); }
+  .wb-leg-row{
+    display:flex; align-items:center; gap:10px; min-height:44px;
+    padding:6px 8px; border:1px solid var(--hairline); border-radius:8px;
+    background:var(--panel-700); cursor:pointer;
+  }
+  .wb-leg-row:hover{ border-color:var(--fog-500); }
+  .wb-leg-num{ flex:0 0 auto; font-size:12px; color:var(--fog-500); min-width:44px; }
+  .wb-leg-route{ flex:1 1 auto; min-width:0; font-size:14px; color:var(--paper-050);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wb-leg-date{ flex:0 0 auto; font-size:12px; color:var(--fog-300); }
+  .wb-leg-dot{ flex:0 0 auto; }
+  .wb-legs-empty{ font-size:13px; color:var(--fog-500); }
+  .wb-legs-add-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .wb-legs-add-note{ font-size:12px; color:var(--fog-500); }
 
   @media (min-width:821px){
     .sheet{ left:50%; right:auto; transform:translate(-50%, 100%); width:520px; }
@@ -4765,7 +4786,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T00:35:00Z';
+const BUILD_VERSION = '2026-09-11T02:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8821,6 +8842,8 @@ function openLegEditor(legId){
   state.previousView = state.view;
   state.previousTripKey = state.activeTripKey;
   state.previousTripOrigin = state.tripDetailOrigin;
+  // Opened from a Trip Plan: remember which one, so Back can put it back.
+  state.previousWbTripId = (state.view === 'wbTrip') ? wbExpandedId : null;
   state.activeId = legId;
   state.view = 'editor';
   updateNavTabs();
@@ -14441,7 +14464,98 @@ function wbTripFormHTML(t){
         + '>Delete this trip</button>'
       + '</div>'
     + '</div>'
+    + wbLegsCardHTML(t)
     + '</div>';
+}
+
+// *** THE SECOND CARD -- WHAT THE TRIP DOES. ***
+// Kyle, 11 Sep 2026: the plan is the workbench and the card on Active Trips is
+// a door, so the plan has to be able to build the trip and show what is in it.
+// A LIST, one line per leg, tap to open the leg. A stepper was considered and
+// rejected because "what is in this trip" is a question the plan also answers,
+// and one leg at a time is a poor answer to it. See
+// beacon-plan-builds-trip-design.md.
+//
+// TWO CARDS ON ONE PLAN IS A REAL STATE (see wbTripLinkRowHTML), so the legs
+// are grouped by card and named when there is more than one.
+function wbLegsCardHTML(t){
+  const cards = cardsSharingWbTrip(t.id, '');
+  const canEdit = wbCanEditTrips();
+  let body = '';
+  let total = 0;
+  cards.forEach(function(c){
+    const legs = (c.legs || []).slice().sort(function(a, b){
+      return (parseInt(a.legNumber, 10) || 0) - (parseInt(b.legNumber, 10) || 0);
+    });
+    total += legs.length;
+    if(cards.length > 1){
+      body += '<div class="wb-legs-sub">' + escHtml(c.tripNumber ? ('Trip ' + c.tripNumber) : 'Unnumbered trip') + '</div>';
+    }
+    legs.forEach(function(leg){
+      const route = leg.cityPair || [ (leg.dep||{}).airportId, (leg.arr||{}).airportId ].filter(Boolean).join(' \u2192 ') || 'No city pair yet';
+      body += '<div class="wb-leg-row" role="button" tabindex="0" data-wb-leg="' + escHtml(String(leg.id || '')) + '">'
+        + '<span class="wb-leg-dot leg-status-dot leg-status-dot-plain leg-status-' + escHtml(leg.status || '') + '"></span>'
+        + '<span class="wb-leg-num">Leg ' + escHtml(leg.legNumber || '?') + '</span>'
+        + '<span class="wb-leg-route">' + escHtml(route) + '</span>'
+        + '<span class="wb-leg-date">' + escHtml(formatISODateDisplay(leg.date) || 'No date') + '</span>'
+        + '</div>';
+    });
+  });
+  if(!total) body = '<div class="wb-legs-empty">No legs yet.</div>';
+  return '<div class="wb-edit wb-legs" data-wb-legs="' + escHtml(t.id || '') + '">'
+    + '<div class="wb-legs-head">'
+      + '<div class="wb-legs-title">Legs' + (total ? ' \u00b7 ' + total : '') + '</div>'
+    + '</div>'
+    + body
+    // Add leg is plan work, so it is admin-gated -- disabled, not hidden, per
+    // the invariant. The note says who to ask.
+    + '<div class="wb-legs-add-row">'
+      + '<div class="wb-legs-add-note">' + (canEdit ? 'Opens the leg checklist. Back returns here.' : 'Only an admin can add legs.') + '</div>'
+      + '<button type="button" class="wb-add-btn" data-wb-legadd="' + escHtml(t.id || '') + '"' + (canEdit ? '' : ' disabled') + '>+ Add leg</button>'
+    + '</div>'
+    + '</div>';
+}
+
+// ADD LEG FROM THE PLAN. The #addLegTile logic with the group id coming from
+// the plan's link row instead of a sibling leg.
+//
+// *** LINK BEFORE LEG. *** When the plan has no card yet, the assignment row is
+// written first and the leg second, so a leg never exists unpaired -- a leg
+// saved before its link is a card with nothing behind it for one round trip,
+// and a refresh in that window makes it exactly what ensureTripPlans exists to
+// clean up. The same upsert assignWorkbenchTripToCard makes, read back with
+// .select() so a policy refusal shows as a failure rather than a false start.
+async function wbAddLegToPlan(planId){
+  if(!planId) return;
+  if(!wbCanEditTrips()){ showToast('Only an admin can add legs.'); return; }
+  const t = (Array.isArray(workbenchCache) ? workbenchCache : []).find(function(x){ return x.id === planId; });
+  if(!t){ showToast('That trip is no longer on the list.'); return; }
+  if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
+  const cards = cardsSharingWbTrip(planId, '');
+  const leg = blankLeg();
+  if(cards.length){
+    // One card, or the first of several -- a second card on one plan is the
+    // paperwork's doing, and legs added by hand join the first.
+    const c = cards[0];
+    const gid = (c.legs || []).map(function(l){ return l && l.groupId; }).find(Boolean) || tripGroupIdOf(c);
+    if(gid) leg.groupId = gid;
+    leg.tripNumber = c.tripNumber || '';
+    leg.legNumber = String(Math.max(0, ...(c.legs || []).map(function(l){ return parseInt(l.legNumber, 10) || 0; })) + 1);
+  } else {
+    const deptId = await getFlightDepartmentId();
+    if(!deptId){ showToast('Could not add a leg \u2014 no department.'); return; }
+    const { data, error } = await sb.from('trip_workbench_assignments')
+      .upsert({ flight_department_id: deptId, group_id: leg.groupId, workbench_trip_id: planId },
+              { onConflict: 'flight_department_id,group_id' })
+      .select();
+    if(error){ showToast('Could not add a leg: ' + (error.message || 'unknown error')); return; }
+    if(!data || !data.length){ showToast('Not added \u2014 admin only.'); return; }
+    await loadTripWorkbenchAssignments();
+    leg.legNumber = '1';
+  }
+  state.legs.unshift(leg);
+  try { await saveLeg(leg); } catch(e){ /* keep the leg on screen either way */ }
+  openLegEditor(leg.id);
 }
 
 // LINKING LIVES ON THE PLAN. Kyle, 8 Sep 2026 -- everything build related lives
@@ -20121,6 +20235,9 @@ document.addEventListener('click', function(e){
   else if(dest === 'dashboard'){ state.view = 'dashboard'; }
   else if(dest === 'history'){ state.view = 'history'; }
   else if(dest === 'tripDetail'){ state.view = 'tripDetail'; }
+  // Back to the plan a leg was opened from. wbExpandedId is what the plan view
+  // renders; restore it in case something in between moved it.
+  else if(dest === 'wbTrip'){ if(state.previousWbTripId) wbExpandedId = state.previousWbTripId; state.view = 'wbTrip'; }
   // Returning to a sealed trip. state.archivedTrip is left intact -- it holds
   // the snapshot the archived screens render from, and renderArchivedTripView
   // bounces to the archive list if it is ever missing.
@@ -21174,6 +21291,8 @@ function renderMain(){
     backLabel = prevTrip ? 'Crew Brief' : 'Active Trips';
   } else if(state.previousView === 'history'){
     backLabel = 'Archived Trips';
+  } else if(state.previousView === 'wbTrip' && state.previousWbTripId){
+    backLabel = 'Trip Plan';
   }
 
   setPageHeader({
@@ -21184,7 +21303,10 @@ function renderMain(){
     sub: (leg.cityPair || '').trim(),
     actionsHTML: '<button type="button" class="verify-progress" id="verifyProgress"></button>',
     backLabel: backLabel,
-    backTo: (state.previousView === 'tripDetail' && state.previousTripKey) ? 'tripDetail' : (state.previousView === 'history' ? 'history' : 'dashboard')
+    backTo: (state.previousView === 'tripDetail' && state.previousTripKey) ? 'tripDetail'
+          : (state.previousView === 'history') ? 'history'
+          : (state.previousView === 'wbTrip' && state.previousWbTripId) ? 'wbTrip'
+          : 'dashboard'
   });
   // Offered defaults for the Next pax leg section. Computed here, used in the
   // fields below with `stored || derived` so a typed value always wins.
@@ -22259,6 +22381,9 @@ function renderMain(){
         state.tripDetailOrigin = state.previousTripOrigin;
       } else if(state.previousView === 'history'){
         state.view = 'history';
+      } else if(state.previousView === 'wbTrip' && state.previousWbTripId){
+        wbExpandedId = state.previousWbTripId;
+        state.view = 'wbTrip';
       } else {
         state.view = 'dashboard';
       }
@@ -23607,6 +23732,7 @@ async function handleDelete(id){
       // Last leg in the trip was deleted — nothing to fall back to; return to prior view.
       state.activeId = null;
       state.view = state.previousView === 'tripDetail' && state.previousTripKey ? 'tripDetail' : (state.previousView || 'dashboard');
+      if(state.view === 'wbTrip' && state.previousWbTripId) wbExpandedId = state.previousWbTripId;
       if(state.view === 'tripDetail'){
         state.activeTripKey = state.previousTripKey;
         state.tripDetailOrigin = state.previousTripOrigin;
@@ -29575,6 +29701,12 @@ document.addEventListener('click', async function(e){
   // the per-row cross was removed on 3 Sep 2026.
   const wbTripDel = t.closest('[data-wb-tripdel]');
   if(wbTripDel){ wbDeleteTrip(wbTripDel.getAttribute('data-wb-tripdel') || ''); return; }
+  // The legs card: a row opens that leg, the button adds one. Both return to
+  // the plan on Back -- openLegEditor records state.view, which is 'wbTrip'.
+  const wbLegAdd = t.closest('[data-wb-legadd]');
+  if(wbLegAdd){ wbAddLegToPlan(wbLegAdd.getAttribute('data-wb-legadd') || ''); return; }
+  const wbLegRow = t.closest('[data-wb-leg]');
+  if(wbLegRow){ openLegEditor(wbLegRow.getAttribute('data-wb-leg') || ''); return; }
   // *** THE [data-wb-editor] GUARD THAT WAS HERE IS GONE WITH THE EDITOR ROW. ***
   // It existed because the editor unfolded inside the table, so a bare row
   // lookup matched it and shut the row the moment anyone reached for a field.
