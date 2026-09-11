@@ -4849,7 +4849,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T07:45:00Z';
+const BUILD_VERSION = '2026-09-11T08:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -9062,6 +9062,11 @@ function renderEventDetailView(){
   // one beside it. Kyle, 7 Sep 2026: an admin may contribute to the logistics
   // too, so there is one gate on this page and not two.
   const canEdit = rosterViewerIsAdmin();
+  // Kyle, 11 Sep 2026: the arrangements are open to anyone in the department,
+  // in line with positioning. Details, location and emoji stay admin. The
+  // non-admin write goes through set_crew_exception_arrangements (migration
+  // 105), which touches only those four columns.
+  const canEditArr = true;
   // *** LOGISTICS BELONG TO TRAINING AND NOTHING ELSE. ***
   // Kyle, 7 Sep 2026. A hotel and a rental car on a PTO block read as Beacon
   // offering to plan your holiday, and a soft day has nowhere to go. Location
@@ -9130,19 +9135,55 @@ function renderEventDetailView(){
     (isTraining
       ? '<div class="ev-card">' +
           '<div class="ev-head">Arrangements</div>' +
-          evLogisticsFieldHTML('Hotel',     'Hotel',      r.hotel,      canEdit) +
-          evLogisticsFieldHTML('RentalCar', 'Rental car', r.rental_car, canEdit) +
-          evLogisticsFieldHTML('Travel',    'Flights',    r.travel,     canEdit) +
+          evLogisticsFieldHTML('Hotel',     'Hotel',      r.hotel,      canEditArr) +
+          evLogisticsFieldHTML('RentalCar', 'Rental car', r.rental_car, canEditArr) +
+          evLogisticsFieldHTML('Travel',    'Flights',    r.travel,     canEditArr) +
           '<div class="field ev-field"><label>Notes</label>' +
             '<textarea id="evNotes" rows="3" maxlength="1000" ' +
-              (canEdit ? '' : 'disabled ') +
-              'placeholder="' + escapeHtml(canEdit ? 'Anything the fields above do not cover' : 'Not set') + '">' +
+              'placeholder="Anything the fields above do not cover">' +
               escapeHtml(r.detail_notes || '') +
             '</textarea>' +
           '</div>' +
-          (canEdit ? '' : '<div class="ev-note">Only a department admin can change these.</div>') +
         '</div>'
       : '');
+}
+
+// The non-admin save. Only the four arrangement columns, through the
+// SECURITY DEFINER function that carries its own membership check; the row's
+// UPDATE policy is admin-only and stays that way. Same shape as
+// saveEventFields otherwise: silent, changed values only, failure toasted.
+async function saveEventArrangements(){
+  if(!eventDetail || eventDetailLoading || eventSaveInFlight) return;
+  const cur = {};
+  [['evHotel','hotel'], ['evRentalCar','rental_car'], ['evTravel','travel'], ['evNotes','detail_notes']
+  ].forEach(function(pair){
+    const el = document.getElementById(pair[0]);
+    if(el) cur[pair[1]] = el.value.trim() || null;
+  });
+  if(!Object.keys(cur).length) return;
+  const changed = Object.keys(cur).some(function(k){ return (eventDetail[k] || null) !== cur[k]; });
+  if(!changed) return;
+  eventSaveInFlight = true;
+  let done;
+  eventSavePending = new Promise(function(r){ done = r; });
+  try {
+    const { data, error } = await sb.rpc('set_crew_exception_arrangements', {
+      p_id: eventDetail.id,
+      p_hotel: ('hotel' in cur) ? cur.hotel : (eventDetail.hotel || null),
+      p_rental_car: ('rental_car' in cur) ? cur.rental_car : (eventDetail.rental_car || null),
+      p_travel: ('travel' in cur) ? cur.travel : (eventDetail.travel || null),
+      p_detail_notes: ('detail_notes' in cur) ? cur.detail_notes : (eventDetail.detail_notes || null)
+    });
+    if(error) throw error;
+    if(data) Object.assign(eventDetail, data);
+  } catch(err){
+    console.error('event arrangements save', err);
+    showToast('Could not save that \u2014 try again');
+  } finally {
+    eventSaveInFlight = false;
+    eventSavePending = null;
+    if(done) done();
+  }
 }
 
 // One row per arranged thing: a booked tick and a box for the detail. Built by
@@ -9185,7 +9226,8 @@ let eventSavePending = null;
 // So every call here is silent, and the only toast left is the failure one.
 async function saveEventFields(){
   if(!eventDetail || eventDetailLoading || eventSaveInFlight) return;
-  if(!rosterViewerIsAdmin()) return;
+  const isAdmin = rosterViewerIsAdmin();
+  if(!isAdmin){ return saveEventArrangements(); }
   const cur = {};
   [['evReason','reason'], ['evEmoji','emoji'], ['evLocation','location'], ['evHotel','hotel'],
    ['evRentalCar','rental_car'], ['evTravel','travel'], ['evNotes','detail_notes']
