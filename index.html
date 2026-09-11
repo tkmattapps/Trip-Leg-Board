@@ -1715,6 +1715,18 @@
     flex-direction:column; gap:1px; padding:2px; box-sizing:border-box;
     border-right:1px solid var(--hairline); border-bottom:1px solid var(--hairline); }
   .sched-cell-info{ position:relative; }
+  /* The one glyph an info_only marker may carry (crew_exceptions.emoji,
+     migration 102). The ring is absolute, so this is the cell's only flow
+     child and auto margins centre it. pointer-events:none for the reason in
+     the operating rules: WebKit fires no click for a tap that lands on a
+     child of a plain div, and the cell underneath is the tap target. */
+  .sched-info-glyph{ margin:auto; font-size:14px; line-height:1;
+    pointer-events:none; user-select:none; }
+  /* The emoji box on the Add panel and the event detail page. Both the base
+     input rule (width:100%) and .ev-field's flex-basis are overridden here;
+     this rule sits later in the sheet at equal specificity, so it wins on
+     order. The phone rule forces 16px !important, which is fine for a glyph. */
+  .field input.sched-emoji-in{ width:64px; flex:0 0 64px; text-align:center; font-size:18px; }
 
   /* *** INFO ONLY IS A RING ROUND THE DAYS, NOT A BAR IN THEM. ***
      Every other category is a commitment and gets a filled block. This one is a
@@ -4748,7 +4760,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T21:10:00Z';
+const BUILD_VERSION = '2026-09-10T21:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8907,7 +8919,7 @@ function openEventDetail(exceptionId){
 async function loadEventDetail(exceptionId){
   try {
     const { data, error } = await sb.from('crew_exceptions')
-      .select('id,user_id,category,start_date,end_date,reason,location,' +
+      .select('id,user_id,category,start_date,end_date,reason,emoji,location,' +
               'hotel,rental_car,travel,detail_notes')
       .eq('id', exceptionId)
       .is('deleted_at', null)
@@ -8986,6 +8998,14 @@ function renderEventDetailView(){
           (canEdit ? '' : 'disabled ') +
           'placeholder="' + escapeHtml(canEdit ? (needsReason ? 'Required for ' + label : 'e.g. FAA medical') : 'Not set') + '">' +
       '</div>' +
+      (kind === 'info_only'
+        ? '<div class="field ev-field"><label>Emoji</label>' +
+            '<input type="text" id="evEmoji" maxlength="8" class="sched-emoji-in" ' +
+              'value="' + escapeHtml(r.emoji || '') + '" ' +
+              (canEdit ? '' : 'disabled ') +
+              'placeholder="' + escapeHtml(canEdit ? 'Optional' : 'Not set') + '" autocomplete="off">' +
+          '</div>'
+        : '') +
       (isTraining
         ? '<div class="field ev-field"><label>Location</label>' +
             '<input type="text" id="evLocation" maxlength="120" ' +
@@ -9066,7 +9086,7 @@ async function saveEventFields(){
   if(!eventDetail || eventDetailLoading || eventSaveInFlight) return;
   if(!rosterViewerIsAdmin()) return;
   const cur = {};
-  [['evReason','reason'], ['evLocation','location'], ['evHotel','hotel'],
+  [['evReason','reason'], ['evEmoji','emoji'], ['evLocation','location'], ['evHotel','hotel'],
    ['evRentalCar','rental_car'], ['evTravel','travel'], ['evNotes','detail_notes']
   ].forEach(function(pair){
     // A field the category does not render is simply absent, which is not the
@@ -9087,13 +9107,13 @@ async function saveEventFields(){
     const { data, error } = await sb.from('crew_exceptions')
       .update(patch)
       .eq('id', eventDetail.id)
-      .select('id,reason,location,hotel,rental_car,travel,detail_notes')
+      .select('id,reason,emoji,location,hotel,rental_car,travel,detail_notes')
       .single();
     if(error) throw error;
     if(data) Object.assign(eventDetail, data);
     // The day panel reads details and location off the schedule fetch, so the
     // cached rows are now stale. Drop them rather than patching.
-    if('reason' in patch || 'location' in patch) schedData = null;
+    if('reason' in patch || 'location' in patch || 'emoji' in patch) schedData = null;
   } catch(err){
     console.error('event detail save', err);
     const msg = (err && err.message) ? String(err.message) : '';
@@ -25266,19 +25286,48 @@ async function loadScheduleData(){
   const w = schedWindow();
   const deptId = await getFlightDepartmentId();
   const args = { p_department_id: deptId, p_start: schedISO(w.start), p_end: schedISO(w.end) };
-  const [crew, aircraft, smart] = await Promise.all([
+  const [crew, aircraft, smart, emoji] = await Promise.all([
     schedRpcPaged('crew_busy_days', args),
     schedRpcPaged('aircraft_busy_days', args),
-    loadSchedSmartFeatures(deptId)
+    loadSchedSmartFeatures(deptId),
+    loadSchedInfoEmoji(deptId, args.p_start, args.p_end)
   ]);
   if(!rosterCache || !rosterCache.length) await loadRoster();
   if(!aircraftCache || !aircraftCache.length) await loadAircraft();
-  if(smart) return { crew: crew, aircraft: aircraft, smart: true };
+  if(smart) return { crew: crew, aircraft: aircraft, emoji: emoji, smart: true };
   return {
     crew:     (crew || []).filter(function(r){ return r.source !== 'flight'; }),
     aircraft: (aircraft || []).filter(function(r){ return r.status !== 'flight'; }),
+    emoji: emoji,
     smart: false
   };
+}
+
+// *** THE GLYPH DOES NOT TRAVEL THROUGH crew_busy_days. ***
+// The ring already carries the crew_exceptions row id (ref_id -- it is what
+// "Details" opens), so the emoji is read straight off the table and matched by
+// id at the cell. That leaves the deployed derivation untouched: it is the one
+// function where a mistake empties somebody's schedule, and a decoration is
+// not worth opening it for. Crew only; aircraft_availability has no column.
+// A failed read returns an empty map -- rings still draw, glyphs simply do not.
+async function loadSchedInfoEmoji(deptId, startISO, endISO){
+  const out = {};
+  if(!deptId) return out;
+  try {
+    const { data, error } = await sb.from('crew_exceptions')
+      .select('id, emoji')
+      .eq('flight_department_id', deptId)
+      .eq('category', 'info_only')
+      .not('emoji', 'is', null)
+      .is('deleted_at', null)
+      .lte('start_date', endISO)
+      .gte('end_date', startISO);
+    if(error) throw error;
+    (data || []).forEach(function(r){ if(r.emoji) out[String(r.id)] = r.emoji; });
+  } catch(err){
+    console.warn('loadSchedInfoEmoji', err);
+  }
+  return out;
 }
 
 // *** A FAILED READ MUST LEAVE SMART FEATURES ON. ***
@@ -26204,8 +26253,16 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   // The ring is absolutely positioned, so its cell -- and ONLY its cell -- needs
   // to be a containing block. See the .sched-cell note in the stylesheet for
   // what putting this on every cell cost.
-  const ring = info.length ? schedInfoRingHTML(info[0], dayRuns) : '';
+  let ring = info.length ? schedInfoRingHTML(info[0], dayRuns) : '';
   if(ring) cls += ' sched-cell-info';
+  // The glyph sits INSIDE the ring, never instead of it (Kyle, 10 Sep 2026):
+  // the border says something is noted here, the glyph says what. Every day of
+  // the span wears it, so a two-day marker reads as one thing twice, which is
+  // still clearer than a ring with a glyph on its first day only.
+  if(ring && ownerKind !== 'aircraft'){
+    const g = schedData && schedData.emoji ? schedData.emoji[String(info[0].ref)] : '';
+    if(g) ring += '<span class="sched-info-glyph" aria-hidden="true">' + escapeHtml(g) + '</span>';
+  }
   // A day holding ONLY a marker is not a filled cell -- nothing is committed on
   // it -- so it keeps the empty cell's styling and just wears the ring.
   if(!shown.length){
@@ -27382,6 +27439,16 @@ function renderSchedEntry(){
          '<input type="text" id="schedReason" maxlength="120" value="' + escapeHtml(e.reason) + '" ' +
          'placeholder="' + escapeHtml(needsReason ? reasonReq : reasonEg) + '">' +
        '</div>';
+  // One glyph, info_only crew markers only (Kyle, 10 Sep 2026). No picker: the
+  // phone's own emoji keyboard is the picker. maxlength is in UTF-16 units and
+  // a single emoji can be up to 8 of them (skin tone, flags, ZWJ sequences), so
+  // it matches the database CHECK rather than trying to count glyphs here.
+  if(e.category === 'info_only' && e.ownerKind !== 'aircraft'){
+    h += '<div class="field"><label>Emoji (optional)</label>' +
+           '<input type="text" id="schedEmoji" maxlength="8" class="sched-emoji-in" ' +
+             'value="' + escapeHtml(e.emoji || '') + '" placeholder="\u2014" autocomplete="off">' +
+         '</div>';
+  }
   h += '<div class="sched-entry-span" id="schedSpan"></div>';
   body.innerHTML = h;
   updateSchedSpan();
@@ -27744,9 +27811,12 @@ async function saveSchedEntry(){
   const startEl = document.getElementById('schedStart');
   const endEl = document.getElementById('schedEnd');
   const reasonEl = document.getElementById('schedReason');
+  const emojiEl = document.getElementById('schedEmoji');
   const start = startEl ? startEl.value : e.start;
   const end = endEl ? endEl.value : e.end;
   const reason = reasonEl ? reasonEl.value.trim() : '';
+  // Absent for every category but info_only, and absent is null, not ''.
+  const emoji = emojiEl ? (emojiEl.value.trim() || null) : null;
   // Re-checked here, not just on the button: a rule attached to a control is
   // not a rule.
   if(!e.category){ showToast('Pick a category first'); return; }
@@ -27788,6 +27858,7 @@ async function saveSchedEntry(){
         start_date: start,
         end_date: end,
         reason: reason || null,
+        emoji: emoji,
         created_by: prof ? prof.id : null
       }).select('id').single();
       if(error) throw error;
@@ -29313,6 +29384,8 @@ document.addEventListener('click', async function(e){
     if(sEl) schedEntry.start = sEl.value;
     if(eEl) schedEntry.end = eEl.value;
     if(rEl) schedEntry.reason = rEl.value;
+    const emEl = document.getElementById('schedEmoji');
+    if(emEl) schedEntry.emoji = emEl.value;
     schedEntry.category = schedCat.getAttribute('data-sched-cat');
     renderSchedEntry();
     return;
