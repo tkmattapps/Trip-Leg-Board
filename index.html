@@ -4772,7 +4772,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T22:35:00Z';
+const BUILD_VERSION = '2026-09-10T22:50:00Z-PROBE';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -28878,7 +28878,30 @@ function schedIsSmoothScrolling(){
 // The month-keyed memory is gone with the month-shaped window. There is one
 // strip, so there is one scroll position, and the only question is whether
 // something has asked to move it.
+// *** TEMPORARY PROBE -- REMOVE. *** (10 Sep 2026) Reports the glyph's box
+// against its cell on the device, because two theories about why it sits low
+// on iOS have already been wrong. Fires once per page load, via alert so it
+// can be read at leisure. Remove the whole function and its one call site.
+let _glyphProbed = false;
+function _probeGlyph(){
+  if(_glyphProbed) return;
+  const g = document.querySelector('.sched-info-glyph');
+  if(!g) return;
+  _glyphProbed = true;
+  const c = g.parentElement;
+  const gr = g.getBoundingClientRect(), cr = c.getBoundingClientRect();
+  const gs = getComputedStyle(g), cs = getComputedStyle(c);
+  const rnd = function(n){ return Math.round(n * 10) / 10; };
+  const out = [
+    'cell h=' + rnd(cr.height) + ' top=' + rnd(cr.top) + ' pad=' + cs.paddingTop + '/' + cs.paddingBottom + ' align=' + cs.alignItems + ' just=' + cs.justifyContent + ' disp=' + cs.display + ' minh=' + cs.minHeight + ' gap=' + cs.gap,
+    'glyph h=' + rnd(gr.height) + ' top=' + rnd(gr.top - cr.top) + ' bottom=' + rnd(cr.bottom - gr.bottom) + ' mt=' + gs.marginTop + ' mb=' + gs.marginBottom + ' lh=' + gs.lineHeight + ' fs=' + gs.fontSize + ' disp=' + gs.display + ' font=' + gs.fontFamily.slice(0, 24),
+    'children=' + c.children.length + ' text=' + JSON.stringify(c.textContent) + ' cp=' + Array.from(g.textContent).map(function(ch){ return ch.codePointAt(0).toString(16); }).join('+')
+  ].join('\n');
+  alert(out);
+}
+
 function schedApplyScroll(){
+  setTimeout(_probeGlyph, 300); // TEMPORARY PROBE -- REMOVE
   // Deferred a frame: the grid has only just been written and has no measurable
   // width until layout settles, so scrollLeft would be clamped to zero.
   requestAnimationFrame(function(){
