@@ -3136,9 +3136,18 @@
   .wb-leg-row{
     display:flex; align-items:center; gap:10px; min-height:44px;
     padding:6px 8px; border:1px solid var(--hairline); border-radius:8px;
-    background:var(--panel-700); cursor:pointer;
+    background:var(--panel-700); cursor:pointer; position:relative;
   }
   .wb-leg-row:hover{ border-color:var(--fog-500); }
+  /* Delete a leg from the plan. Same disc as .sched-del-btn: 22px, offset
+     -8px, so 8px pokes into the card's 12px gap and clears the row above.
+     Kyle, 11 Sep 2026: on every row, open or closed. */
+  .wb-leg-x{ position:absolute; top:-8px; right:-8px; width:22px; height:22px;
+    display:flex; align-items:center; justify-content:center; padding:0;
+    background:var(--panel-800); border:1px solid var(--hairline); border-radius:50%;
+    color:var(--fog-500); font-size:16px; line-height:1; cursor:pointer; }
+  .wb-leg-x:hover{ color:var(--alert-600); border-color:var(--alert-600); }
+  .wb-leg-x:disabled{ opacity:.4; cursor:default; }
   .wb-leg-num{ flex:0 0 auto; font-size:12px; color:var(--fog-500); min-width:44px; }
   .wb-leg-route{ flex:1 1 auto; min-width:0; font-size:14px; color:var(--paper-050);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -4809,7 +4818,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T03:45:00Z';
+const BUILD_VERSION = '2026-09-11T04:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14532,6 +14541,9 @@ function wbLegsCardHTML(t){
         + '<span class="wb-leg-num">Leg ' + escHtml(leg.legNumber || '?') + '</span>'
         + '<span class="wb-leg-route">' + escHtml(route) + '</span>'
         + '<span class="wb-leg-date">' + escHtml(formatISODateDisplay(leg.date) || 'No date') + '</span>'
+        + (canEdit && !legIsSealed(leg)
+            ? '<button type="button" class="wb-leg-x" data-wb-legdel="' + escHtml(String(leg.id || '')) + '" aria-label="Delete leg">\u00d7</button>'
+            : '')
         + '</div>';
       if(open) body += wbLegBodyHTML(leg, c);
     });
@@ -14588,6 +14600,30 @@ function wbLegBodyHTML(leg, card){
       + '<button type="button" class="wb-leg-change" data-wb-legfull="' + escHtml(String(leg.id)) + '">Open full leg</button>'
     + '</div>'
     + '</div>';
+}
+
+// DELETE A LEG FROM THE PLAN. handleDelete() is the editor's path and it
+// finishes by opening the neighbouring leg's checklist, which is wrong here:
+// you were on the plan and you stay on the plan. Same soft delete, same
+// lastDelete record so Undo in the menu restores it, same renumber offer.
+async function wbDeleteLegFromPlan(id){
+  const leg = state.legs.find(function(l){ return l.id === id; });
+  if(!leg || !wbCanEditTrips() || legIsSealed(leg)) return;
+  const confirmed = await showConfirm('Delete ' + legLabel(leg) + '? You can undo this from the menu until you close the app.');
+  if(!confirmed) return;
+  const sibKey = '__grp_' + (leg.groupId || ('__solo_' + leg.id));
+  const sibTrip = groupIntoTrips(state.legs).find(function(t){ return t.key === sibKey; });
+  const tripLegsBefore = sibTrip ? sibTrip.legs.slice() : [];
+  const ok = await deleteLeg(id);
+  if(!ok) return;
+  lastDelete = { kind:'leg', ids:[id], label: legLabel(leg) };
+  state.legs = state.legs.filter(function(l){ return l.id !== id; });
+  if(wbLegOpenId === id) wbLegOpenId = '';
+  showToast('Leg deleted');
+  updateNavTabs();
+  renderList();
+  renderMain();
+  await offerRenumberAfterDelete(leg, tripLegsBefore);
 }
 
 // ADD LEG FROM THE PLAN. The #addLegTile logic with the group id coming from
@@ -29782,6 +29818,8 @@ document.addEventListener('click', async function(e){
   // the plan on Back -- openLegEditor records state.view, which is 'wbTrip'.
   const wbLegAdd = t.closest('[data-wb-legadd]');
   if(wbLegAdd){ wbAddLegToPlan(wbLegAdd.getAttribute('data-wb-legadd') || ''); return; }
+  const wbLegDel = t.closest('[data-wb-legdel]');
+  if(wbLegDel){ wbDeleteLegFromPlan(wbLegDel.getAttribute('data-wb-legdel') || ''); return; }
   const wbLegQuick = t.closest('[data-wb-legquick]');
   if(wbLegQuick){
     if(wbLegQuick.disabled) return;
