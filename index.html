@@ -171,6 +171,14 @@
   .drawer-group-title{ font-family:system-ui,'Inter',sans-serif; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); padding:0 10px 2px; }
   .drawer-group-note{ font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.35; color:var(--fog-500); padding:2px 10px 0; }
   .drawer-item-danger .drawer-label{ color:var(--alert-600); }
+  /* Admin-gated items are disabled, not hidden (operating rules, product
+     invariants): a crew member sees that the trip can be deleted and knows
+     who to ask. The note under the button carries the reason, since a
+     disabled control cannot explain itself on a touch screen. */
+  .drawer-item:disabled{ opacity:.45; cursor:default; }
+  .drawer-item:disabled:active{ background:none; }
+  .drawer-gate-note{ display:none; font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.35; color:var(--fog-500); padding:0 10px 4px 50px; }
+  .drawer-gate-note.is-on{ display:block; }
   .drawer-ico-mark{ display:block; width:22px; height:22px; }
   .drawer-ico.di-delete{ color:var(--alert-600); }
   .drawer-ico.di-undo{ color:var(--amber-500); }
@@ -4399,6 +4407,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
     <button type="button" class="drawer-item" id="drawerLegendBtn"><span class="drawer-ico di-legend">&#128273;</span><span class="drawer-label">Legend</span></button>
     <button type="button" class="drawer-item" id="drawerTermsBtn"><span class="drawer-ico di-terms">&#128220;</span><span class="drawer-label">Terms of Use</span></button>
     <button type="button" class="drawer-item drawer-item-danger" id="drawerDeleteBtn" hidden><span class="drawer-ico di-delete">&#128465;</span><span class="drawer-label" id="drawerDeleteLabel">Delete</span></button>
+    <div class="drawer-gate-note" id="drawerDeleteNote">Only an admin can delete a trip.</div>
     <button type="button" class="drawer-item" id="drawerUndoBtn" hidden><span class="drawer-ico di-undo">&#8630;</span><span class="drawer-label" id="drawerUndoLabel">Undo delete</span></button>
     <button type="button" class="drawer-item" id="drawerLogoutBtn"><span class="drawer-ico di-logout">&#8617;</span><span class="drawer-label">Log out</span></button>
     <!-- Deliberately set apart from the items above, which are all PLACES to go.
@@ -4739,7 +4748,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T19:00:00Z';
+const BUILD_VERSION = '2026-09-10T21:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -19689,6 +19698,9 @@ function legAllSectionsVerified(lg){
 
 
 async function handleDeleteTrip(tripKey){
+  // Own check, not just the disabled button: every write path carries its own
+  // admin check (operating rules, section 5).
+  if(!rosterViewerIsAdmin()){ showToast('Only an admin can delete a trip.'); return; }
   const allTrips = groupIntoTrips(state.legs);
   const trip = allTrips.find(t => t.key === tripKey);
   if(!trip) return;
@@ -23652,14 +23664,23 @@ function syncDrawerDelete(){
   let mode = null, label = '';
   if(state.view === 'tripDetail' && state.activeTripKey){ mode = 'trip'; label = 'Delete trip'; }
   else if(state.view === 'editor' && state.activeId){ mode = 'leg'; label = 'Delete leg'; }
+  // Deleting a trip is admin-only, matching "Delete this trip" on the Trip
+  // Plan. Deleting a single leg is not gated here; that is a different size of
+  // thing and stays with the shared-data rule. rosterViewerIsAdmin() returns
+  // false while the roster is still loading, so unknown reads as no.
+  const gated = (mode === 'trip') && !rosterViewerIsAdmin();
+  const note = document.getElementById('drawerDeleteNote');
   if(mode){
     btn.hidden = false;
+    btn.disabled = gated;
     btn.dataset.deleteMode = mode;
     if(lbl) lbl.textContent = label;
   } else {
     btn.hidden = true;
+    btn.disabled = false;
     btn.dataset.deleteMode = '';
   }
+  if(note) note.classList.toggle('is-on', gated);
   // Undo appears only while an undoable delete exists in this session, and names
   // what it will bring back so you are never guessing.
   const ub = document.getElementById('drawerUndoBtn');
