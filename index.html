@@ -1159,7 +1159,7 @@
      these chips for the same reason Delete left the trip card: two targets a
      few pixels apart, one destructive, is a misplaced tap waiting to happen.
      Date-range chips keep their x; they have no page to go to. */
-  button.wb-days-chip{ font-family:inherit; cursor:pointer; padding:4px 10px; }
+  button.wb-days-chip{ background:none; font-family:inherit; cursor:pointer; padding:4px 10px; }
   button.wb-days-chip:hover,
   button.wb-days-chip:active{ background:var(--panel-700); border-color:var(--amber-500); }
   .wb-days-new{ display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; padding:8px 0; }
@@ -4849,7 +4849,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T07:30:00Z';
+const BUILD_VERSION = '2026-09-11T07:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14255,10 +14255,10 @@ async function posAddPerson(dayId, userId){
 // page for why it was removed).
 //
 // The arrangements are columns on the person's trip_positioning_crew row
-// (migration 103). Only the person themselves may write them -- that is what
-// tpc_update says, read on 11 Sep -- so the fields are disabled for everyone
-// else, an admin included. Remove sits in the header: tpc_delete allows the
-// person themselves or an admin.
+// (migration 103). Anyone in the department may write them -- Kyle, 11 Sep
+// 2026; migration 104 widened tpc_update from self-only to the department.
+// Remove sits in the header: tpc_delete allows the person themselves or an
+// admin, and that is unchanged.
 //
 // Fetched fresh rather than read from posCrewCache, for the same reason the
 // training page fetches: a page painted from a cache is how two surfaces start
@@ -14342,7 +14342,7 @@ function renderPosDetailView(){
     return;
   }
   const r = posDetail;
-  const canEdit = posViewerIsSelf();
+  const canEdit = true;
   main.innerHTML =
     '<div class="ev-card">' +
       '<div class="ev-row"><span class="ev-lbl">Who</span>' +
@@ -14364,9 +14364,6 @@ function renderPosDetailView(){
           escapeHtml(r.detail_notes || '') +
         '</textarea>' +
       '</div>' +
-      // Disabled, not hidden: these are the person's own to fill in, and the
-      // page says so rather than hiding the boxes.
-      (canEdit ? '' : '<div class="ev-note">Only ' + escapeHtml(who || 'this person') + ' can change these.</div>') +
     '</div>';
   const rm = document.querySelector('[data-pos-remove]');
   if(rm) rm.addEventListener('click', async function(){
@@ -14390,7 +14387,6 @@ function renderPosDetailView(){
 // .select() so a policy refusal is a failure and not a false save.
 async function savePosFields(){
   if(!posDetail || posDetailLoading || posSaveInFlight) return;
-  if(!posViewerIsSelf()) return;
   const cur = {};
   [['evHotel','hotel'], ['evRentalCar','rental_car'], ['evTravel','travel'], ['evNotes','detail_notes']
   ].forEach(function(pair){
