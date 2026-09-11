@@ -4765,7 +4765,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T00:10:00Z';
+const BUILD_VERSION = '2026-09-11T00:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7515,6 +7515,9 @@ function installRefreshHandler(){
         }
       }
       await loadLegs();
+      // The grid is a separate cache from the legs; a refresh that left it
+      // alone showed the old schedule under a "Refreshed" toast.
+      schedRefetchNow();
       showToast('Refreshed');
     }catch(err){
       console.error('refresh failed', err);
@@ -9173,7 +9176,25 @@ async function saveEventFields(){
 // wait for it. Backgrounding is the case that actually happens.
 document.addEventListener('visibilitychange', function(){
   if(document.visibilityState === 'hidden') autoSaveIfEditing();
+  // *** COMING BACK IS WHEN THE GRID IS MOST LIKELY STALE. ***
+  // The schedule is fetched once and kept until something on THIS device
+  // invalidates it, so a marker a colleague added sat invisible on every other
+  // phone until a hard reload (Kyle, 10 Sep 2026). Returning from the
+  // background is the moment the world most probably moved; drop the cache
+  // and, if the schedule is on screen, read it again. Any other view picks up
+  // the fresh read on its next visit at no cost. Also see schedRefetchNow.
+  if(document.visibilityState === 'visible') schedRefetchNow();
 });
+
+// Drop the cached grid and re-read it if the schedule is showing. Called by
+// the Refresh button and by the foreground handler; both mean "get me the
+// current state", which is the one thing a cached grid cannot be.
+function schedRefetchNow(){
+  schedData = null;
+  if(state.view === 'schedule' && !schedLoading){
+    openScheduleView().catch(function(e){ console.error('schedule refetch', e); });
+  }
+}
 
 
 function goToListView(view){
