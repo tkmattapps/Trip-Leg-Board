@@ -1721,7 +1721,14 @@
      the operating rules: WebKit fires no click for a tap that lands on a
      child of a plain div, and the cell underneath is the tap target. */
   .sched-info-glyph{ margin:auto; font-size:14px; line-height:normal;
+    font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;
     pointer-events:none; user-select:none; }
+  /* Emoji font FIRST. Characters with both a text and an emoji form (the
+     medical symbol U+2695, for one) were being drawn in the text form from
+     whatever symbol font the page font fell back to: grey outline on both
+     devices, centred on the Mac and low on iOS because the two fallbacks
+     have different vertical metrics. Naming the emoji font makes both draw
+     the colour glyph from the same face, whose metrics are made for this. */
   /* line-height:normal, NOT 1: Apple Color Emoji paints taller than its font
      size and hangs below the baseline, so a 14px line box centred the box and
      let the picture spill out the bottom. Rendered low on iOS, fine on a Mac
@@ -4765,7 +4772,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T22:20:00Z';
+const BUILD_VERSION = '2026-09-10T22:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
