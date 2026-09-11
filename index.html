@@ -1154,6 +1154,14 @@
     margin:-3px 0; padding:0; background:none; border:0; border-radius:4px;
     color:var(--fog-500); font-size:15px; line-height:1; cursor:pointer; }
   .wb-days-x:hover{ color:var(--alert-600); background:var(--panel-700); }
+  /* Kyle, 11 Sep 2026: on a positioning day the chip IS the door to that
+     person's page (hotel, car, flights, notes, and Remove). The x came off
+     these chips for the same reason Delete left the trip card: two targets a
+     few pixels apart, one destructive, is a misplaced tap waiting to happen.
+     Date-range chips keep their x; they have no page to go to. */
+  button.wb-days-chip{ font-family:inherit; cursor:pointer; padding:4px 10px; }
+  button.wb-days-chip:hover,
+  button.wb-days-chip:active{ background:var(--panel-700); border-color:var(--amber-500); }
   .wb-days-new{ display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; padding:8px 0; }
   /* *** THE SAME BOX AS EVERY OTHER PICKER IN THE APP. ***
      These selects sit in .wb-days-new, not in .wb-crew-grid, so they were
@@ -4841,7 +4849,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T07:00:00Z';
+const BUILD_VERSION = '2026-09-11T07:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13798,13 +13806,13 @@ function wbPositioningHTML(t){
       + '<span class="wb-days-span">'
         + (on.length
             ? on.map(function(r){
-                return '<span class="wb-days-chip">'
+                // The chip opens the person's positioning page; Remove lives
+                // there. Anyone in the department may open it (read is
+                // department-wide); what they may change is decided on the page.
+                return '<button type="button" class="wb-days-chip" data-wb-posopen="' + escHtml(d.id)
+                  + '" data-wb-posuser="' + escHtml(r.user_id) + '">'
                   + escHtml(wbCrewLabel(r.user_id))
-                  + (canEdit
-                      ? ('<button type="button" class="wb-days-x" title="Remove" data-wb-posdel="' + escHtml(d.id)
-                         + '" data-wb-posuser="' + escHtml(r.user_id) + '">\u00d7</button>')
-                      : '')
-                  + '</span>';
+                  + '</button>';
               }).join('')
             // An empty day is a real state and says so plainly: somebody made
             // the card, so positioning IS happening on that date -- who is on it
@@ -14237,6 +14245,184 @@ async function posAddPerson(dayId, userId){
   }
 }
 
+// ---- A person's positioning day ------------------------------------------
+//
+// Kyle, 11 Sep 2026. Tap a name chip on a positioning day and this opens: the
+// same shape as the training event page -- who, what, when, then hotel, rental
+// car, flights and notes -- because it answers the same question ("do I have a
+// car for the 27th") and the training page already settled how that is asked.
+// An empty box IS the open item; there is no booked tick (see the training
+// page for why it was removed).
+//
+// The arrangements are columns on the person's trip_positioning_crew row
+// (migration 103). Only the person themselves may write them -- that is what
+// tpc_update says, read on 11 Sep -- so the fields are disabled for everyone
+// else, an admin included. Remove sits in the header: tpc_delete allows the
+// person themselves or an admin.
+//
+// Fetched fresh rather than read from posCrewCache, for the same reason the
+// training page fetches: a page painted from a cache is how two surfaces start
+// disagreeing, and the empty-box trap needs the fetch to land BEFORE any input
+// is drawn. Until it lands the page is a loading line.
+let posDetail = null;          // the fetched trip_positioning_crew row
+let posDetailDay = null;       // the trip_positioning_days row, from the cache
+let posDetailLoading = false;
+let posDetailFailed = false;
+let posSaveInFlight = false;
+
+function openPosDetail(dayId, userId){
+  if(!dayId || !userId) return;
+  if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
+  // Back returns to the plan this was opened from.
+  state.previousWbTripId = wbExpandedId;
+  state.view = 'posDetail';
+  state.activeId = null;
+  state.posDetailDayId = dayId;
+  state.posDetailUserId = userId;
+  posDetail = null;
+  posDetailDay = null;
+  Object.keys(posDaysCache || {}).some(function(k){
+    const d = (posDaysCache[k] || []).find(function(x){ return x.id === dayId; });
+    if(d) posDetailDay = d;
+    return !!d;
+  });
+  posDetailFailed = false;
+  posDetailLoading = true;
+  updateNavTabs();
+  renderMain();
+  loadPosDetail(dayId, userId);
+}
+
+async function loadPosDetail(dayId, userId){
+  try {
+    const { data, error } = await sb.from('trip_positioning_crew')
+      .select('day_id,user_id,flight_department_id,hotel,rental_car,travel,detail_notes')
+      .eq('day_id', dayId).eq('user_id', userId)
+      .single();
+    if(error) throw error;
+    posDetail = data || null;
+    posDetailFailed = !posDetail;
+  } catch(err){
+    console.error('positioning detail load', err);
+    posDetail = null;
+    posDetailFailed = true;
+  } finally {
+    posDetailLoading = false;
+    if(state.view === 'posDetail' && state.posDetailDayId === dayId && state.posDetailUserId === userId) renderMain();
+  }
+}
+
+function posViewerIsSelf(){
+  return !!(currentUserProfile && state.posDetailUserId && currentUserProfile.id === state.posDetailUserId);
+}
+
+function renderPosDetailView(){
+  const main = document.getElementById('mainPanel');
+  const d = posDetailDay;
+  const t = d ? (Array.isArray(workbenchCache) ? workbenchCache : [])
+    .find(function(x){ return x.id === d.workbench_trip_id; }) : null;
+  const who = wbCrewLabel(state.posDetailUserId);
+  const when = d ? wbShortDate(d.day) : '';
+  const canRemove = posViewerIsSelf() || rosterViewerIsAdmin();
+  setPageHeader({
+    title: 'Positioning',
+    sub: [when, t ? wbTripDescribe(t) : ''].filter(Boolean).join(' \u00b7 '),
+    backLabel: 'Trip Plan',
+    backTo: 'wbTrip',
+    actionsHTML: canRemove
+      ? '<button type="button" class="wb-trip-withdraw" data-pos-remove="1">Remove from this day</button>'
+      : ''
+  });
+  if(posDetailLoading){
+    main.innerHTML = '<div class="empty-list">Loading\u2026</div>';
+    return;
+  }
+  if(posDetailFailed || !posDetail){
+    main.innerHTML = '<div class="empty-list">Could not load that positioning day.</div>';
+    return;
+  }
+  const r = posDetail;
+  const canEdit = posViewerIsSelf();
+  main.innerHTML =
+    '<div class="ev-card">' +
+      '<div class="ev-row"><span class="ev-lbl">Who</span>' +
+        '<span class="ev-val">' + escapeHtml(who || '\u2014') + '</span></div>' +
+      '<div class="ev-row"><span class="ev-lbl">Trip</span>' +
+        '<span class="ev-val">' + escapeHtml(t ? wbTripDescribe(t) : '\u2014') + '</span></div>' +
+      '<div class="ev-row"><span class="ev-lbl">When</span>' +
+        '<span class="ev-val">' + escapeHtml(when || '\u2014') + '</span></div>' +
+    '</div>' +
+    '<div class="ev-card">' +
+      '<div class="ev-head">Arrangements</div>' +
+      evLogisticsFieldHTML('Hotel',     'Hotel',      r.hotel,      canEdit) +
+      evLogisticsFieldHTML('RentalCar', 'Rental car', r.rental_car, canEdit) +
+      evLogisticsFieldHTML('Travel',    'Flights',    r.travel,     canEdit) +
+      '<div class="field ev-field"><label>Notes</label>' +
+        '<textarea id="evNotes" rows="3" maxlength="1000" ' +
+          (canEdit ? '' : 'disabled ') +
+          'placeholder="' + escapeHtml(canEdit ? 'Anything the fields above do not cover' : 'Not set') + '">' +
+          escapeHtml(r.detail_notes || '') +
+        '</textarea>' +
+      '</div>' +
+      // Disabled, not hidden: these are the person's own to fill in, and the
+      // page says so rather than hiding the boxes.
+      (canEdit ? '' : '<div class="ev-note">Only ' + escapeHtml(who || 'this person') + ' can change these.</div>') +
+    '</div>';
+  const rm = document.querySelector('[data-pos-remove]');
+  if(rm) rm.addEventListener('click', async function(){
+    const ok = await showConfirm(
+      'Take ' + (who || 'this person') + ' off the positioning day?',
+      { title: 'Remove person?', okLabel: 'Remove' });
+    if(!ok) return;
+    const removed = await posRemovePerson(state.posDetailDayId, state.posDetailUserId);
+    if(!removed) return;
+    // The page is now about a row that does not exist. Back to the plan.
+    posDetail = null;
+    if(state.previousWbTripId) wbExpandedId = state.previousWbTripId;
+    state.view = 'wbTrip';
+    updateNavTabs();
+    renderMain();
+  });
+}
+
+// Same contract as saveEventFields: silent, runs on the way out via
+// autoSaveIfEditing, only changed columns go in the patch, read back with
+// .select() so a policy refusal is a failure and not a false save.
+async function savePosFields(){
+  if(!posDetail || posDetailLoading || posSaveInFlight) return;
+  if(!posViewerIsSelf()) return;
+  const cur = {};
+  [['evHotel','hotel'], ['evRentalCar','rental_car'], ['evTravel','travel'], ['evNotes','detail_notes']
+  ].forEach(function(pair){
+    const el = document.getElementById(pair[0]);
+    if(el) cur[pair[1]] = el.value.trim() || null;
+  });
+  const patch = {};
+  Object.keys(cur).forEach(function(k){
+    if((posDetail[k] || null) !== cur[k]) patch[k] = cur[k];
+  });
+  if(!Object.keys(patch).length) return;
+  posSaveInFlight = true;
+  try {
+    patch.updated_at = new Date().toISOString();
+    const { data, error } = await sb.from('trip_positioning_crew')
+      .update(patch)
+      .eq('day_id', posDetail.day_id).eq('user_id', posDetail.user_id)
+      .select('hotel,rental_car,travel,detail_notes')
+      .single();
+    if(error) throw error;
+    if(data) Object.assign(posDetail, data);
+    // The plan's cache carries these columns too (select('*')); refresh it so
+    // the chip's page reads the same on the next open without a reload.
+    if(typeof loadPositioningDays === 'function') loadPositioningDays().catch(function(){});
+  } catch(err){
+    console.error('positioning detail save', err);
+    showToast('Could not save that \u2014 try again');
+  } finally {
+    posSaveInFlight = false;
+  }
+}
+
 // HARD delete, and deliberately so -- trip_positioning_crew has no deleted_at.
 async function posRemovePerson(dayId, userId){
   if(!dayId || !userId) return;
@@ -14244,12 +14430,14 @@ async function posRemovePerson(dayId, userId){
     const { data, error } = await sb.from('trip_positioning_crew')
       .delete().eq('day_id', dayId).eq('user_id', userId).select();
     if(error) throw error;
-    if(!data || !data.length){ showToast('Not removed \u2014 admin only.'); return; }
+    if(!data || !data.length){ showToast('Not removed \u2014 only they or an admin can.'); return false; }
     await loadPositioningDays();
     wbRepaint();
+    return true;
   } catch(e){
     console.error('posRemovePerson', e);
     showToast('Could not take them off that day.');
+    return false;
   }
 }
 
@@ -15399,14 +15587,10 @@ function wbWireEditor(){
       posAddPerson(btn.getAttribute('data-wb-possave') || '', who ? who.value : '');
     });
   });
-  document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-posdel]').forEach(function(el){
-    el.addEventListener('click', async function(){
-      // Same guard as removing a date range below. Kyle, 11 Sep 2026.
-      const ok = await showConfirm(
-        'Take this person off the positioning day?',
-        { title: 'Remove person?', okLabel: 'Remove' });
-      if(ok) posRemovePerson(el.getAttribute('data-wb-posdel') || '',
-                             el.getAttribute('data-wb-posuser') || '');
+  document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-posopen]').forEach(function(el){
+    el.addEventListener('click', function(){
+      openPosDetail(el.getAttribute('data-wb-posopen') || '',
+                    el.getAttribute('data-wb-posuser') || '');
     });
   });
   document.querySelectorAll('[data-wb-editor="' + id + '"] [data-wb-daydel]').forEach(function(el){
@@ -21447,6 +21631,7 @@ function renderMain(){
   if(state.view === 'settings'){ renderSettingsView(); return; }
   if(state.view === 'schedule'){ renderScheduleView(); return; }
   if(state.view === 'eventDetail'){ renderEventDetailView(); return; }
+  if(state.view === 'posDetail'){ renderPosDetailView(); return; }
   if(state.view === 'wbTrip'){ renderWorkbenchTripView(); return; }
   if(state.view === 'notes'){ renderNotesView(); return; }
 
@@ -23810,6 +23995,9 @@ function autoSaveIfEditing(){
   // Done button, and people leave it by tapping Back or a nav tab.
   if(state.view === 'eventDetail'){
     saveEventFields().catch(function(e){ console.error('event autosave', e); });
+  }
+  if(state.view === 'posDetail'){
+    savePosFields().catch(function(e){ console.error('positioning autosave', e); });
   }
   if(state.view === 'editor' && state.activeId && !autosaveInFlight){
     autosaveInFlight = true;
