@@ -3145,6 +3145,26 @@
   .wb-leg-date{ flex:0 0 auto; font-size:12px; color:var(--fog-300); }
   .wb-leg-dot{ flex:0 0 auto; }
   .wb-legs-empty{ font-size:13px; color:var(--fog-500); }
+  /* THE ROW UNFOLDS IN PLACE. Kyle, 11 Sep 2026: tapping a leg on the plan
+     is for changing the crew and tail on that leg, not for walking the whole
+     checklist. One row open at a time. The body is the leg's tail and seats
+     with Change buttons that open the existing single-leg quick sheet. */
+  .wb-leg-row.is-open{ border-radius:8px 8px 0 0; border-bottom-color:transparent; }
+  .wb-leg-body{
+    border:1px solid var(--hairline); border-top:0; border-radius:0 0 8px 8px;
+    background:var(--panel-800); padding:8px 10px 10px; margin-bottom:8px;
+    display:grid; grid-template-columns:auto 1fr auto; gap:6px 12px; align-items:center;
+  }
+  .wb-leg-k{ font-size:12px; color:var(--fog-500); }
+  .wb-leg-v{ font-size:14px; color:var(--paper-050); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wb-leg-v.is-empty{ color:var(--fog-500); }
+  .wb-leg-change{
+    font-size:12px; padding:6px 10px; border-radius:6px; cursor:pointer;
+    background:transparent; color:var(--amber-500); border:1px solid var(--amber-700);
+  }
+  .wb-leg-change:disabled{ opacity:.4; cursor:default; }
+  .wb-leg-open-full{ grid-column:1 / -1; font-size:12px; color:var(--fog-300); margin-top:4px; }
+  .wb-leg-open-full a{ color:var(--amber-500); cursor:pointer; }
   .wb-legs-add-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .wb-legs-add-note{ font-size:12px; color:var(--fog-500); }
 
@@ -4786,7 +4806,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T02:05:00Z';
+const BUILD_VERSION = '2026-09-11T02:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14493,12 +14513,14 @@ function wbLegsCardHTML(t){
     }
     legs.forEach(function(leg){
       const route = leg.cityPair || [ (leg.dep||{}).airportId, (leg.arr||{}).airportId ].filter(Boolean).join(' \u2192 ') || 'No city pair yet';
-      body += '<div class="wb-leg-row" role="button" tabindex="0" data-wb-leg="' + escHtml(String(leg.id || '')) + '">'
+      const open = (wbLegOpenId && wbLegOpenId === leg.id);
+      body += '<div class="wb-leg-row' + (open ? ' is-open' : '') + '" role="button" tabindex="0" aria-expanded="' + (open ? 'true' : 'false') + '" data-wb-leg="' + escHtml(String(leg.id || '')) + '">'
         + '<span class="wb-leg-dot leg-status-dot leg-status-dot-plain leg-status-' + escHtml(leg.status || '') + '"></span>'
         + '<span class="wb-leg-num">Leg ' + escHtml(leg.legNumber || '?') + '</span>'
         + '<span class="wb-leg-route">' + escHtml(route) + '</span>'
         + '<span class="wb-leg-date">' + escHtml(formatISODateDisplay(leg.date) || 'No date') + '</span>'
         + '</div>';
+      if(open) body += wbLegBodyHTML(leg, c);
     });
   });
   if(!total) body = '<div class="wb-legs-empty">No legs yet.</div>';
@@ -14513,6 +14535,37 @@ function wbLegsCardHTML(t){
       + '<div class="wb-legs-add-note">' + (canEdit ? 'Opens the leg checklist. Back returns here.' : 'Only an admin can add legs.') + '</div>'
       + '<button type="button" class="wb-add-btn" data-wb-legadd="' + escHtml(t.id || '') + '"' + (canEdit ? '' : ' disabled') + '>+ Add leg</button>'
     + '</div>'
+    + '</div>';
+}
+
+// Which leg row on the plan is unfolded. One at a time; survives a re-render
+// because Apply on the quick sheet calls renderMain().
+let wbLegOpenId = '';
+
+// The unfolded row: tail and the four seats, each with Change. The buttons
+// carry the same attributes the leg tile's quick actions use, so they open the
+// same single-leg sheet -- the flown-leg guard and the preview live there and
+// are not reimplemented here. A sealed leg shows its values with Change dead.
+function wbLegBodyHTML(leg, card){
+  const sealed = (typeof legIsSealed === 'function') && legIsSealed(leg);
+  const canEdit = wbCanEditTrips() && !sealed;
+  const c = leg.crew || {};
+  function seat(v){ return v ? crewDisplayName(v, leg) : ''; }
+  function list(v){ return (Array.isArray(v) ? v : []).filter(Boolean).map(function(id){ return crewDisplayName(id, leg); }).join(', '); }
+  function line(k, v, mode){
+    return '<div class="wb-leg-k">' + k + '</div>'
+      + '<div class="wb-leg-v' + (v ? '' : ' is-empty') + '">' + escHtml(v || 'None') + '</div>'
+      + (mode
+          ? '<button type="button" class="wb-leg-change" data-wb-legquick="' + mode + '" data-wb-legquick-id="' + escHtml(String(leg.id)) + '" data-wb-legquick-key="' + escHtml(String(card.key)) + '"' + (canEdit ? '' : ' disabled') + '>Change</button>'
+          : '<span></span>');
+  }
+  return '<div class="wb-leg-body" data-wb-legbody="' + escHtml(String(leg.id)) + '">'
+    + line('Tail', leg.tailNumber || '', 'aircraft')
+    + line('PIC', seat(c.pic), 'crew')
+    + line('SIC', seat(c.sic), null)
+    + line('FA',  list(c.fa), null)
+    + line('ACM', list(c.acm), null)
+    + '<div class="wb-leg-open-full">' + (sealed ? 'This leg is sealed. ' : '') + '<a data-wb-legfull="' + escHtml(String(leg.id)) + '">Open the full checklist</a></div>'
     + '</div>';
 }
 
@@ -29705,8 +29758,22 @@ document.addEventListener('click', async function(e){
   // the plan on Back -- openLegEditor records state.view, which is 'wbTrip'.
   const wbLegAdd = t.closest('[data-wb-legadd]');
   if(wbLegAdd){ wbAddLegToPlan(wbLegAdd.getAttribute('data-wb-legadd') || ''); return; }
+  const wbLegQuick = t.closest('[data-wb-legquick]');
+  if(wbLegQuick){
+    if(wbLegQuick.disabled) return;
+    openTripQuickSheet(wbLegQuick.getAttribute('data-wb-legquick-key') || '', wbLegQuick.getAttribute('data-wb-legquick') || 'crew', wbLegQuick.getAttribute('data-wb-legquick-id') || '');
+    return;
+  }
+  const wbLegFull = t.closest('[data-wb-legfull]');
+  if(wbLegFull){ openLegEditor(wbLegFull.getAttribute('data-wb-legfull') || ''); return; }
+  if(t.closest('[data-wb-legbody]')) return;
   const wbLegRow = t.closest('[data-wb-leg]');
-  if(wbLegRow){ openLegEditor(wbLegRow.getAttribute('data-wb-leg') || ''); return; }
+  if(wbLegRow){
+    const id = wbLegRow.getAttribute('data-wb-leg') || '';
+    wbLegOpenId = (wbLegOpenId === id) ? '' : id;
+    renderMain();
+    return;
+  }
   // *** THE [data-wb-editor] GUARD THAT WAS HERE IS GONE WITH THE EDITOR ROW. ***
   // It existed because the editor unfolded inside the table, so a bare row
   // lookup matched it and shut the row the moment anyone reached for a field.
