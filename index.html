@@ -1723,14 +1723,19 @@
   .sched-info-glyph{ margin:auto; font-size:14px; line-height:normal;
     font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;
     pointer-events:none; user-select:none; }
-  /* Emoji font FIRST so both devices draw the same face. Centred on the Mac.
-     KNOWN: sits a few px low on iOS. Probed 10 Sep 2026 -- the span's box is
-     centred to within a pixel (cell 30, box 24, 2.5 above / 3.5 below); the
-     ink is low INSIDE Apple Color Emoji's box. line-height:1, line-height:
-     normal, and a canvas-measured ink shift were all tried; the last one
-     lifted everything on the Mac and nothing on iOS (Safari's canvas does not
-     report the font box). Do not retry those. The remaining fix is an
-     iOS-only nudge with a number read off the phone, which is on the backlog. */
+  /* *** WHY THE GLYPH NEEDS schedGlyphShift(), AND WHY NO LINE-HEIGHT FIXES IT. ***
+     Probed on the phone 10 Sep 2026: cell 30, glyph box 24, 2.5 above / 3.5
+     below. The BOX was centred; the picture was low. Inside any line box the
+     engine puts the baseline at a place fixed by the font's ascent/descent,
+     and the picture sits at a fixed distance from that baseline -- so the
+     picture's offset from the box centre is a constant of font + engine, and
+     line-height moves box and baseline together. line-height:1 and :normal
+     came out identically low for exactly that reason. Chrome and WebKit read
+     different metrics out of Apple Color Emoji, which is why the Mac was
+     centred and iOS was not, from the same font file.
+     The shift is therefore MEASURED on the device -- baseline from the DOM,
+     ink from canvas pixels -- and applied as an inline translateY. See the
+     function. Emoji font named first so measurement and drawing share a face. */
   /* The emoji box on the Add panel and the event detail page. Both the base
      input rule (width:100%) and .ev-field's flex-basis are overridden here;
      this rule sits later in the sheet at equal specificity, so it wins on
@@ -4769,7 +4774,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T23:20:00Z';
+const BUILD_VERSION = '2026-09-10T23:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -26164,6 +26169,72 @@ function schedRunLabel(e, dayRuns){
 //
 // A run that is not found in the map draws closed on both sides, which is the
 // correct fallback -- a one-day ring, never an open-ended one.
+// *** THE SHIFT IS MEASURED, FROM TWO THINGS THAT CANNOT LIE. ***
+// (1) Where the baseline sits inside the glyph's DOM box: a hidden span in the
+//     same font and size holds the glyph plus a zero-size inline-block that
+//     sits ON the baseline; the inline-block's top IS the baseline. Read off
+//     the DOM, so it is whatever this engine actually does.
+// (2) Where the ink is relative to that baseline: the glyph is drawn large on
+//     a canvas at a known baseline and the pixels are scanned for the first
+//     and last rows with any alpha. No font-metric API is asked for anything
+//     -- the earlier attempt trusted canvas font boxes and they disagreed with
+//     the DOM on Chrome and were absent on iOS Safari.
+// Ink centre minus box centre, in px, is the translateY. Cached per glyph.
+// Any failure returns 0, which leaves the unshifted placement -- the state
+// the Mac was already correct in.
+const SCHED_GLYPH_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+const _glyphShift = {};
+function schedGlyphShift(g){
+  if(g in _glyphShift) return _glyphShift[g];
+  let dy = 0;
+  try {
+    // (1) DOM: box height and baseline offset at the real size.
+    const host = document.createElement('div');
+    host.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none;';
+    const span = document.createElement('span');
+    span.style.cssText = 'display:inline-block;font-size:14px;line-height:normal;white-space:nowrap;font-family:' + SCHED_GLYPH_FONT + ';';
+    span.textContent = g;
+    const mark = document.createElement('i');
+    mark.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline;';
+    span.appendChild(mark);
+    host.appendChild(span);
+    document.body.appendChild(host);
+    const sr = span.getBoundingClientRect(), mr = mark.getBoundingClientRect();
+    const boxH = sr.height;
+    const baselineFromTop = mr.top - sr.top;
+    document.body.removeChild(host);
+
+    // (2) Canvas pixels: ink top and bottom relative to the alphabetic baseline,
+    //     at 64px for resolution, scaled back to 14px.
+    const SZ = 64, W = 192, H = 192, BASE = 128;
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const c = cv.getContext('2d');
+    c.font = SZ + 'px ' + SCHED_GLYPH_FONT;
+    c.textBaseline = 'alphabetic';
+    c.fillStyle = '#000';
+    c.fillText(g, 32, BASE);
+    const px = c.getImageData(0, 0, W, H).data;
+    let top = -1, bot = -1;
+    for(let y = 0; y < H; y++){
+      let hit = false;
+      for(let x = 0; x < W; x++){ if(px[(y * W + x) * 4 + 3] > 0){ hit = true; break; } }
+      if(hit){ if(top < 0) top = y; bot = y; }
+    }
+    if(top >= 0 && boxH > 0){
+      const scale = 14 / SZ;
+      const inkCentreAboveBaseline = (BASE - (top + bot + 1) / 2) * scale;
+      const inkCentreFromTop = baselineFromTop - inkCentreAboveBaseline;
+      const boxCentreFromTop = boxH / 2;
+      dy = Math.round((boxCentreFromTop - inkCentreFromTop) * 10) / 10;
+      // Guard: a measurement that wants to move the glyph out of a 30px cell
+      // is a failed measurement, not a fix.
+      if(!isFinite(dy) || Math.abs(dy) > 10) dy = 0;
+    }
+  } catch(err){ dy = 0; }
+  _glyphShift[g] = dy;
+  return dy;
+}
+
 function schedInfoRingHTML(e, dayRuns){
   const r = schedRunAt(e, dayRuns);
   let c = 'sched-info-ring';
@@ -26288,7 +26359,12 @@ function schedCellHTML(entries, dayISO, ownerId, ownerKind, isToday, isWeekend, 
   // still clearer than a ring with a glyph on its first day only.
   if(ring && ownerKind !== 'aircraft'){
     const g = schedData && schedData.emoji ? schedData.emoji[String(info[0].ref)] : '';
-    if(g) ring += '<span class="sched-info-glyph" aria-hidden="true">' + escapeHtml(g) + '</span>';
+    if(g){
+      const dy = schedGlyphShift(g);
+      ring += '<span class="sched-info-glyph" aria-hidden="true"' +
+              (dy ? ' style="transform:translateY(' + dy + 'px)"' : '') + '>' +
+              escapeHtml(g) + '</span>';
+    }
   }
   // A day holding ONLY a marker is not a filled cell -- nothing is committed on
   // it -- so it keeps the empty cell's styling and just wears the ring.
