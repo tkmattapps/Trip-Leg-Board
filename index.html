@@ -4760,7 +4760,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-10T21:45:00Z';
+const BUILD_VERSION = '2026-09-10T22:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -9076,6 +9076,9 @@ function evLogisticsFieldHTML(key, label, val, canEdit){
 // is nothing to read -- so a flush cannot mistake an unhydrated field for a
 // cleared one. The eventDetailLoading guard says so out loud.
 let eventSaveInFlight = false;
+// The promise of the save currently running, so a page that opens on the way
+// out can wait for it. See openScheduleView.
+let eventSavePending = null;
 
 // There is no Save button. Removed 7 Sep 2026 once save-on-exit and
 // save-on-background were both working: a button that only ever does what the
@@ -9101,6 +9104,19 @@ async function saveEventFields(){
   });
   if(!Object.keys(patch).length) return;
   eventSaveInFlight = true;
+  // *** MARK THE GRID STALE BEFORE THE WRITE, NOT AFTER. ***
+  // This runs un-awaited from autoSaveIfEditing on the way out of the page,
+  // and openScheduleView checks schedData synchronously right after. Nulling
+  // it only after the await meant the schedule had already decided it was
+  // fresh, rendered the old rows, and then the cache was dropped with nothing
+  // left to notice. From the seat: change the details or the emoji, go back,
+  // and the grid shows the old one until a reload. (Kyle, 10 Sep 2026.)
+  // openScheduleView also waits on eventSavePending so the re-fetch cannot
+  // overtake the write.
+  const touchesGrid = ('reason' in patch || 'location' in patch || 'emoji' in patch);
+  if(touchesGrid) schedData = null;
+  let done;
+  eventSavePending = new Promise(function(r){ done = r; });
   try {
     // Read back with .select(). A policy refusal returns no row rather than an
     // error, so without this a blocked write would report success.
@@ -9111,9 +9127,9 @@ async function saveEventFields(){
       .single();
     if(error) throw error;
     if(data) Object.assign(eventDetail, data);
-    // The day panel reads details and location off the schedule fetch, so the
-    // cached rows are now stale. Drop them rather than patching.
-    if('reason' in patch || 'location' in patch || 'emoji' in patch) schedData = null;
+    // Dropped again here: a schedule fetch that raced the write above -- one
+    // that did not go through openScheduleView -- gets thrown away too.
+    if(touchesGrid) schedData = null;
   } catch(err){
     console.error('event detail save', err);
     const msg = (err && err.message) ? String(err.message) : '';
@@ -9123,6 +9139,8 @@ async function saveEventFields(){
             : 'Could not save that \u2014 try again');
   } finally {
     eventSaveInFlight = false;
+    eventSavePending = null;
+    if(done) done();
   }
 }
 
@@ -28921,6 +28939,10 @@ function schedApplyScroll(){
 
 async function openScheduleView(){
   if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
+  // If that flush started an event-detail save, wait for it before deciding
+  // whether the grid is stale -- otherwise the re-fetch can overtake the write
+  // and read the row as it was. The promise never rejects (see saveEventFields).
+  if(eventSavePending) await eventSavePending;
   state.view = 'schedule';
   state.activeId = null;
   // No anchor means arriving fresh rather than re-rendering: default to this
