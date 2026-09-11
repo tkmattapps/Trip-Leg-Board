@@ -3052,9 +3052,17 @@
     color:var(--fog-500); border-radius:6px; padding:6px 12px;
     font-size:13px; font-family:inherit; cursor:pointer;
   }
-  .wb-trip-withdraw:hover{ color:var(--alert-600); border-color:var(--alert-600); }
+  .wb-trip-withdraw:hover,
+  .wb-trip-withdraw:active{ color:var(--alert-600); border-color:var(--alert-600); }
   .wb-trip-withdraw:disabled{ opacity:0.35; cursor:default; }
-  .wb-trip-withdraw:disabled:hover{ color:var(--fog-500); border-color:var(--hairline); }
+  .wb-trip-withdraw:disabled:hover,
+  .wb-trip-withdraw:disabled:active{ color:var(--fog-500); border-color:var(--hairline); }
+  /* Kyle, 11 Sep 2026: moved from the foot of the Trip overview card into the
+     page header, right-justified in the actions slot. At the foot it sat within
+     sight of "Add leg" on the card below, and the two read as a pair. Quiet
+     until hovered or pressed -- red is for the moment you reach for it, not a
+     permanent flag on a page opened many times a day. */
+  .page-header-actions > .wb-trip-withdraw{ align-self:center; padding:5px 10px; font-weight:600; }
   /* One row per candidate trip in the merge dialog. Full-width taps rather than
      a select: with two trips on screen the difference between them is the
      routing and the dates, and both need room to be read before choosing. */
@@ -4833,7 +4841,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-11T06:45:00Z';
+const BUILD_VERSION = '2026-09-11T07:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14535,21 +14543,11 @@ function wbTripFormHTML(t){
       + wbCrewDaysHTML(t)
       + wbPositioningHTML(t)
       + wbTripLinkRowHTML(t)
-      // *** THE FOOT OF THE CARD -- SAVE NOTE LEFT, DELETE RIGHT. ***
-      // Kyle, 10 Sep 2026. The save note used to be its own full-width line
-      // above this row, so the card ended with two stacked lines of grey and a
-      // button off on its own. Sharing the row pins the note to the bottom left
-      // and costs no vertical space.
-      //
-      // Delete is still hard right and still last in the DOM: it is not a field
-      // -- pressing it ends the trip rather than editing one -- and it is
-      // disabled rather than hidden for a non-admin, so a crew member sees the
-      // trip can be deleted and knows who to ask.
+      // The save note closes the card. "Delete this trip" used to share this
+      // row (Kyle, 10 Sep 2026); it moved to the page header on 11 Sep -- see
+      // wbTripDeleteButtonHTML and renderWorkbenchTripView.
       + '<div class="wb-edit-delete-row">'
         + '<div class="wb-edit-note">Changes save as you leave each field.</div>'
-        + '<button type="button" class="wb-trip-withdraw" data-wb-tripdel="'
-        + escHtml(t.id || '') + '"' + (wbCanEditTrips() ? '' : ' disabled')
-        + '>Delete this trip</button>'
       + '</div>'
     + '</div>'
     + '<div class="wb-card-label wb-card-label-legs">Leg details</div>'
@@ -15675,6 +15673,16 @@ function openWorkbench(){
 // use -- "September trips" -- rather than "Workbench". The panel stopped being
 // a place where work happens the moment editing moved to this page; it is a
 // list of a month's trips and it already calls itself that.
+// "Delete this trip", in the page header. Disabled rather than hidden for a
+// non-admin, so a crew member sees the trip can be deleted and knows who to
+// ask. Same data-wb-tripdel wiring as before -- the document-level click
+// handler finds it wherever it sits.
+function wbTripDeleteButtonHTML(t){
+  return '<button type="button" class="wb-trip-withdraw" data-wb-tripdel="'
+    + escHtml(t.id || '') + '"' + (wbCanEditTrips() ? '' : ' disabled')
+    + '>Delete this trip</button>';
+}
+
 function renderWorkbenchTripView(){
   const main = document.getElementById('mainPanel');
   if(!main) return;
@@ -15716,7 +15724,8 @@ function renderWorkbenchTripView(){
     title: 'Trip Plan',
     sub: bits.join(' \u00b7 '),
     backLabel: backLabel,
-    backTo: backTo
+    backTo: backTo,
+    actionsHTML: wbTripDeleteButtonHTML(t)
   });
   main.innerHTML = wbTripFormHTML(t);
   // *** WIRED AFTER THE MARKUP, NEVER BEFORE. ***
