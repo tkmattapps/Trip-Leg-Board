@@ -387,8 +387,14 @@
     top:calc(var(--page-header-h, 84px) - 17px);
     width:34px; height:34px; border-radius:50%; padding:0; margin:0;
     display:none; align-items:center; justify-content:center;
-    background:var(--ink-900); border:1px solid var(--amber-500); color:var(--amber-500);
-    cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.35); }
+    background:var(--ink-900); border:1px solid var(--fog-500); color:var(--fog-500);
+    cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.35);
+    transition:color 0.15s ease, border-color 0.15s ease; }
+  /* Fog, not amber (Kyle, 13 Sep 2026): amber is the app's "this matters"
+     colour and a permanent fixture should not claim it. Same grey as the
+     department name beside it; brightens on hover/press so it still reads as
+     live. */
+  .ask-bubble:hover, .ask-bubble:active{ border-color:var(--fog-300); color:var(--paper-050); }
   body.authed .ask-bubble{ display:flex; }
   /* The glyph must not eat the tap -- see the operating rules on SVG children. */
   .ask-bubble svg{ width:18px; height:18px; pointer-events:none; }
@@ -4889,7 +4895,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T00:05:00Z';
+const BUILD_VERSION = '2026-09-14T00:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
