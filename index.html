@@ -4999,7 +4999,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T02:40:00Z';
+const BUILD_VERSION = '2026-09-14T03:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -30481,12 +30481,13 @@ function openInstallOverlay(){
 
    VOICE, STEP 1 OF THE STAIRCASE (Kyle, 13 Sep 2026): tap-to-talk. One tap on
    the mic starts the browser's speech recognition; the first result fills the
-   box and asks straight away; the answer is read aloud with speech synthesis.
+   box and asks straight away; the answer is read aloud by the speak function (ElevenLabs), or by the browser if that fails.
    iOS Safari cannot keep the mic open between turns or start playback without
    a tap -- full hands-free waits for the wrapper. Nothing here is rebuilt for
    that: the wrapper only removes the tap. Where recognition does not exist the
    mic hides itself and the box is the way in. */
 const ASK_BEACON_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co/functions/v1/ask-beacon';
+const SPEAK_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co/functions/v1/speak';
 let askBusy = false;
 let askRecog = null;
 // The conversation. Lives for the session, like Undo: closing the panel keeps
@@ -30496,7 +30497,42 @@ let askHistory = [];
 const ASK_HISTORY_TURNS = 10; // user+assistant pairs sent back to the function
 function askClearHistory(){ askHistory = []; }
 
-function askSpeak(text){
+// The voice. The answer text goes to the speak edge function, which returns
+// ElevenLabs audio (Sally Ford), and that plays. If anything on that path
+// fails -- no session, function down, vendor down, playback refused -- the
+// browser's own synthesiser reads it instead, so a spoken question is never
+// answered with silence. Only the answer is sent; the question never is.
+let askAudio = null;
+let askSpeakSeq = 0; // a newer request cancels an older one still in flight
+async function askSpeak(text){
+  if(!text) return;
+  const seq = ++askSpeakSeq;
+  askStopSpeaking();
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    if(!session || !session.access_token) throw new Error('no session');
+    const res = await fetch(SPEAK_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'authorization': 'Bearer ' + session.access_token
+      },
+      body: JSON.stringify({ text: text })
+    });
+    if(!res.ok) throw new Error('speak ' + res.status);
+    const blob = await res.blob();
+    if(seq !== askSpeakSeq) return; // superseded while we waited
+    const url = URL.createObjectURL(blob);
+    const a = new Audio(url);
+    askAudio = a;
+    a.onended = a.onerror = () => { URL.revokeObjectURL(url); if(askAudio === a) askAudio = null; };
+    await a.play();
+  }catch(e){
+    if(seq !== askSpeakSeq) return;
+    askSpeakFallback(text);
+  }
+}
+function askSpeakFallback(text){
   try{
     if(!('speechSynthesis' in window) || !text) return;
     window.speechSynthesis.cancel();
@@ -30506,6 +30542,7 @@ function askSpeak(text){
   }catch(e){ /* speaking is a courtesy; the answer is on screen */ }
 }
 function askStopSpeaking(){
+  try{ if(askAudio){ askAudio.pause(); askAudio = null; } }catch(e){}
   try{ if('speechSynthesis' in window) window.speechSynthesis.cancel(); }catch(e){}
 }
 // Tears the recogniser down and resets the mic. Never sends: sending is a
