@@ -637,7 +637,7 @@
     display:flex; align-items:center;
     font-family:system-ui,'Inter',sans-serif;
     font-size:14px; line-height:1.03;
-    color:var(--fog-400);
+    color:var(--fog-300);
     padding:9px 0;
     margin-bottom:18px; box-sizing:border-box;
   }
@@ -2971,6 +2971,26 @@
      covers it completely. */
   .sheet-full{ max-height:96vh; height:96vh; }
   .wb-head-actions{ display:flex; align-items:center; gap:10px; }
+  /* THE CREW STRIP -- pinned under the trips, above the safe area. One job-title
+     band at a time, six rows tall, the month's days as bare colour blocks and
+     the grid's own Duty M / Y / Ave on the right. See renderWorkbenchStrip. */
+  .wb-strip{ flex:0 0 auto; border-top:1px solid var(--hairline); padding:8px 14px 6px; background:var(--ink-900); }
+  .wb-strip-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .wb-strip-bands{ display:flex; gap:6px; }
+  .wb-strip-band{ font:inherit; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--fog-300); background:none; border:1px solid var(--hairline); border-radius:12px; padding:3px 10px; cursor:pointer; }
+  .wb-strip-band.on{ color:var(--paper-050); border-color:var(--amber-500); }
+  .wb-strip-cols{ display:flex; gap:8px; font-size:10px; letter-spacing:0.06em; color:var(--fog-500); font-variant-numeric:tabular-nums; }
+  .wb-strip-cols span{ width:22px; text-align:right; }
+  .wb-strip-rows{ max-height:132px; overflow-y:auto; overscroll-behavior-y:contain; }
+  .wb-strip-row{ display:flex; align-items:center; height:22px; gap:8px; }
+  .wb-strip-who{ flex:0 0 40px; font-size:11px; font-weight:600; color:var(--paper-050); letter-spacing:0.04em; }
+  .wb-strip-days{ flex:1; display:flex; gap:1px; min-width:0; }
+  .wb-strip-day{ flex:1; height:14px; border-radius:2px; background:var(--panel-700); min-width:0; }
+  .wb-strip-day.today{ box-shadow:inset 0 0 0 1px var(--amber-500); }
+  .wb-strip-tally{ flex:0 0 auto; display:flex; gap:8px; font-size:11px; color:var(--paper-050); font-variant-numeric:tabular-nums; }
+  .wb-strip-tally span{ width:22px; text-align:right; }
+  .wb-strip-tally .dev{ color:var(--fog-300); }
+  .wb-strip-none{ font-size:12px; color:var(--fog-500); padding:4px 0; }
   .wb-add-btn{
     background:var(--amber-700); border:1px solid var(--amber-500);
     color:var(--paper-050); font-family:system-ui,'Inter',sans-serif;
@@ -4018,7 +4038,7 @@
   .install-url.copied{ color:var(--ok-500); border-color:var(--ok-500); }
   .install-qr-wrap{ display:flex; flex-direction:column; align-items:center; gap:8px; margin:18px 0 20px; }
   .install-link-wrap{ margin:0 0 20px; text-align:center; }
-  .install-link-label{ color:var(--fog-400); font-size:13px; line-height:1.5; margin-bottom:8px; }
+  .install-link-label{ color:var(--fog-300); font-size:13px; line-height:1.5; margin-bottom:8px; }
   /* Separates the two genuinely different tasks in this modal: the QR and the
      link get Beacon onto ANOTHER device; everything below installs it on the
      one in your hand. Without this the reader has to work out which half
@@ -4755,6 +4775,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
     </div>
   </div>
   <div class="sheet-body" id="workbenchBody"></div>
+  <div class="wb-strip" id="workbenchStrip" hidden></div>
 </div>
 
 <div class="sheet-backdrop" id="personEditBackdrop"></div>
@@ -5022,7 +5043,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T17:20:00Z';
+const BUILD_VERSION = '2026-09-14T18:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14072,9 +14093,99 @@ function wbTripInMonth(trip, y, m){
   return String(pm).slice(0, 7) === (y + '-' + mm);
 }
 
+// ---- THE CREW STRIP ---------------------------------------------------------
+// Kyle, 14 Sep 2026: "on this sheet, what would be very helpful is to have a
+// snapshot of the crew ... so you can visualize what's upcoming and needs to
+// be crewed versus where crew are sitting in that given month."
+//
+// A snapshot OF THE GRID, not a summary of it. Every block is read from
+// schedTallyLive.idx -- the index the grid itself painted from, smart gate
+// already applied -- through the same schedSuppressedDays view each grid row
+// uses, and coloured by the same schedKindColor. The three figures on the
+// right are the grid's Duty M, Duty Y and Duty Ave, computed by the same two
+// functions over the same two windows (month; 1 January to month end). There
+// is no second data source here, so it cannot disagree with the grid.
+//
+// PINNED, not scrolled with the trips: the strip is what you consult while
+// reading the trips above it, and scrolling it out of view means scrolling
+// back to check (Kyle). Six rows tall, ONE JOB-TITLE BAND AT A TIME: six
+// pilots fit, and you are building for pilots or for cabin, not both at once.
+// A band with more than six scrolls inside itself.
+//
+// HIDDEN when the schedule has not been loaded -- the sheet can also be
+// opened straight onto a trip from Active Trips, and on that path there is
+// nothing to paint. Absent rather than blank (Kyle).
+let wbStripBand = 'pilot';
+
+function renderWorkbenchStrip(){
+  const el = document.getElementById('workbenchStrip');
+  if(!el) return;
+  const live = schedTallyLive;
+  if(!live || !live.idx || !rosterCache || !rosterCache.length){
+    el.hidden = true; el.innerHTML = ''; return;
+  }
+  const mo = wbShownMonth();
+  const first = new Date(mo.y, mo.m, 1);
+  const last  = new Date(mo.y, mo.m + 1, 0);
+  const n = last.getDate();
+  const isos = [];
+  for(let d = 1; d <= n; d++) isos.push(schedISO(new Date(mo.y, mo.m, d)));
+  const todayISO = schedISO(new Date());
+
+  // Bands present on this roster, in the grid's order. The chosen band falls
+  // back to the first present one, so a department with no pilots still gets
+  // a strip rather than an empty one.
+  const people = rosterCache.slice().sort(function(a, b){
+    const ao = (a.rosterOrder == null) ? Infinity : a.rosterOrder;
+    const bo = (b.rosterOrder == null) ? Infinity : b.rosterOrder;
+    return ao === bo ? 0 : ao - bo;
+  });
+  const bands = ROSTER_GROUP_ORDER.filter(function(t){
+    return people.some(function(p){ return p.title === t; });
+  });
+  if(!bands.length){ el.hidden = true; el.innerHTML = ''; return; }
+  if(bands.indexOf(wbStripBand) === -1) wbStripBand = bands[0];
+  const rows = people.filter(function(p){ return p.title === wbStripBand; });
+
+  const mCounts = tallyCountRange(live.idx, schedISO(first), schedISO(last), live.hires, live.today);
+  const yCounts = tallyCountRange(live.idx, mo.y + '-01-01', schedISO(last), live.hires, live.today);
+  const devs = tallyDeviations(yCounts, live.people);
+
+  let h = '<div class="wb-strip-head"><div class="wb-strip-bands">';
+  bands.forEach(function(t){
+    h += '<button type="button" class="wb-strip-band' + (t === wbStripBand ? ' on' : '') +
+         '" data-wb-band="' + escHtml(t) + '">' + escHtml(ROSTER_GROUP_LABELS[t] || t) + '</button>';
+  });
+  h += '</div><div class="wb-strip-cols"><span>M</span><span>Y</span><span>Ave</span></div></div>';
+  h += '<div class="wb-strip-rows">';
+  rows.forEach(function(p){
+    const owned = live.idx[p.id] || {};
+    const visible = schedSuppressedDays(owned, isos);
+    h += '<div class="wb-strip-row"><div class="wb-strip-who">' +
+         escHtml((p.abbrev || '').toUpperCase() || p.name || p.email || '') + '</div><div class="wb-strip-days">';
+    isos.forEach(function(iso){
+      const ents = visible[iso] || [];
+      const kinds = [];
+      ents.forEach(function(e){ if(kinds.indexOf(e.kind) === -1) kinds.push(e.kind); });
+      let style = '';
+      if(kinds.length === 1) style = 'background:' + schedKindColor(kinds[0], 'crew');
+      else if(kinds.length > 1) style = 'background:linear-gradient(135deg,' + schedKindColor(kinds[0], 'crew') + ' 50%,' + schedKindColor(kinds[1], 'crew') + ' 50%)';
+      h += '<div class="wb-strip-day' + (iso === todayISO ? ' today' : '') + '"' + (style ? ' style="' + style + '"' : '') + '></div>';
+    });
+    const cm = mCounts[p.id], cy = yCounts[p.id];
+    h += '</div><div class="wb-strip-tally"><span>' + (cm ? cm.duty : '') + '</span><span>' +
+         (cy ? cy.duty : '') + '</span><span class="dev">' + tallyText(devs[p.id]) + '</span></div></div>';
+  });
+  if(!rows.length) h += '<div class="wb-strip-none">No one with this job title.</div>';
+  h += '</div>';
+  el.innerHTML = h;
+  el.hidden = false;
+}
+
 function renderWorkbenchBody(){
   const body = document.getElementById('workbenchBody');
   if(!body) return;
+  renderWorkbenchStrip();
   const isAdmin = (typeof rosterViewerIsAdmin === 'function') ? rosterViewerIsAdmin() : false;
 
   const addBtn = document.getElementById('workbenchAddBtn');
@@ -31230,6 +31341,13 @@ function askStartListening(){
   if(ib) ib.addEventListener('click', function(){ closeDrawer(); openInstallOverlay(); });
   const stb = document.getElementById('drawerSettingsBtn');
   if(stb) stb.addEventListener('click', function(){ closeDrawer(); openSettingsView(); });
+  const wbs = document.getElementById('workbenchStrip');
+  if(wbs) wbs.addEventListener('click', function(ev){
+    const b = ev.target.closest('[data-wb-band]');
+    if(!b) return;
+    wbStripBand = b.getAttribute('data-wb-band');
+    renderWorkbenchStrip();
+  });
   const rpb = document.getElementById('drawerReportsBtn');
   if(rpb) rpb.addEventListener('click', function(){ closeDrawer(); openReportsView(); });
   const lgb = document.getElementById('drawerLegendBtn');
