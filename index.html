@@ -368,8 +368,7 @@
   .page-header-actions:empty{ display:none; }
   body:not(.authed) .page-header{ display:none; }
   body.view-home .page-header{ display:none; }
-  /* ASK BEACON BUBBLE -- PROBE, 13 Sep 2026. Placement only; tapping does
-     nothing yet. Kyle's brief: vertically centred ON the header's hairline so
+  /* ASK BEACON BUBBLE, 13 Sep 2026. Kyle's brief: vertically centred ON the header's hairline so
      it reads as a deliberate interruption, toward the right, below the
      department name and the paperclip, no label -- the words live inside the
      panel it will open. Fixed and OUTSIDE the header so it also exists on the
@@ -404,17 +403,18 @@
      it actually belongs on home is not decided. */
   body.view-home .ask-bubble{ top:max(16px, env(safe-area-inset-top)); }
 
-  /* ---- ASK BEACON PANEL -- SHELL, 13 Sep 2026 ------------------------------
+  /* ---- ASK BEACON PANEL, 13 Sep 2026 ---------------------------------------
      Slide-up over whatever page you are on (Kyle: the page stays visible
      because it is what the question is about). Near-full height, because a
      phone keyboard takes roughly half the screen and a half-height panel
      becomes a sliver the moment the box gets focus. Reuses .sheet/.sheet-full.
      Voice is the primary mode, so the mic is the obvious control; the text box
      stays visible underneath, never behind a toggle -- it is the only way in on
-     a flight deck or beside a passenger. NOTHING ANSWERS YET: there is no guide
-     and no edge function. The mic and Ask are inert; Send feedback opens the
-     existing feedback modal. Starters below are SAMPLES -- the real ones live
-     in the guide, per screen, and are not written. */
+     a flight deck or beside a passenger. Ask goes to the ask-beacon edge
+     function, which answers from the guide (beacon-ask-beacon-guide.md) and
+     logs the question. Send feedback opens the existing feedback modal. The
+     starters in the markup are the HOME set; per-screen starters live in the
+     guide (section 15) and are not yet swapped in per screen. */
   .ask-privacy{ font-family:system-ui,'Inter',sans-serif; font-size:13px; line-height:1.45; color:var(--fog-300); margin-bottom:18px; }
   .ask-starters{ display:flex; flex-direction:column; gap:8px; margin-bottom:22px; }
   .ask-starter{
@@ -448,6 +448,16 @@
     font-family:system-ui,'Inter',sans-serif; font-size:14px; font-weight:600; cursor:pointer;
   }
   .ask-send:hover{ border-color:var(--fog-300); }
+  .ask-mic.is-listening{ border-color:var(--amber-500); color:var(--amber-500); }
+  .ask-send:disabled, .ask-mic:disabled{ opacity:0.4; cursor:default; }
+  /* The exchange. Question in fog, answer in paper. Only the latest pair is
+     shown: Ask Beacon is a question answered and gone, not a chat log. */
+  .ask-thread{ margin-top:18px; display:none; }
+  .ask-thread.has-answer{ display:block; }
+  .ask-q{ font-family:system-ui,'Inter',sans-serif; font-size:13px; color:var(--fog-500); margin-bottom:6px; }
+  .ask-a{ font-family:system-ui,'Inter',sans-serif; font-size:15px; line-height:1.5; color:var(--paper-050); white-space:pre-wrap; }
+  .ask-a.is-error{ color:var(--amber-500); }
+  .ask-a-meta{ font-family:system-ui,'Inter',sans-serif; font-size:11px; color:var(--fog-500); margin-top:8px; }
   .ask-feedback-row{
     margin-top:22px; padding-top:16px; border-top:1px solid var(--hairline);
     display:flex; align-items:center; justify-content:space-between; gap:12px;
@@ -4528,8 +4538,8 @@ a.chat-open{ text-decoration:none; display:inline-block; }
     </div>
   </div>
 </div>
-<!-- ASK BEACON -- PROBE. Sibling of the header, not a child, so it survives
-     the home view hiding the header. Inert until Ask Beacon is built. -->
+<!-- ASK BEACON bubble. Sibling of the header, not a child, so it survives
+     the home view hiding the header. Opens the Ask Beacon panel. -->
 <button type="button" class="ask-bubble" id="askBeaconBubble" aria-label="Ask Beacon" title="Ask Beacon">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/><path d="M8 11h8M8 14h5"/></svg>
 </button>
@@ -4659,7 +4669,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   </div>
   <div class="sheet-body" id="abPickBody"></div>
 </div>
-<!-- ASK BEACON -- SHELL. Chrome wired once at load; nothing answers yet. -->
+<!-- ASK BEACON panel. Chrome wired once at load (wireAskBeacon). -->
 <div class="sheet-backdrop" id="askBackdrop"></div>
 <div class="sheet sheet-full" id="askSheet" role="dialog" aria-label="Ask Beacon" aria-hidden="true">
   <div class="sheet-head">
@@ -4685,6 +4695,11 @@ a.chat-open{ text-decoration:none; display:inline-block; }
     <div class="ask-box">
       <textarea id="askInput" rows="1" placeholder="Or type a question"></textarea>
       <button type="button" class="ask-send" id="askSendBtn">Ask</button>
+    </div>
+    <div class="ask-thread" id="askThread">
+      <div class="ask-q" id="askThreadQ"></div>
+      <div class="ask-a" id="askThreadA"></div>
+      <div class="ask-a-meta" id="askThreadMeta"></div>
     </div>
     <div class="ask-feedback-row">
       <div class="ask-feedback-text">Something confusing or broken? Nothing is sent until you choose to send it.</div>
@@ -4984,7 +4999,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T00:45:00Z';
+const BUILD_VERSION = '2026-09-14T01:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -30458,10 +30473,42 @@ function openInstallOverlay(){
   }
 })();
 
-/* ASK BEACON -- SHELL. Open from the hairline bubble, close from the x or the
-   backdrop. The mic and Ask do nothing yet: there is no guide for the assistant
-   to answer from and no edge function behind it. Send feedback reuses the
-   existing feedback modal, so that half is real. */
+/* ASK BEACON. Open from the hairline bubble, close from the x or the backdrop.
+   Ask sends the question to the ask-beacon edge function with the caller's own
+   token and the screen it was asked from; the function answers from the guide
+   and logs the question as the caller. Send feedback reuses the feedback modal.
+
+   VOICE, STEP 1 OF THE STAIRCASE (Kyle, 13 Sep 2026): tap-to-talk. One tap on
+   the mic starts the browser's speech recognition; the first result fills the
+   box and asks straight away; the answer is read aloud with speech synthesis.
+   iOS Safari cannot keep the mic open between turns or start playback without
+   a tap -- full hands-free waits for the wrapper. Nothing here is rebuilt for
+   that: the wrapper only removes the tap. Where recognition does not exist the
+   mic hides itself and the box is the way in. */
+const ASK_BEACON_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co/functions/v1/ask-beacon';
+let askBusy = false;
+let askRecog = null;
+
+function askSpeak(text){
+  try{
+    if(!('speechSynthesis' in window) || !text) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.0;
+    window.speechSynthesis.speak(u);
+  }catch(e){ /* speaking is a courtesy; the answer is on screen */ }
+}
+function askStopSpeaking(){
+  try{ if('speechSynthesis' in window) window.speechSynthesis.cancel(); }catch(e){}
+}
+function askStopListening(){
+  if(askRecog){ try{ askRecog.stop(); }catch(e){} askRecog = null; }
+  const mic = document.getElementById('askMicBtn');
+  if(mic) mic.classList.remove('is-listening');
+  const hint = document.querySelector('.ask-mic-hint');
+  if(hint) hint.textContent = 'Tap to talk';
+}
+
 function openAskBeacon(){
   const sh = document.getElementById('askSheet');
   const bd = document.getElementById('askBackdrop');
@@ -30469,11 +30516,97 @@ function openAskBeacon(){
   if(bd) bd.classList.add('open');
 }
 function closeAskBeacon(){
+  askStopListening();
+  askStopSpeaking();
   const sh = document.getElementById('askSheet');
   const bd = document.getElementById('askBackdrop');
   if(sh){ sh.classList.remove('open'); sh.setAttribute('aria-hidden','true'); }
   if(bd) bd.classList.remove('open');
 }
+
+function askShow(q, a, meta, isError){
+  const t = document.getElementById('askThread');
+  const qe = document.getElementById('askThreadQ');
+  const ae = document.getElementById('askThreadA');
+  const me = document.getElementById('askThreadMeta');
+  if(qe) qe.textContent = q || '';
+  if(ae){ ae.textContent = a || ''; ae.classList.toggle('is-error', !!isError); }
+  if(me) me.textContent = meta || '';
+  if(t) t.classList.add('has-answer');
+}
+
+async function askBeacon(question, spoken){
+  question = String(question || '').trim();
+  if(!question || askBusy) return;
+  askBusy = true;
+  askStopSpeaking();
+  const send = document.getElementById('askSendBtn');
+  const mic = document.getElementById('askMicBtn');
+  if(send) send.disabled = true;
+  if(mic) mic.disabled = true;
+  askShow(question, '\u2026', '', false);
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    if(!session || !session.access_token){
+      throw new Error('Not signed in. Sign in again and ask once more.');
+    }
+    const res = await fetch(ASK_BEACON_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'authorization': 'Bearer ' + session.access_token
+      },
+      body: JSON.stringify({
+        question: question,
+        screen: state.view || '',
+        buildVersion: BUILD_VERSION
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok || data.error){
+      throw new Error(data.error || ('Ask Beacon failed (' + res.status + ')'));
+    }
+    const answer = data.answer || 'I did not get an answer back. Try asking again.';
+    // The log is a promise made on the panel; if it did not happen, say so.
+    const meta = data.logged ? '' : 'This question was not saved' + (data.logError ? ' (' + data.logError + ')' : '') + '.';
+    askShow(question, answer, meta, false);
+    if(spoken) askSpeak(answer);
+  }catch(e){
+    askShow(question, (e && e.message) || 'Something went wrong.', '', true);
+  }finally{
+    askBusy = false;
+    if(send) send.disabled = false;
+    if(mic) mic.disabled = false;
+  }
+}
+
+function askStartListening(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR) return;
+  if(askRecog){ askStopListening(); return; }
+  askStopSpeaking();
+  const mic = document.getElementById('askMicBtn');
+  const hint = document.querySelector('.ask-mic-hint');
+  const inp = document.getElementById('askInput');
+  const r = new SR();
+  r.lang = 'en-US';
+  r.interimResults = false;
+  r.maxAlternatives = 1;
+  r.continuous = false;
+  askRecog = r;
+  if(mic) mic.classList.add('is-listening');
+  if(hint) hint.textContent = 'Listening\u2026 tap to stop';
+  r.onresult = function(ev){
+    const t = (ev.results && ev.results[0] && ev.results[0][0] && ev.results[0][0].transcript) || '';
+    if(inp) inp.value = t;
+    askStopListening();
+    if(t.trim()) askBeacon(t, true);
+  };
+  r.onerror = function(){ askStopListening(); if(hint) hint.textContent = 'Could not hear that \u2014 tap to try again'; };
+  r.onend = function(){ if(askRecog === r) askStopListening(); };
+  try{ r.start(); }catch(e){ askStopListening(); }
+}
+
 (function wireAskBeacon(){
   const bub = document.getElementById('askBeaconBubble');
   if(bub) bub.addEventListener('click', openAskBeacon);
@@ -30483,17 +30616,34 @@ function closeAskBeacon(){
   if(bd) bd.addEventListener('click', closeAskBeacon);
   const fb = document.getElementById('askFeedbackBtn');
   if(fb) fb.addEventListener('click', function(){ closeAskBeacon(); openFeedbackModal(); });
-  // A starter fills the box rather than asking -- a chip should be easy to
-  // adjust before it is sent, and nothing answers yet anyway.
-  const st = document.getElementById('askStarters');
   const inp = document.getElementById('askInput');
+  const send = document.getElementById('askSendBtn');
+  if(send && inp) send.addEventListener('click', function(){ askBeacon(inp.value, false); });
+  // Enter asks; Shift+Enter makes a new line. A question is a sentence, not a
+  // document.
+  if(inp) inp.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); askBeacon(inp.value, false); }
+  });
+  // A starter is a question, so it asks. Typed, not spoken: the answer is read
+  // on screen. Tapping is a text gesture.
+  const st = document.getElementById('askStarters');
   if(st && inp){
     st.addEventListener('click', function(e){
       const b = e.target.closest('.ask-starter');
       if(!b) return;
       inp.value = b.textContent;
-      inp.focus();
+      askBeacon(b.textContent, false);
     });
+  }
+  const mic = document.getElementById('askMicBtn');
+  const wrap = document.querySelector('.ask-mic-wrap');
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){
+    // No recognition in this browser: the box is the way in. Hide the mic
+    // rather than show a control that does nothing.
+    if(wrap) wrap.style.display = 'none';
+  }else if(mic){
+    mic.addEventListener('click', askStartListening);
   }
 })();
 
