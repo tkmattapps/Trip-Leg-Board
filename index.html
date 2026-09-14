@@ -2974,7 +2974,12 @@
   /* THE CREW STRIP -- pinned under the trips, above the safe area. One job-title
      band at a time, six rows tall, the month's days as bare colour blocks and
      the grid's own Duty M / Y / Ave on the right. See renderWorkbenchStrip. */
-  .wb-strip{ flex:0 0 auto; border-top:1px solid var(--hairline); padding:8px 14px 6px; background:var(--ink-900); }
+  /* The bottom padding is 14px PLUS the safe-area inset, not one or the other.
+     The inset is zero on a desktop, so relying on it alone left the last row of
+     blocks sitting on the edge of the screen (Kyle, 14 Sep 2026); on a phone
+     the two add, which is what the home indicator needs anyway. */
+  .wb-strip{ flex:0 0 auto; border-top:1px solid var(--hairline); background:var(--ink-900);
+             padding:8px 14px 14px; padding-bottom:calc(14px + env(safe-area-inset-bottom)); }
   .wb-strip-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
   .wb-strip-bands{ display:flex; gap:6px; }
   .wb-strip-band{ font:inherit; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--fog-300); background:none; border:1px solid var(--hairline); border-radius:12px; padding:3px 10px; cursor:pointer; }
@@ -5051,7 +5056,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T18:35:00Z';
+const BUILD_VERSION = '2026-09-14T18:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
