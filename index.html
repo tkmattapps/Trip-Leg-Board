@@ -5056,7 +5056,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T18:50:00Z';
+const BUILD_VERSION = '2026-09-14T19:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -17619,7 +17619,9 @@ function personEditBodyHTML(p){
     '</div>' +
     '<div class="sheet-slot">' +
       '<div class="sheet-slot-label">Email</div>' +
-      '<div class="sheet-readonly">' + escapeHtml(p.email || '\u2014') + '</div>' +
+      '<input id="peEmail" type="email" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" ' +
+        'maxlength="160" inputmode="email" value="' + escapeHtml(p.email || '') + '" />' +
+      '<div class="sheet-note">What they sign in with. Changing it takes effect immediately and is recorded.</div>' +
     '</div>' +
     personEditAdminHTML(p) +
     (personEditCanRemove(p)
@@ -17758,7 +17760,8 @@ async function savePersonEdit(){
   const givEl = document.getElementById('peGiven');
   const surEl = document.getElementById('peSurname');
   const hireEl = document.getElementById('peHire');
-  if(!nameEl || !abbEl || !givEl || !surEl || !hireEl) return;
+  const emailEl = document.getElementById('peEmail');
+  if(!nameEl || !abbEl || !givEl || !surEl || !hireEl || !emailEl) return;
 
   const name = String(nameEl.value || '').trim();
   const abbrev = normalizeAbbrev(abbEl.value);
@@ -17767,6 +17770,8 @@ async function savePersonEdit(){
   // A date input reports '' when empty, and '' is not a date -- Postgres would
   // refuse it. Null is the value that means "no hire date recorded".
   const hire = String(hireEl.value || '').trim() || null;
+  const email = String(emailEl.value || '').trim().toLowerCase();
+  const emailChanged = email !== String(p.email || '').toLowerCase();
 
   // Blank is allowed: crew_abbrev is deliberately NOT NULL-free for now,
   // because the invite flow that would enforce it does not exist yet. But a
@@ -17786,10 +17791,40 @@ async function savePersonEdit(){
     }
   }
 
+  if(emailChanged && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    setPersonEditError('Enter a valid email address.');
+    emailEl.focus();
+    return;
+  }
+
   setPersonEditError('');
   personEditState.saving = true;
   const saveBtn = document.getElementById('personEditSaveBtn');
   if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Saving\u2026'; }
+
+  // THE EMAIL GOES THROUGH THE EDGE FUNCTION, NOT THE ROW UPDATE BELOW. The
+  // address lives in two places -- the Auth account (what they sign in with)
+  // and users.email (what the roster shows) -- and only the service role can
+  // write the first. The function moves both, records the change in
+  // membership_changes, and puts everything back if any step fails. It runs
+  // FIRST: it is the write that can be refused for a real reason (the address
+  // is already someone's), and a refusal should stop the save before the name
+  // and abbreviation have been written under it.
+  if(emailChanged){
+    const res = await invokeManageUser({
+      action: 'change_email',
+      flight_department_id: await getFlightDepartmentId(),
+      user_id: p.id,
+      email: email
+    });
+    if(!res.ok){
+      setPersonEditError(res.message);
+      if(personEditState) personEditState.saving = false;
+      if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+      emailEl.focus();
+      return;
+    }
+  }
 
   try {
     // .select() is LOAD-BEARING, not decoration. An UPDATE that the row-level
