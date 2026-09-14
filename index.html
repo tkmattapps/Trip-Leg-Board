@@ -4999,7 +4999,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T02:15:00Z';
+const BUILD_VERSION = '2026-09-14T02:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -30508,12 +30508,25 @@ function askSpeak(text){
 function askStopSpeaking(){
   try{ if('speechSynthesis' in window) window.speechSynthesis.cancel(); }catch(e){}
 }
+// Tears the recogniser down and resets the mic. Never sends: sending is a
+// deliberate second tap (askFinishListening). askHeard is what has been
+// recognised so far; it survives the recogniser restarting itself.
+let askHeard = '';
 function askStopListening(){
-  if(askRecog){ try{ askRecog.stop(); }catch(e){} askRecog = null; }
+  if(askRecog){ const r = askRecog; askRecog = null; try{ r.abort(); }catch(e){} }
+  askHeard = '';
   const mic = document.getElementById('askMicBtn');
   if(mic) mic.classList.remove('is-listening');
   const hint = document.querySelector('.ask-mic-hint');
   if(hint) hint.textContent = 'Tap to talk';
+}
+// Second tap: take what was heard, stop, and ask it. An empty result just
+// stops -- a tap with nothing said is a cancel, not a question.
+function askFinishListening(){
+  const inp = document.getElementById('askInput');
+  const t = (inp ? inp.value : askHeard).trim();
+  askStopListening();
+  if(t) askBeacon(t, true);
 }
 
 function openAskBeacon(){
@@ -30593,28 +30606,51 @@ async function askBeacon(question, spoken){
 function askStartListening(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR) return;
-  if(askRecog){ askStopListening(); return; }
+  if(askRecog){ askFinishListening(); return; }
   askStopSpeaking();
   const mic = document.getElementById('askMicBtn');
   const hint = document.querySelector('.ask-mic-hint');
   const inp = document.getElementById('askInput');
-  const r = new SR();
-  r.lang = 'en-US';
-  r.interimResults = false;
-  r.maxAlternatives = 1;
-  r.continuous = false;
-  askRecog = r;
+  askHeard = '';
+  if(inp) inp.value = '';
   if(mic) mic.classList.add('is-listening');
-  if(hint) hint.textContent = 'Listening\u2026 tap to stop';
-  r.onresult = function(ev){
-    const t = (ev.results && ev.results[0] && ev.results[0][0] && ev.results[0][0].transcript) || '';
-    if(inp) inp.value = t;
-    askStopListening();
-    if(t.trim()) askBeacon(t, true);
+  if(hint) hint.textContent = 'Listening\u2026 tap to send';
+  // Tap to talk, tap to send -- everywhere, the same. The recogniser's own
+  // end-of-speech is far too eager for a thought that forms as it is spoken,
+  // so it runs continuous and the person ends the turn. Chrome still ends a
+  // continuous session on long silence: when that happens and the mic is
+  // still lit, start another and keep what was heard. Finals accumulate in
+  // askHeard; the box shows finals plus the current interim so the person
+  // can watch it build and correct it before sending.
+  const begin = function(){
+    const r = new SR();
+    r.lang = 'en-US';
+    r.interimResults = true;
+    r.maxAlternatives = 1;
+    r.continuous = true;
+    askRecog = r;
+    r.onresult = function(ev){
+      let interim = '';
+      for(let i = ev.resultIndex; i < ev.results.length; i++){
+        const t = (ev.results[i][0] && ev.results[i][0].transcript) || '';
+        if(ev.results[i].isFinal) askHeard = (askHeard + ' ' + t).trim();
+        else interim += t;
+      }
+      if(inp) inp.value = (askHeard + ' ' + interim).trim();
+    };
+    r.onerror = function(ev){
+      // no-speech is just silence; the session ends and onend restarts it.
+      if(ev && ev.error === 'no-speech') return;
+      askStopListening();
+      if(hint) hint.textContent = 'Could not hear that \u2014 tap to try again';
+    };
+    r.onend = function(){
+      if(askRecog !== r) return;       // stopped on purpose
+      try{ begin(); }catch(e){ askStopListening(); }
+    };
+    r.start();
   };
-  r.onerror = function(){ askStopListening(); if(hint) hint.textContent = 'Could not hear that \u2014 tap to try again'; };
-  r.onend = function(){ if(askRecog === r) askStopListening(); };
-  try{ r.start(); }catch(e){ askStopListening(); }
+  try{ begin(); }catch(e){ askStopListening(); }
 }
 
 (function wireAskBeacon(){
@@ -30628,11 +30664,16 @@ function askStartListening(){
   if(fb) fb.addEventListener('click', function(){ closeAskBeacon(); openFeedbackModal(); });
   const inp = document.getElementById('askInput');
   const send = document.getElementById('askSendBtn');
-  if(send && inp) send.addEventListener('click', function(){ askBeacon(inp.value, false); });
+  // While listening, Send is the same as the second mic tap: it takes what is
+  // in the box (heard, possibly corrected by hand) and speaks the answer.
+  if(send && inp) send.addEventListener('click', function(){
+    if(askRecog){ askFinishListening(); return; }
+    askBeacon(inp.value, false);
+  });
   // Enter asks; Shift+Enter makes a new line. A question is a sentence, not a
   // document.
   if(inp) inp.addEventListener('keydown', function(e){
-    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); askBeacon(inp.value, false); }
+    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); if(askRecog) askFinishListening(); else askBeacon(inp.value, false); }
   });
   // A starter is a question, so it asks. Typed, not spoken: the answer is read
   // on screen. Tapping is a text gesture.
