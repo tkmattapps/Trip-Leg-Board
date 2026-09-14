@@ -363,7 +363,21 @@
   .page-header-subright:empty{ display:none; }
   /* Collapses completely when empty, so pages with no documents do not carry a
      6px gap under the pill for a row that renders nothing. */
-  .page-header-docs{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+  /* *** THE PAPERCLIP ROW CLEARS THE ASK BEACON BUBBLE. ***
+     Kyle, 14 Sep 2026, from the phone: the bubble crowded the document pill on
+     the leg checklist. Moving the BUBBLE was tried and rejected -- it is a
+     fixture and it stopped reading as one (see the note in the phone block).
+     So the row that varies moves instead, and only this row: the verify pill
+     lives in .page-header-actions above and is untouched.
+     THE NUMBER, ADDED UP, NOT CHOSEN. The bubble is position:fixed, 34px wide,
+     at right:16px on phones -- so its left edge is 50px from the viewport edge.
+     The header's content already stops 16px from that edge on a phone, leaving
+     34px of the bubble over this row. 34 + an 8px gap = 42.
+     Desktop: the bubble is at right:36px, left edge 70px in; header content
+     stops at 36px, so the overlap is 34px there too and the same 42 clears it.
+     One value, both sizes, because the bubble's width is what sets it. */
+  .page-header-docs{ display:flex; align-items:center; gap:8px; flex:0 0 auto;
+    margin-right:42px; }
   .page-header-docs:empty{ display:none; }
   .page-header-actions:empty{ display:none; }
   body:not(.authed) .page-header{ display:none; }
@@ -5000,7 +5014,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T05:35:00Z';
+const BUILD_VERSION = '2026-09-14T05:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
