@@ -4999,7 +4999,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T01:30:00Z';
+const BUILD_VERSION = '2026-09-14T02:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -7650,6 +7650,7 @@ async function loadLegs(){
       // to login is honest; showing an empty board is not.
       showToast('Your session expired - please sign in again');
       try{ await sb.auth.signOut(); }catch(_){}
+      askClearHistory();
       currentFlightDepartmentId = null;
       document.body.classList.remove('authed');
       _appBooted = false; _legsLoaded = false;
@@ -30488,6 +30489,12 @@ function openInstallOverlay(){
 const ASK_BEACON_URL = 'https://wfmvvvhjcxiubstzzqrb.supabase.co/functions/v1/ask-beacon';
 let askBusy = false;
 let askRecog = null;
+// The conversation. Lives for the session, like Undo: closing the panel keeps
+// it, signing out or reloading clears it. Nothing is stored -- the log table
+// holds each question and answer on its own, which is all Kyle reads.
+let askHistory = [];
+const ASK_HISTORY_TURNS = 10; // user+assistant pairs sent back to the function
+function askClearHistory(){ askHistory = []; }
 
 function askSpeak(text){
   try{
@@ -30558,6 +30565,7 @@ async function askBeacon(question, spoken){
       },
       body: JSON.stringify({
         question: question,
+        history: askHistory.slice(-ASK_HISTORY_TURNS * 2),
         screen: state.view || '',
         buildVersion: BUILD_VERSION
       })
@@ -30567,6 +30575,8 @@ async function askBeacon(question, spoken){
       throw new Error(data.error || ('Ask Beacon failed (' + res.status + ')'));
     }
     const answer = data.answer || 'I did not get an answer back. Try asking again.';
+    askHistory.push({ role:'user', content: question }, { role:'assistant', content: answer });
+    if(askHistory.length > ASK_HISTORY_TURNS * 2) askHistory = askHistory.slice(-ASK_HISTORY_TURNS * 2);
     // The log is a promise made on the panel; if it did not happen, say so.
     const meta = data.logged ? '' : 'This question was not saved' + (data.logError ? ' (' + data.logError + ')' : '') + '.';
     askShow(question, answer, meta, false);
@@ -31135,6 +31145,7 @@ async function loadDepartmentName(){
 
 async function handleLogout(){
   await sb.auth.signOut();
+  askClearHistory();
   currentUserProfile = null;
   currentFlightDepartmentId = null;
   // Clear the fleet too: otherwise the next person to sign in on this device
