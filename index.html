@@ -5014,7 +5014,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T05:50:00Z';
+const BUILD_VERSION = '2026-09-14T14:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -30663,10 +30663,13 @@ const ASK_STARTERS = {
                  'Who can see the travel details I put here?'],
   notes:        ["What's the difference between a trip note and a scratchpad?",
                  'Who can see the notes I write?'],
-  history:      ['What gets recorded in the history?',
-                 'Can I undo a change?'],
+  // 'history' is the Archived Trips LIST (renderHistoryView), not a change log.
+  history:      ['Can an archived trip be edited?',
+                 'What does ARCHIVED INCOMPLETE mean?',
+                 'Who can archive a trip?'],
   archivedTrip: ['Can an archived trip be edited?',
-                 'What does ARCHIVED INCOMPLETE mean?'],
+                 'What does ARCHIVED INCOMPLETE mean?',
+                 'Where are the private notes?'],
   archivedLeg:  ['Can an archived trip be edited?',
                  'Why can I not edit this leg?'],
   settings:     ['How do I reset someone\'s password?',
