@@ -413,7 +413,7 @@
      a flight deck or beside a passenger. Ask goes to the ask-beacon edge
      function, which answers from the guide (beacon-ask-beacon-guide.md) and
      logs the question. Send feedback opens the existing feedback modal. The
-     starters in the markup are the HOME set; per-screen starters live in the
+     starters are written per screen in ASK_STARTERS below and painted on open;
      guide (section 15) and are not yet swapped in per screen. */
   .ask-privacy{ font-family:system-ui,'Inter',sans-serif; font-size:13px; line-height:1.45; color:var(--fog-300); margin-bottom:18px; }
   .ask-starters{ display:flex; flex-direction:column; gap:8px; margin-bottom:22px; }
@@ -4681,11 +4681,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   </div>
   <div class="sheet-body">
     <div class="ask-privacy">Your questions are saved so I can see where Beacon is confusing and fix it. Ask anything.</div>
-    <div class="ask-starters" id="askStarters">
-      <button type="button" class="ask-starter">How does Beacon read my trip paperwork?</button>
-      <button type="button" class="ask-starter">What is the difference between active and archived trips?</button>
-      <button type="button" class="ask-starter">Who can delete a trip?</button>
-    </div>
+    <div class="ask-starters" id="askStarters"></div>
     <div class="ask-mic-wrap">
       <button type="button" class="ask-mic" id="askMicBtn" aria-label="Tap to talk">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg>
@@ -4999,7 +4995,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T04:10:00Z';
+const BUILD_VERSION = '2026-09-14T05:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -30611,9 +30607,65 @@ function askFinishListening(){
   if(t) askBeacon(t, true);
 }
 
+// PER-SCREEN STARTERS. Kyle, 14 Sep 2026: the same three questions on every
+// screen taught nobody anything. These are keyed on state.view -- the same
+// value the function is already sent as `screen` -- so the two cannot
+// disagree about where the person is.
+//
+// THIS IS A SECOND COPY. Section 15 of the guide carries the same list, and
+// nothing keeps them in step but hand. Change one, change the other. It is
+// held here rather than fetched so the buttons are there the instant the
+// panel opens; a round trip would show an empty panel first.
+//
+// Keep them few, and keep them things a person on THAT screen would actually
+// wonder. They prime the open box; they do not replace it.
+const ASK_STARTERS = {
+  home:         ['How does Beacon read my trip paperwork?',
+                 "What's the difference between active and archived trips?",
+                 'How do I install Beacon on my phone?'],
+  dashboard:    ["What's the difference between the Crew Brief and the Trip Plan?",
+                 'What do the status dots mean?',
+                 'How do I find a trip by airport?'],
+  tripDetail:   ["How do I open a leg's checklist?",
+                 'What is an airport brief?',
+                 'Who can archive a trip?'],
+  wbTrip:       ['How do I add cover for part of a trip?',
+                 'What does Push to active trip do?',
+                 'What is a positioning day?'],
+  editor:       ['Why is this text cyan?',
+                 'What does changed since verified mean?',
+                 'When does a leg become Ready?'],
+  schedule:     ['What does Duty Ave mean?',
+                 'What does Smart Schedule do?',
+                 'How do I add PTO?'],
+  eventDetail:  ['What is a training event for?',
+                 'Who can edit the details on this page?'],
+  posDetail:    ['What is a positioning day?',
+                 'Who can see the travel details I put here?'],
+  notes:        ["What's the difference between a trip note and a scratchpad?",
+                 'Who can see the notes I write?'],
+  history:      ['What gets recorded in the history?',
+                 'Can I undo a change?'],
+  archivedTrip: ['Can an archived trip be edited?',
+                 'What does ARCHIVED INCOMPLETE mean?'],
+  archivedLeg:  ['Can an archived trip be edited?',
+                 'Why can I not edit this leg?'],
+  settings:     ['How do I reset someone\'s password?',
+                 'What does retiring an aircraft do?']
+};
+function askPaintStarters(){
+  const wrap = document.getElementById('askStarters');
+  if(!wrap) return;
+  const list = ASK_STARTERS[(state && state.view) || ''] || ASK_STARTERS.home;
+  wrap.innerHTML = list.map(q =>
+    '<button type="button" class="ask-starter">' + escHtml(q) + '</button>'
+  ).join('');
+}
+
 function openAskBeacon(){
   const sh = document.getElementById('askSheet');
   const bd = document.getElementById('askBackdrop');
+  askPaintStarters();
   if(sh){ sh.classList.add('open'); sh.setAttribute('aria-hidden','false'); }
   if(bd) bd.classList.add('open');
 }
