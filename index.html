@@ -2986,7 +2986,15 @@
   .wb-strip-who{ flex:0 0 40px; font-size:11px; font-weight:600; color:var(--paper-050); letter-spacing:0.04em; }
   .wb-strip-days{ flex:1; display:flex; gap:1px; min-width:0; }
   .wb-strip-day{ flex:1; height:14px; border-radius:2px; background:var(--panel-700); min-width:0; }
-  .wb-strip-day.today{ box-shadow:inset 0 0 0 1px var(--amber-500); }
+  /* THE NUMBER CARRIES TODAY, NOT THE BLOCK. A ring on today's cell drew once
+     per row -- ten rings down one column, which read as damage rather than as
+     a marker (Kyle, 14 Sep 2026). One ring, on the day number, at the top. */
+  .wb-strip-nums{ display:flex; align-items:center; height:16px; gap:8px; margin-bottom:2px; }
+  .wb-strip-nums .wb-strip-who{ visibility:hidden; }
+  .wb-strip-numrow{ flex:1; display:flex; gap:1px; min-width:0; }
+  .wb-strip-num{ flex:1; min-width:0; text-align:center; font-size:9px; line-height:14px;
+                 color:var(--fog-500); font-variant-numeric:tabular-nums; }
+  .wb-strip-num.today{ color:var(--paper-050); box-shadow:inset 0 0 0 1px var(--amber-500); border-radius:3px; }
   .wb-strip-tally{ flex:0 0 auto; display:flex; gap:8px; font-size:11px; color:var(--paper-050); font-variant-numeric:tabular-nums; }
   .wb-strip-tally span{ width:22px; text-align:right; }
   .wb-strip-tally .dev{ color:var(--fog-300); }
@@ -5043,7 +5051,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T18:05:00Z';
+const BUILD_VERSION = '2026-09-14T18:35:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14157,6 +14165,16 @@ function renderWorkbenchStrip(){
          '" data-wb-band="' + escHtml(t) + '">' + escHtml(ROSTER_GROUP_LABELS[t] || t) + '</button>';
   });
   h += '</div><div class="wb-strip-cols"><span>M</span><span>Y</span><span>Ave</span></div></div>';
+  // The day numbers sit OUTSIDE the scrolling row list, so they stay put when a
+  // band of more than six scrolls. Same three-part row shape as a crew row --
+  // hidden initials, the day track, the tally width -- so the columns line up
+  // by construction rather than by a matched pair of numbers.
+  h += '<div class="wb-strip-nums"><div class="wb-strip-who"></div><div class="wb-strip-numrow">';
+  for(let d = 1; d <= n; d++){
+    const iso = isos[d - 1];
+    h += '<div class="wb-strip-num' + (iso === todayISO ? ' today' : '') + '">' + d + '</div>';
+  }
+  h += '</div><div class="wb-strip-tally"><span></span><span></span><span></span></div></div>';
   h += '<div class="wb-strip-rows">';
   rows.forEach(function(p){
     const owned = live.idx[p.id] || {};
@@ -14170,7 +14188,7 @@ function renderWorkbenchStrip(){
       let style = '';
       if(kinds.length === 1) style = 'background:' + schedKindColor(kinds[0], 'crew');
       else if(kinds.length > 1) style = 'background:linear-gradient(135deg,' + schedKindColor(kinds[0], 'crew') + ' 50%,' + schedKindColor(kinds[1], 'crew') + ' 50%)';
-      h += '<div class="wb-strip-day' + (iso === todayISO ? ' today' : '') + '"' + (style ? ' style="' + style + '"' : '') + '></div>';
+      h += '<div class="wb-strip-day"' + (style ? ' style="' + style + '"' : '') + '></div>';
     });
     const cm = mCounts[p.id], cy = yCounts[p.id];
     h += '</div><div class="wb-strip-tally"><span>' + (cm ? cm.duty : '') + '</span><span>' +
