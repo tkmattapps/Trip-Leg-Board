@@ -5115,7 +5115,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T18:50:00Z';
+const BUILD_VERSION = '2026-09-15T19:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12810,24 +12810,70 @@ function wireCardClicks(originView){
 // user in any of the four seats. Personal by definition -- the top group of
 // Home is about the reader, so nothing here counts the department's trips.
 // Null when there is none; the tile then says so in words, not with a zero.
-function homeNextUp(allTrips){
+// *** THE GRID IS THE LAW. *** Kyle, 15 Sep 2026: "if it's on the grid, that's
+// your responsibility -- that's what's next up for you." So Next Up reads the
+// same rows the schedule paints (crew_busy_days, filtered to this person) and
+// not the legs: a seat on the plan that has not been pushed down to the legs
+// still shows here, because it already shows on the grid.
+//
+// Duty only -- trip, training, other (TALLY_DUTY_KINDS). PTO, soft days,
+// quarterly calls and info-only markers are not somewhere you need to be.
+//
+// "If you're sitting in Costa Rica you know where you are": a mid-trip day
+// with nothing flying is not the answer. away_on_trip is derived client-side
+// and never comes back from the RPC, so the earliest FLIGHT row is already the
+// next actual leg. flight_assigned rows carry a plan id, not a leg, so the
+// route comes from the plan and the tile opens the Trip Plan.
+//
+// Same two gates as the schedule: smart features off drops derived flight
+// rows; the window is today plus NEXT_UP_DAYS. Cached per render, never
+// across sessions -- never paint a guess.
+const NEXT_UP_DAYS = 400;   // just over a year: a recurrent booked far out still shows
+let _homeNextUp = null;     // { date, kind, sub, open } or null; undefined = not asked yet
+async function loadHomeNextUp(){
   const me = myUserId();
-  if(!me) return null;
-  const today = schedISO(new Date());
+  const deptId = await getFlightDepartmentId();
+  if(!me || !deptId) return null;
+  const today = new Date();
+  const end = new Date(today); end.setDate(end.getDate() + NEXT_UP_DAYS);
+  const lo = schedISO(today);
+  const args = { p_department_id: deptId, p_start: lo, p_end: schedISO(end) };
+  const [crew, smart] = await Promise.all([
+    schedRpcPaged('crew_busy_days', args),
+    loadSchedSmartFeatures(deptId)
+  ]);
   let best = null;
-  allTrips.forEach(t => {
-    if(tripIsArchived(t.tripNumber)) return;
-    t.legs.forEach(leg => {
-      const d = (leg && typeof leg.date === 'string') ? leg.date.trim() : '';
-      if(!/^\d{4}-\d{2}-\d{2}$/.test(d) || d < today) return;
-      if(legCrewSeatedIds(leg).indexOf(me) === -1) return;
-      if(!best || d < best.date) best = { date: d, leg: leg, tripKey: t.key };
-    });
+  (crew || []).forEach(function(r){
+    if(r.user_id !== me) return;
+    const kind = r.source;
+    if(!TALLY_DUTY_KINDS[kind]) return;
+    if(!smart && kind === 'flight') return;
+    const day = String(r.day || '').slice(0, 10);
+    if(day < lo) return;
+    // Same day, prefer the row with somewhere to open: a leg over a marker.
+    if(best && day > best.date) return;
+    if(best && day === best.date && best.kind === 'flight') return;
+    best = { date: day, kind: kind, ref: r.ref_id || '', detail: r.detail || '' };
   });
   if(!best) return null;
-  const leg = best.leg;
-  const route = leg.cityPair || [leg.dep && leg.dep.airportId, leg.arr && leg.arr.airportId].filter(Boolean).join(' \u2192 ') || '';
-  best.sub = formatISODateDisplay(best.date) + (route ? ' \u00b7 ' + route : '');
+  const when = formatISODateDisplay(best.date);
+  if(best.kind === 'flight' || best.kind === 'flight_historical'){
+    const info = schedFlightRefInfo(best.ref);
+    const route = info ? (info.cityPair || [info.dep, info.arr].filter(Boolean).join(' \u2192 ')) : '';
+    best.sub = when + (route ? ' \u00b7 ' + route : '');
+    const key = info ? (info.tripNumber || info.groupId || '') : '';
+    best.open = key ? function(){ openTripDetail(key, 'home'); } : null;
+  } else if(best.kind === 'flight_assigned'){
+    if(!workbenchCache) await loadWorkbenchTrips();
+    const plan = (workbenchCache || []).find(function(x){ return x.id === best.ref; });
+    const route = plan ? (plan.destinations || '').trim() : '';
+    best.sub = when + (route ? ' \u00b7 ' + route : '');
+    best.open = plan ? function(){ openWorkbenchTrip(plan.id, 'home'); } : null;
+  } else {
+    const label = SCHED_LABELS[best.kind] || best.kind;
+    best.sub = when + ' \u00b7 ' + label + (best.detail ? ' \u00b7 ' + best.detail : '');
+    best.open = best.ref ? function(){ openEventDetail(best.ref); } : null;
+  }
   return best;
 }
 
@@ -12839,7 +12885,7 @@ function renderHomeView(){
   // flown-awaiting-archive work queue. Counting it as historic the moment the
   // last leg flew is what made the active page rot.
   const activeCount = allTrips.filter(t => !tripIsArchived(t.tripNumber)).length;
-  const nextUp = homeNextUp(allTrips);
+  const nextUp = _homeNextUp;
   main.innerHTML =
     '<div class="home-view">' +
       '<div class="home-left-col">' +
@@ -12871,7 +12917,7 @@ function renderHomeView(){
         '<div class="home-btn-row home-btn-row-wide">' +
         '<button type="button" class="home-btn" id="homeNextBtn">' +
           '<span class="home-btn-title">Next Up</span>' +
-          '<span class="home-btn-count">' + (_legsLoaded ? escapeHtml(nextUp ? nextUp.sub : 'Nothing scheduled') : 'Loading trips…') + '</span>' +
+          '<span class="home-btn-count">' + (nextUp === undefined ? 'Loading…' : escapeHtml(nextUp ? nextUp.sub : 'Nothing scheduled')) + '</span>' +
         '</button>' +
         '</div>' +
         '<div class="home-btn-row home-btn-row-wide">' +
@@ -12908,8 +12954,24 @@ function renderHomeView(){
       '</div>' +
     '</div>';
   document.getElementById('homeNextBtn').addEventListener('click', () => {
-    if(nextUp) openTripDetail(nextUp.tripKey, 'home');
+    const n = _homeNextUp;
+    if(n && n.open) n.open();
+    else if(n) showToast(n.sub);
     else showToast('Nothing on your schedule yet.');
+  });
+  // Ask the grid every time Home renders; repaint the tile when it answers.
+  // The sub-line reads Loading… until then -- never a stale value from last time.
+  _homeNextUp = undefined;
+  loadHomeNextUp().then(function(n){
+    _homeNextUp = n;
+    if(state.view !== 'home') return;
+    const el = document.querySelector('#homeNextBtn .home-btn-count');
+    if(el) el.textContent = n ? n.sub : 'Nothing scheduled';
+  }).catch(function(e){
+    console.warn('[home] next up failed', e);
+    _homeNextUp = null;
+    const el = document.querySelector('#homeNextBtn .home-btn-count');
+    if(state.view === 'home' && el) el.textContent = 'Couldn\u2019t read the schedule';
   });
   document.getElementById('homeAttentionBtn').addEventListener('click', () => showToast('Coming soon.'));
   document.getElementById('homeNewBtn').addEventListener('click', () => showToast('Coming soon.'));
@@ -16680,8 +16742,9 @@ function renderWorkbenchTripView(){
   // BACK GOES WHERE YOU CAME FROM. Opened from a trip card via Planning, that is
   // Active Trips; opened from the month's list, it is that list.
   const fromCard  = (wbTripOrigin === 'dashboard');
-  const backLabel = fromCard ? 'Active Trips' : schedTripsBtnLabel(mo.y, mo.m);
-  const backTo    = fromCard ? 'dashboard' : 'workbench';
+  const fromHome  = (wbTripOrigin === 'home');   // Next Up on Home (15 Sep 2026)
+  const backLabel = fromCard ? 'Active Trips' : fromHome ? 'Home' : schedTripsBtnLabel(mo.y, mo.m);
+  const backTo    = fromCard ? 'dashboard' : fromHome ? 'home' : 'workbench';
   const t = (Array.isArray(workbenchCache) ? workbenchCache : [])
     .find(function(x){ return x.id === wbExpandedId; });
   // A trip that is no longer there. Says so rather than painting an empty form
