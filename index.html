@@ -212,6 +212,20 @@
   .set-section-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:4px; }
   .set-section-title{ font-size:12px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--fog-500); }
   .set-section-note{ font-size:12px; color:var(--fog-500); margin:0 0 12px; line-height:1.5; }
+  /* What's New (beacon-whats-new-design.md). One line per run, same shape as
+     the Next Up sub-line; the kind word is the only thing coloured. */
+  .wn-list{ display:flex; flex-direction:column; gap:6px; margin:0 0 14px; }
+  .wn-item{ display:flex; align-items:baseline; gap:10px; width:100%; text-align:left;
+    background:var(--panel-700); border:1px solid var(--hairline); border-radius:10px;
+    padding:10px 12px; color:var(--paper-050); font:inherit; font-size:14px; cursor:pointer; }
+  .wn-item[disabled]{ cursor:default; }
+  .wn-kind{ font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; flex:0 0 66px; }
+  .wn-kind-added{ color:var(--ok-500); }
+  .wn-kind-removed{ color:var(--alert-600); }
+  .wn-kind-revised{ color:var(--amber-500); }
+  .wn-body{ flex:1 1 auto; min-width:0; }
+  .wn-body-what{ color:var(--fog-300); }
+  .wn-seen{ width:100%; }
   /* Placeholder for a DESIGNED-NOT-BUILT feature. Deliberately inert: no
      controls at all, because a disabled toggle invites a tap and teaches
      people the app is broken. The dashed rule says "nothing here yet" more
@@ -3099,7 +3113,11 @@
   .wb-c-date{ color:var(--fog-300); white-space:nowrap; }
   .wb-c-days{ color:var(--fog-500); white-space:nowrap; }
   .wb-c-seat{ white-space:nowrap; font-weight:600; }
-  .wb-c-notes{ color:var(--fog-500); min-width:140px; }
+  /* Seen replaced Notes on 15 Sep 2026 (Kyle): the month sheet is a snapshot
+     with doorways, and free text of unknown length is now a cell that is
+     always about five characters wide. The report keeps its own notes. */
+  .wb-c-seen{ color:var(--fog-500); white-space:nowrap; cursor:pointer; }
+  .wb-c-seen.wb-seen-all{ color:var(--ok-500); }
   /* A cell with nothing in it stays visibly empty. This is the placeholder for
      an em-dash or similar, kept faint enough to read as absence, not as data. */
   .wb-blank{ color:var(--panel-700); }
@@ -5115,7 +5133,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T20:05:00Z';
+const BUILD_VERSION = '2026-09-15T20:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12836,30 +12854,51 @@ function wireCardClicks(originView){
 // across sessions -- never paint a guess.
 const NEXT_UP_DAYS = 400;   // just over a year: a recurrent booked far out still shows
 let _homeNextUp = null;     // { date, kind, sub, open } or null; undefined = not asked yet
+
+// One read of the grid per Home render, shared by Next Up and What's New so the
+// two tiles cannot disagree and the phone does not ask twice. Rows are already
+// filtered to THIS person, duty kinds only, smart-features gate applied -- the
+// same three gates the schedule applies after its own read. Reset on every
+// render; never cached across sessions.
+let _homeGridPromise = null;
+function loadHomeGrid(){
+  if(_homeGridPromise) return _homeGridPromise;
+  _homeGridPromise = (async function(){
+    const me = myUserId();
+    const deptId = await getFlightDepartmentId();
+    if(!me || !deptId) return null;
+    const today = new Date();
+    const end = new Date(today); end.setDate(end.getDate() + NEXT_UP_DAYS);
+    const lo = schedISO(today), hi = schedISO(end);
+    const args = { p_department_id: deptId, p_start: lo, p_end: hi };
+    const [crew, smart] = await Promise.all([
+      schedRpcPaged('crew_busy_days', args),
+      loadSchedSmartFeatures(deptId)
+    ]);
+    const rows = [];
+    (crew || []).forEach(function(r){
+      if(r.user_id !== me) return;
+      if(!TALLY_DUTY_KINDS[r.source]) return;
+      if(!smart && r.source === 'flight') return;
+      const day = String(r.day || '').slice(0, 10);
+      if(day < lo || day > hi) return;
+      rows.push({ day: day, source: r.source, ref: String(r.ref_id || ''), detail: r.detail || '' });
+    });
+    return { me: me, deptId: deptId, today: today, lo: lo, hi: hi, rows: rows };
+  })();
+  return _homeGridPromise;
+}
 async function loadHomeNextUp(){
-  const me = myUserId();
-  const deptId = await getFlightDepartmentId();
-  if(!me || !deptId) return null;
-  const today = new Date();
-  const end = new Date(today); end.setDate(end.getDate() + NEXT_UP_DAYS);
-  const lo = schedISO(today);
-  const args = { p_department_id: deptId, p_start: lo, p_end: schedISO(end) };
-  const [crew, smart] = await Promise.all([
-    schedRpcPaged('crew_busy_days', args),
-    loadSchedSmartFeatures(deptId)
-  ]);
+  const g = await loadHomeGrid();
+  if(!g) return null;
+  const today = g.today, lo = g.lo;
   let best = null;
-  (crew || []).forEach(function(r){
-    if(r.user_id !== me) return;
-    const kind = r.source;
-    if(!TALLY_DUTY_KINDS[kind]) return;
-    if(!smart && kind === 'flight') return;
-    const day = String(r.day || '').slice(0, 10);
-    if(day < lo) return;
+  g.rows.forEach(function(r){
+    const kind = r.source, day = r.day;
     // Same day, prefer the row with somewhere to open: a leg over a marker.
     if(best && day > best.date) return;
     if(best && day === best.date && best.kind === 'flight') return;
-    best = { date: day, kind: kind, ref: r.ref_id || '', detail: r.detail || '' };
+    best = { date: day, kind: kind, ref: r.ref, detail: r.detail };
   });
   if(!best) return null;
   // Today and tomorrow by name; anything further out is "23 Sep" -- no year,
@@ -12909,6 +12948,180 @@ async function loadHomeNextUp(){
   return best;
 }
 
+// ==== WHAT'S NEW ==========================================================
+// beacon-whats-new-design.md, Kyle 15 Sep 2026. A change is a difference
+// between two pictures of your own row, not an edit: the grid as it stands
+// against the snapshot you last tapped Seen on (schedule_seen, migration 107).
+// The list is that difference collapsed into runs. Days only -- a training's
+// details changing with the same days is not a change (Kyle, 15 Sep 2026).
+// Nothing here is a source of truth: the diff is recomputed on every open and
+// the write is the RPC's, server-side, so the admin's count never trusts a
+// diff a phone computed.
+let _homeWhatsNew = null;   // { items:[], lo, hi, deptId } or null; undefined = loading
+
+// Every row of one small table for this person inside the window. PostgREST
+// caps a read at 1000 rows whatever you ask for, so this pages; a person on
+// duty most of 400 days with overlapping sources can pass that.
+async function readMySeen(me, deptId, lo, hi){
+  const out = [];
+  for(let from = 0; ; from += 1000){
+    const { data, error } = await sb.from('schedule_seen')
+      .select('day,source,ref_id')
+      .eq('user_id', me).eq('flight_department_id', deptId)
+      .gte('day', lo).lte('day', hi)
+      .range(from, from + 999);
+    if(error) throw error;
+    (data || []).forEach(function(r){ out.push(r); });
+    if(!data || data.length < 1000) break;
+  }
+  return out;
+}
+
+// Consecutive days, same source, same ref -> one run. Mirrors the
+// gaps-and-islands in acknowledge_schedule() so the list and the log agree.
+function wnRuns(keys){
+  const bySR = {};
+  keys.forEach(function(k){
+    const id = k.source + '|' + k.ref;
+    (bySR[id] = bySR[id] || []).push(k);
+  });
+  const runs = [];
+  Object.keys(bySR).forEach(function(id){
+    const list = bySR[id].sort(function(a, b){ return a.day < b.day ? -1 : a.day > b.day ? 1 : 0; });
+    let cur = null;
+    list.forEach(function(k){
+      const next = cur ? schedISO(new Date(new Date(cur.end + 'T00:00:00').getTime() + 86400000)) : null;
+      if(cur && k.day === next){ cur.end = k.day; if(k.detail) cur.detail = k.detail; return; }
+      if(cur && k.day === cur.end) return;   // the function can emit a day twice on purpose
+      cur = { source: k.source, ref: k.ref, start: k.day, end: k.day, detail: k.detail || '' };
+      runs.push(cur);
+    });
+  });
+  return runs;
+}
+
+async function loadHomeWhatsNew(){
+  const g = await loadHomeGrid();
+  if(!g) return null;
+  const seen = await readMySeen(g.me, g.deptId, g.lo, g.hi);
+  const key = function(d, s, r){ return d + '|' + s + '|' + r; };
+  const nowSet = {}, oldSet = {};
+  g.rows.forEach(function(r){ nowSet[key(r.day, r.source, r.ref)] = r; });
+  seen.forEach(function(r){
+    const d = String(r.day || '').slice(0, 10), ref = String(r.ref_id || '');
+    oldSet[key(d, r.source, ref)] = { day: d, source: r.source, ref: ref, detail: '' };
+  });
+  const added = [], removed = [];
+  Object.keys(nowSet).forEach(function(k){ if(!oldSet[k]) added.push(nowSet[k]); });
+  Object.keys(oldSet).forEach(function(k){ if(!nowSet[k]) removed.push(oldSet[k]); });
+  const items = [];
+  wnRuns(added).forEach(function(r){ r.kind = 'added'; items.push(r); });
+  wnRuns(removed).forEach(function(r){ r.kind = 'removed'; items.push(r); });
+  if(items.some(function(r){ return r.source === 'flight_assigned'; }) && !workbenchCache){
+    try { await loadWorkbenchTrips(); } catch(e){ console.warn('[home] whats new plans', e); }
+  }
+  items.forEach(function(r){
+    r.what = ''; r.open = null;
+    if(r.source === 'flight' || r.source === 'flight_historical'){
+      const info = schedFlightRefInfo(r.ref);
+      r.what = info ? (info.cityPair || [info.dep, info.arr].filter(Boolean).join(' \u2192 ')) : 'Trip';
+      const k = info ? (info.tripNumber || info.groupId || '') : '';
+      if(k && r.kind !== 'removed') r.open = function(){ openTripDetail(k, 'home'); };
+    } else if(r.source === 'flight_assigned'){
+      const plan = (workbenchCache || []).find(function(x){ return x.id === r.ref; });
+      const tail = plan ? wbTailLabel(plan) : '';
+      const route = plan ? (plan.destinations || '').trim() : '';
+      r.what = [tail, route].filter(Boolean).join(' \u00b7 ') || 'Trip';
+      if(plan && r.kind !== 'removed') r.open = function(){ openWorkbenchTrip(plan.id, 'home'); };
+    } else {
+      r.what = schedKindLabel(r.source, 'crew') + (r.detail ? ' \u00b7 ' + r.detail : '');
+      if(r.ref && r.kind !== 'removed') r.open = function(){ openEventDetail(r.ref); };
+    }
+  });
+  items.sort(function(a, b){ return a.start < b.start ? -1 : a.start > b.start ? 1 : 0; });
+  return { items: items, lo: g.lo, hi: g.hi, deptId: g.deptId };
+}
+
+function wnTileText(w){
+  if(w === undefined) return 'Loading\u2026';
+  if(w === null) return 'Couldn\u2019t read the schedule';
+  return w.items.length ? w.items.length + ' change' + (w.items.length === 1 ? '' : 's') : 'Nothing new';
+}
+
+function openWhatsNewView(){
+  if(typeof autoSaveIfEditing === 'function') autoSaveIfEditing();
+  state.view = 'whatsNew';
+  state.activeId = null;
+  if(typeof updateNavTabs === 'function') updateNavTabs();
+  renderMain();
+}
+
+function wnSpan(r){
+  return r.start === r.end ? wbShortDate(r.start) : wbShortDate(r.start) + '\u2013' + wbShortDate(r.end);
+}
+
+function renderWhatsNewView(){
+  const main = document.getElementById('mainPanel');
+  const w = _homeWhatsNew;
+  setPageHeader({
+    title: 'What\u2019s New',
+    sub: w && w.items ? (w.items.length ? 'Since you last tapped Seen' : 'Nothing new') : '',
+    backLabel: 'Home', backTo: 'home'
+  });
+  if(w === undefined){ main.innerHTML = '<div class="empty-list">Loading\u2026</div>'; return; }
+  if(w === null){ main.innerHTML = '<div class="empty-list">Couldn\u2019t read the schedule.</div>'; return; }
+  if(!w.items.length){
+    main.innerHTML = '<div class="empty-list">Nothing new on your schedule since you last looked.</div>';
+    return;
+  }
+  let html = '<div class="set-section">' +
+    '<p class="set-section-note">Changes to your own row on the schedule since you last tapped Seen. ' +
+    'Opening this page does not mark anything seen \u2014 the button does.</p>' +
+    '<div class="wn-list">';
+  w.items.forEach(function(r, i){
+    const kindWord = r.kind === 'added' ? 'Added' : r.kind === 'removed' ? 'Removed' : 'Revised';
+    html += '<button type="button" class="wn-item" data-wn-item="' + i + '"' + (r.open ? '' : ' disabled') + '>' +
+      '<span class="wn-kind wn-kind-' + r.kind + '">' + kindWord + '</span>' +
+      '<span class="wn-body">' + escapeHtml(wnSpan(r)) +
+        (r.what ? ' <span class="wn-body-what">\u00b7 ' + escapeHtml(r.what) + '</span>' : '') +
+      '</span>' +
+    '</button>';
+  });
+  html += '</div>' +
+    // One tap marks everything seen -- Kyle, 15 Sep 2026. A list of taps is a
+    // chore, and a chore gets cleared without reading.
+    '<button type="button" class="btn btn-primary wn-seen" id="wnSeenBtn">Seen \u2014 mark all ' +
+      w.items.length + ' as read</button>' +
+    '</div>';
+  main.innerHTML = html;
+  main.querySelectorAll('[data-wn-item]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const r = w.items[parseInt(el.getAttribute('data-wn-item'), 10)];
+      if(r && r.open) r.open();
+    });
+  });
+  const btn = document.getElementById('wnSeenBtn');
+  if(btn) btn.addEventListener('click', async function(){
+    btn.disabled = true;
+    try {
+      // Same window the list was read with, or the log and the list disagree.
+      const { error } = await sb.rpc('acknowledge_schedule',
+        { p_department_id: w.deptId, p_start: w.lo, p_end: w.hi });
+      if(error) throw error;
+      showToast('Seen.');
+      _homeGridPromise = null;
+      _homeWhatsNew = undefined;
+      renderMain();
+      _homeWhatsNew = await loadHomeWhatsNew();
+      if(state.view === 'whatsNew') renderMain();
+    } catch(e){
+      console.error('acknowledge_schedule', e);
+      btn.disabled = false;
+      showToast('Couldn\u2019t save that. Try again.');
+    }
+  });
+}
+
 function renderHomeView(){
   const main = document.getElementById('mainPanel');
   const allTrips = groupIntoTrips(state.legs);
@@ -12955,7 +13168,7 @@ function renderHomeView(){
         '<div class="home-btn-row home-btn-row-wide">' +
         '<button type="button" class="home-btn" id="homeNewBtn">' +
           '<span class="home-btn-title">What\'s New</span>' +
-          '<span class="home-btn-count">Coming soon</span>' +
+          '<span class="home-btn-count">' + escapeHtml(wnTileText(_homeWhatsNew === null ? undefined : _homeWhatsNew)) + '</span>' +
         '</button>' +
         '</div>' +
         '<div class="home-btn-row home-btn-row-wide">' +
@@ -12991,9 +13204,22 @@ function renderHomeView(){
     else if(n) showToast(n.sub);
     else showToast('Nothing on your schedule yet.');
   });
-  // Ask the grid every time Home renders; repaint the tile when it answers.
-  // The sub-line reads Loading… until then -- never a stale value from last time.
+  // Ask the grid every time Home renders; repaint the tiles when it answers.
+  // The sub-lines read Loading… until then -- never a stale value from last time.
+  _homeGridPromise = null;
   _homeNextUp = undefined;
+  _homeWhatsNew = undefined;
+  loadHomeWhatsNew().then(function(w){
+    _homeWhatsNew = w;
+    if(state.view !== 'home') return;
+    const el = document.querySelector('#homeNewBtn .home-btn-count');
+    if(el) el.textContent = wnTileText(w);
+  }).catch(function(e){
+    console.warn('[home] whats new failed', e);
+    _homeWhatsNew = null;
+    const el = document.querySelector('#homeNewBtn .home-btn-count');
+    if(state.view === 'home' && el) el.textContent = wnTileText(null);
+  });
   loadHomeNextUp().then(function(n){
     _homeNextUp = n;
     if(state.view !== 'home') return;
@@ -13006,7 +13232,7 @@ function renderHomeView(){
     if(state.view === 'home' && el) el.textContent = 'Couldn\u2019t read the schedule';
   });
   document.getElementById('homeAttentionBtn').addEventListener('click', () => showToast('Coming soon.'));
-  document.getElementById('homeNewBtn').addEventListener('click', () => showToast('Coming soon.'));
+  document.getElementById('homeNewBtn').addEventListener('click', () => openWhatsNewView());
   document.getElementById('homeActiveBtn').addEventListener('click', () => goToListView('dashboard'));
   document.getElementById('homeImportBtn').addEventListener('click', () => goToListView('importPreview'));
   const homeScope = main.querySelector('.home-view') || main;
@@ -14531,6 +14757,7 @@ function renderWorkbenchBody(){
     return;
   }
   body.innerHTML = workbenchTableHTML(shown);
+  wbFillSeenCells(shown);
   // *** NOTHING TO WIRE HERE ANY MORE. ***
   // wbWireEditor() used to run at this point, because the open trip's editor was
   // one of the rows just painted. The editor is its own page now, and
@@ -16179,7 +16406,7 @@ function workbenchTableHTML(trips){
     + '<th>Tail</th><th>Routing</th><th>Start</th><th>End</th><th>Days</th>'
     + '<th>PIC</th><th>SIC</th><th>FA</th>'
     + (anyExtra ? '<th></th>' : '')
-    + '<th>Notes</th><th></th></tr></thead><tbody>';
+    + '<th>Seen</th><th></th></tr></thead><tbody>';
 
   trips.forEach(function(t){
     const days = wbDayCount(t.start_date, t.end_date);
@@ -16207,7 +16434,10 @@ function workbenchTableHTML(trips){
       + '<td class="wb-c-seat">'    + (t.crew.sic ? escHtml(wbCrewLabel(t.crew.sic)) : WB_BLANK) + '</td>'
       + '<td class="wb-c-seat">'    + (fa || WB_BLANK) + '</td>'
       + (anyExtra ? '<td>' + (extra || WB_BLANK) + '</td>' : '')
-      + '<td class="wb-c-notes">'   + (t.notes ? escHtml(t.notes) : '') + '</td>'
+      // Notes came out and Seen went in, 15 Sep 2026 (Kyle): how many of the
+      // people on this trip's grid days have acknowledged them. Filled after
+      // the table paints, by wbFillSeenCells(); the cell is its own control.
+      + '<td class="wb-c-seen" data-wb-seen="' + escHtml(t.id || '') + '">' + WB_BLANK + '</td>'
       // *** THE CROSS THAT WAS HERE IS GONE. ***
       // Deleting a trip now lives only in the open editor. A cross at the end of
       // every row put an unrecoverable action one stray tap from an ordinary
@@ -16224,6 +16454,84 @@ function workbenchTableHTML(trips){
   });
 
   return html + '</tbody></table></div>';
+}
+
+// ---- the Seen cell -----------------------------------------------------------
+// Who is "the 4": everyone whose grid row carries a flight_assigned day for
+// this trip from today on -- seated crew, unseated pilots, cover ranges,
+// positioning days -- read from schedData.crew, the same rows the grid paints.
+// A person on the plan with no days on the grid is not counted: nothing to
+// acknowledge. Seen means every one of those days has a schedule_seen row;
+// one new day since they acknowledged makes them not-seen again.
+//
+// Admins only. The table's SELECT policy gives a non-admin only their own
+// rows, so any count they computed would be wrong; they get a dash.
+let _wbSeen = {};   // tripId -> { seen:[label], not:[label] }
+async function wbFillSeenCells(trips){
+  _wbSeen = {};
+  const cells = document.querySelectorAll('[data-wb-seen]');
+  if(!rosterViewerIsAdmin() || !trips.length) return;
+  const rows = (schedData && schedData.crew) || [];
+  const lo = schedISO(new Date());
+  const people = {};   // tripId -> userId -> { days:{} }
+  rows.forEach(function(r){
+    if(r.source !== 'flight_assigned') return;
+    const d = String(r.day || '').slice(0, 10);
+    if(d < lo) return;
+    const tid = String(r.ref_id || '');
+    ((people[tid] = people[tid] || {})[r.user_id] = people[tid][r.user_id] || { days: {} }).days[d] = true;
+  });
+  const ids = trips.map(function(t){ return t.id; }).filter(Boolean);
+  let seenRows = [];
+  try {
+    const deptId = await getFlightDepartmentId();
+    for(let from = 0; ; from += 1000){
+      const { data, error } = await sb.from('schedule_seen')
+        .select('user_id,day,ref_id')
+        .eq('flight_department_id', deptId).eq('source', 'flight_assigned')
+        .in('ref_id', ids).gte('day', lo)
+        .range(from, from + 999);
+      if(error) throw error;
+      seenRows = seenRows.concat(data || []);
+      if(!data || data.length < 1000) break;
+    }
+  } catch(e){ console.warn('[wb] seen read', e); return; }
+  const seenSet = {};
+  seenRows.forEach(function(r){
+    seenSet[r.user_id + '|' + String(r.ref_id) + '|' + String(r.day || '').slice(0, 10)] = true;
+  });
+  trips.forEach(function(t){
+    const tid = String(t.id || '');
+    const who = people[tid] || {};
+    const out = { seen: [], not: [] };
+    Object.keys(who).forEach(function(uid){
+      const all = Object.keys(who[uid].days).every(function(d){ return seenSet[uid + '|' + tid + '|' + d]; });
+      (all ? out.seen : out.not).push(wbCrewLabel(uid) || '?');
+    });
+    _wbSeen[tid] = out;
+  });
+  cells.forEach(function(c){
+    const o = _wbSeen[c.getAttribute('data-wb-seen')];
+    if(!o) return;
+    const n = o.seen.length + o.not.length;
+    if(!n){ c.innerHTML = WB_BLANK; return; }
+    c.textContent = o.seen.length + ' of ' + n;
+    c.classList.toggle('wb-seen-all', o.seen.length === n);
+  });
+}
+
+function wbShowSeenNames(tripId){
+  const o = _wbSeen[String(tripId)];
+  if(!o){
+    showConfirm(rosterViewerIsAdmin()
+      ? 'Nobody has days on this trip yet, so there is nothing to acknowledge.'
+      : 'Only an admin can see who has acknowledged a schedule change.',
+      { alertOnly: true, title: 'Seen' });
+    return;
+  }
+  const msg = (o.seen.length ? 'Seen: ' + o.seen.join(', ') : 'Seen: nobody yet')
+    + '\n' + (o.not.length ? 'Not yet: ' + o.not.join(', ') : 'Not yet: nobody \u2014 everyone has seen it');
+  showConfirm(msg, { alertOnly: true, title: 'Seen' });
 }
 
 // Seats a person, clears a seat, or moves one. Writes the WHOLE crew object,
@@ -22568,6 +22876,7 @@ function renderMain(){
   if(state.view === 'importPreview'){ renderImportPreviewView(); return; }
   if(state.view === 'settings'){ renderSettingsView(); return; }
   if(state.view === 'reports'){ renderReportsView(); return; }
+  if(state.view === 'whatsNew'){ renderWhatsNewView(); return; }
   if(state.view === 'schedule'){ renderScheduleView(); return; }
   if(state.view === 'eventDetail'){ renderEventDetailView(); return; }
   if(state.view === 'posDetail'){ renderPosDetailView(); return; }
@@ -31036,6 +31345,10 @@ document.addEventListener('click', async function(e){
   // It existed because the editor unfolded inside the table, so a bare row
   // lookup matched it and shut the row the moment anyone reached for a field.
   // The editor is a separate page now and is never inside [data-wb-trip].
+  // The Seen cell is its own control on a row that is otherwise one doorway;
+  // it is tested first so the row's open does not swallow it.
+  const seenCell = t.closest('[data-wb-seen]');
+  if(seenCell){ wbShowSeenNames(seenCell.getAttribute('data-wb-seen') || ''); return; }
   const wbRow = t.closest('[data-wb-trip]');
   if(wbRow){ openWorkbenchTrip(wbRow.getAttribute('data-wb-trip') || ''); return; }
   const schedYearSet = t.closest('[data-sched-yearset]');
