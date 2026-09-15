@@ -5106,7 +5106,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T18:20:00Z';
+const BUILD_VERSION = '2026-09-15T18:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13417,7 +13417,6 @@ function crewScheduleReportHTML(crewIdx, a, b, span){
     'body{font-family:system-ui,-apple-system,Helvetica,Arial,sans-serif;color:#1a1a1a;margin:0;padding:16px;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     'h1{font-size:20px;margin:0 0 2px}h2{font-size:15px;margin:0 0 8px}h3{font-size:12px;margin:14px 0 4px}' +
     '.meta{color:#666;margin:0 0 10px}' +
-    '.tally th,.tally td{text-align:center}.tally th:first-child,.tally td:first-child{text-align:left}.tally th.tot{color:#1a1a1a;font-weight:700}.tally td.tot{font-weight:700}.tally .sub{color:#888;font-weight:normal}' +
     '.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 6px}' +
     '.legend span{display:inline-flex;align-items:center;gap:6px}' +
     '.legend i{display:inline-block;width:14px;height:14px;border-radius:3px}' +
@@ -13431,6 +13430,8 @@ function crewScheduleReportHTML(crewIdx, a, b, span){
     '.grid .band td{background:#e9e9e9;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#555;padding:2px 6px;height:auto}' +
     '.trips th,.trips td{border-bottom:1px solid #ddd;padding:3px 6px;text-align:left;vertical-align:top}' +
     '.trips th{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#555}' +
+    /* .tally must come AFTER .trips: same specificity, later wins. It sat above once and lost (15 Sep 2026). */
+    '.tally th,.tally td{text-align:center}.tally th:first-child,.tally td:first-child{text-align:left}.tally th.tot{color:#1a1a1a;font-weight:700}.tally td.tot{font-weight:700}.tally .sub{color:#888;font-weight:normal}' +
     '.none{color:#666;font-style:italic;margin:4px 0}' +
     '.bar{margin:0 0 14px}.bar button{font:inherit;font-size:13px;padding:6px 14px}' +
     '@media print{.bar{display:none}}' +
