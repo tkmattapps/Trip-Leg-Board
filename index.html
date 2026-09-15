@@ -502,7 +502,7 @@
   
   .logout-fab:hover{ background:var(--panel-800, rgba(255,255,255,0.08)); color:var(--text-primary, #fff); }
   .home-left-col{ position:relative; display:flex; flex-direction:column; align-items:flex-start; text-align:left; flex:1 1 auto; padding-left:140px; margin-top:100px; }
-  .home-right-col{ display:flex; flex-direction:column; gap:20px; flex:0 0 auto; margin-top:133px; padding-right:192px; align-items:stretch; }
+  .home-right-col{ display:flex; flex-direction:column; gap:14px; flex:0 0 auto; width:560px; margin-top:133px; padding-right:192px; box-sizing:content-box; align-items:stretch; }
   .home-brand-wrap{ position:relative; display:flex; align-items:center; justify-content:center; }
   .home-brand-mark{ font-family:'Big Shoulders Display',sans-serif; font-size:88px; color:var(--amber-500); line-height:1; position:relative; z-index:1; }
   /* The block shrinks to its widest child, which is the stretched first line.
@@ -523,7 +523,13 @@
     .home-sub-block{ transform:translate(40px, 40px); }
     #loginEmail, #loginPassword{ letter-spacing:0.5px; }
   }
-  .home-btn-row{ display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
+  /* Kyle, 15 Sep 2026: Home must not scroll. Two rows of three, three across
+     on every screen. Tiles share the row equally; the sub-line may wrap to a
+     second line, the title never does. */
+  .home-btn-row{ display:flex; gap:14px; flex-wrap:nowrap; justify-content:center; align-items:stretch; width:100%; }
+  .home-btn-row .home-btn{ flex:1 1 0; min-width:0; padding:18px 10px; gap:6px; }
+  .home-btn-row .home-btn-title{ font-size:18px; white-space:nowrap; }
+  .home-btn-row .home-btn-count{ text-align:center; line-height:1.3; }
   @media (max-width: 700px){
     /* Mobile: stack the checklist strip - Legs row on top (right-justified), Status row below (left) */
     .leg-nav-strip:not(.leg-nav-strip-end){ flex-direction:column; align-items:stretch; }
@@ -543,7 +549,11 @@
     .home-view{ flex-direction:column; gap:128px; align-items:center; justify-content:flex-start; min-height:auto; margin-top:0; padding-top:calc(env(safe-area-inset-top, 0px) + 132px); overflow-x:hidden; }
     #loginOverlay.home-view{ gap:28px; margin-top:0; padding-top:calc(env(safe-area-inset-top, 0px) + 132px); overflow-x:hidden !important; }
     .home-left-col{ align-items:center; text-align:center; padding-left:0; margin-top:0; }
-    .home-right-col{ flex-direction:column; margin-top:0; align-items:center; padding-right:0; }
+    .home-right-col{ flex-direction:column; margin-top:0; align-items:stretch; padding-right:0; width:min(560px, 94vw); gap:10px; }
+    .home-btn-row{ gap:8px; }
+    .home-btn-row .home-btn{ width:auto; padding:12px 6px; gap:4px; }
+    .home-btn-row .home-btn-title{ font-size:15px; }
+    .home-btn-row .home-btn-count{ font-size:11px; }
     .home-brand-mark{ font-size:64px; }
     .home-watermark-img{ width:371px; height:371px; }
     .home-btn{ padding:16px 24px; min-width:0; width:min(300px, 82vw); }
@@ -596,7 +606,7 @@
      reading them; the bottom three are the department's. One hairline between
      them, no heading (a "What's..." header was killed 13 Sep). The action tile
      used to carry its own separator; that went with the regrouping. */
-  .home-divider{ border-top:1px solid var(--hairline); margin:6px 8% 6px; }
+  .home-divider{ border-top:1px solid var(--hairline); margin:2px 8%; }
   .home-btn-action:hover{ border-color:var(--amber-500); filter:brightness(1.08); }
   .home-btn-action .home-btn-count{ color:var(--fog-300); }
   .app{ display:flex; min-height:100vh; min-height:100dvh; max-width:1800px; margin:0 auto; }
@@ -5067,7 +5077,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T14:20:00Z';
+const BUILD_VERSION = '2026-09-15T15:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12821,6 +12831,7 @@ function renderHomeView(){
       '<div class="home-right-col"' + (_noDepartment ? ' hidden' : '') + '>' +
         // Personal group. Next up reads the board; the other two wait on the
         // open-items work (beacon-open-items-design.md) and toast until then.
+        '<div class="home-btn-row">' +
         '<button type="button" class="home-btn" id="homeNextBtn">' +
           '<span class="home-btn-title">Next Up</span>' +
           '<span class="home-btn-count">' + (_legsLoaded ? escapeHtml(nextUp ? nextUp.sub : 'Nothing scheduled') : 'Loading trips…') + '</span>' +
@@ -12833,7 +12844,9 @@ function renderHomeView(){
           '<span class="home-btn-title">What\'s New</span>' +
           '<span class="home-btn-count">Coming soon</span>' +
         '</button>' +
+        '</div>' +
         '<div class="home-divider"></div>' +
+        '<div class="home-btn-row">' +
         '<button type="button" class="home-btn" id="homeActiveBtn">' +
           '<span class="home-btn-title">Active Trips</span>' +
           '<span class="home-btn-count">' + (_legsLoaded ? (activeCount + ' active trip' + (activeCount === 1 ? '' : 's')) : 'Loading trips…') + '</span>' +
@@ -12851,9 +12864,10 @@ function renderHomeView(){
         // the friends test: he went looking for the AI and never found it.
         // The subtext said "adding", which hid the revision half entirely.
         '<button type="button" class="home-btn home-btn-action" id="homeImportBtn">' +
-          '<span class="home-btn-title">Read Trip Paperwork</span>' +
+          '<span class="home-btn-title">Read with AI</span>' +
           '<span class="home-btn-count">New trips or revisions</span>' +
         '</button>' +
+        '</div>' +
       '</div>' +
     '</div>';
   document.getElementById('homeNextBtn').addEventListener('click', () => {
