@@ -5106,7 +5106,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T18:10:00Z';
+const BUILD_VERSION = '2026-09-15T18:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13404,7 +13404,7 @@ function crewScheduleReportHTML(crewIdx, a, b, span){
       '<td class="sub">' + (c.training || 0) + '</td><td class="sub">' + c.pto + '</td></tr>';
   });
   tally += '</tbody></table>' +
-    '<p class="none">Duty is any day away on a trip, in training, or marked Other. Home is every day on the books that is not duty. Training is counted within duty and PTO within home; a quarterly call is not duty.</p></section>';
+    '<p class="none">Duty is any day away on a trip, in training, or marked Other. Home is every day on the books that is not duty. Training is counted within duty and PTO within home.</p></section>';
 
   const range = span === 1 ? monthYear(a.y, a.m)
               : monthYear(a.y, a.m) + ' \u2013 ' + monthYear(b.y, b.m);
@@ -13417,7 +13417,7 @@ function crewScheduleReportHTML(crewIdx, a, b, span){
     'body{font-family:system-ui,-apple-system,Helvetica,Arial,sans-serif;color:#1a1a1a;margin:0;padding:16px;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     'h1{font-size:20px;margin:0 0 2px}h2{font-size:15px;margin:0 0 8px}h3{font-size:12px;margin:14px 0 4px}' +
     '.meta{color:#666;margin:0 0 10px}' +
-    '.tally th{text-align:right}.tally th:first-child{text-align:left}.tally th.tot{color:#1a1a1a;font-weight:700}.tally td.tot{font-weight:700}.tally .sub{color:#888;font-weight:normal}' +
+    '.tally th,.tally td{text-align:center}.tally th:first-child,.tally td:first-child{text-align:left}.tally th.tot{color:#1a1a1a;font-weight:700}.tally td.tot{font-weight:700}.tally .sub{color:#888;font-weight:normal}' +
     '.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 6px}' +
     '.legend span{display:inline-flex;align-items:center;gap:6px}' +
     '.legend i{display:inline-block;width:14px;height:14px;border-radius:3px}' +
