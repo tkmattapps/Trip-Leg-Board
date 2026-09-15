@@ -3169,6 +3169,14 @@
      ten columns wide and scrolls sideways on a phone, so a field would often
      be typed into while its row was half off screen. */
   .wb-row-clickable{ cursor:pointer; }
+  /* 15 Sep 2026 (Kyle): the row is a doorway, and the chevron that said so is
+     off-screen on a phone. Same language as the home tiles -- the whole row
+     lights as one object on hover, with the amber on its leading edge. It is
+     still a table row, so the columns keep their alignment; the edge is drawn
+     on the first cell rather than the row because a <tr> takes no border. */
+  .wb-row-clickable td{ transition:background-color 0.15s ease, box-shadow 0.15s ease; }
+  .wb-row-clickable:hover td, .wb-row-clickable:active td{ background:var(--panel-800); }
+  .wb-row-clickable:hover td:first-child, .wb-row-clickable:active td:first-child{ box-shadow:inset 3px 0 0 var(--amber-500); padding-left:8px; }
   /* *** THE EDITOR LEFT THE TABLE. ***
      .wb-row-open and .wb-edit-row went with it. The block below is now rendered
      on its own full-screen page (.wb-page) reached by tapping a row, so nothing
@@ -5155,7 +5163,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T22:55:00Z';
+const BUILD_VERSION = '2026-09-15T23:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
