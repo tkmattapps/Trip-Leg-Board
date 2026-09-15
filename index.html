@@ -5115,7 +5115,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T19:50:00Z';
+const BUILD_VERSION = '2026-09-15T20:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12862,12 +12862,14 @@ async function loadHomeNextUp(){
     best = { date: day, kind: kind, ref: r.ref_id || '', detail: r.detail || '' };
   });
   if(!best) return null;
-  // Today and tomorrow by name; anything further out is the date. Kyle,
-  // 15 Sep 2026. `lo` is today's ISO already, computed above from local time.
+  // Today and tomorrow by name; anything further out is "23 Sep" -- no year,
+  // Kyle, 15 Sep 2026. wbShortDate is the same helper the month sheet uses,
+  // so a short date reads the same everywhere it appears. `lo` is today's
+  // ISO already, computed above from local time.
   const tmw = new Date(today); tmw.setDate(tmw.getDate() + 1);
   const when = best.date === lo ? 'Today'
              : best.date === schedISO(tmw) ? 'Tomorrow'
-             : formatISODateDisplay(best.date);
+             : wbShortDate(best.date);
   if(best.kind === 'flight' || best.kind === 'flight_historical'){
     const info = schedFlightRefInfo(best.ref);
     const route = info ? (info.cityPair || [info.dep, info.arr].filter(Boolean).join(' \u2192 ')) : '';
