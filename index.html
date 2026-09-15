@@ -3031,6 +3031,15 @@
   .wb-strip-tally span{ width:22px; text-align:right; }
   .wb-strip-tally .dev{ color:var(--fog-300); }
   .wb-strip-none{ font-size:12px; color:var(--fog-500); padding:4px 0; }
+  /* A tail is six characters in a 40px column. 10px, no tracking: 6 x ~6px
+     = 36px, which is a prediction, not a measurement. */
+  .wb-strip-who-tail{ font-size:10px; letter-spacing:0; }
+  /* Kyle, 15 Sep 2026: on a phone the day cells are too narrow for the numbers
+     along the top -- they squeeze into each other. Off below 700px; today's
+     ring lives on that row and goes with it. */
+  @media (max-width:700px){
+    .wb-strip-nums{ display:none; }
+  }
   .wb-add-btn{
     background:var(--amber-700); border:1px solid var(--amber-500);
     color:var(--paper-050); font-family:system-ui,'Inter',sans-serif;
@@ -5096,7 +5105,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T16:45:00Z';
+const BUILD_VERSION = '2026-09-15T17:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14271,9 +14280,18 @@ function renderWorkbenchStrip(){
   const bands = ROSTER_GROUP_ORDER.filter(function(t){
     return people.some(function(p){ return p.title === t; });
   });
+  // Kyle, 15 Sep 2026: a third band for the tails. Same rows the grid's
+  // Aircraft band draws (every tail in aircraftCache, retired included), read
+  // from the same acIdx the grid painted, coloured by the aircraft rule --
+  // one teal run per trip. Day blocks only: the Away / Maint figures the grid
+  // shows for a tail are not what you are checking here, and there is no
+  // group average for an aircraft.
+  const acBand = !!(aircraftCache && aircraftCache.length && live.acIdx);
+  if(acBand) bands.push('aircraft');
   if(!bands.length){ el.hidden = true; el.innerHTML = ''; return; }
   if(bands.indexOf(wbStripBand) === -1) wbStripBand = bands[0];
-  const rows = people.filter(function(p){ return p.title === wbStripBand; });
+  const isAc = wbStripBand === 'aircraft';
+  const rows = isAc ? [] : people.filter(function(p){ return p.title === wbStripBand; });
 
   const mCounts = tallyCountRange(live.idx, schedISO(first), schedISO(last), live.hires, live.today);
   const yCounts = tallyCountRange(live.idx, mo.y + '-01-01', schedISO(last), live.hires, live.today);
@@ -14282,9 +14300,9 @@ function renderWorkbenchStrip(){
   let h = '<div class="wb-strip-head"><div class="wb-strip-bands">';
   bands.forEach(function(t){
     h += '<button type="button" class="wb-strip-band' + (t === wbStripBand ? ' on' : '') +
-         '" data-wb-band="' + escHtml(t) + '">' + escHtml(ROSTER_GROUP_LABELS[t] || t) + '</button>';
+         '" data-wb-band="' + escHtml(t) + '">' + escHtml(t === 'aircraft' ? 'Aircraft' : (ROSTER_GROUP_LABELS[t] || t)) + '</button>';
   });
-  h += '</div><div class="wb-strip-cols"><span>M</span><span>Y</span><span>Ave</span></div></div>';
+  h += '</div><div class="wb-strip-cols"' + (isAc ? ' style="visibility:hidden"' : '') + '><span>M</span><span>Y</span><span>Ave</span></div></div>';
   // The day numbers sit OUTSIDE the scrolling row list, so they stay put when a
   // band of more than six scrolls. Same three-part row shape as a crew row --
   // hidden initials, the day track, the tally width -- so the columns line up
@@ -14314,7 +14332,27 @@ function renderWorkbenchStrip(){
     h += '</div><div class="wb-strip-tally"><span>' + (cm ? cm.duty : '') + '</span><span>' +
          (cy ? cy.duty : '') + '</span><span class="dev">' + tallyText(devs[p.id]) + '</span></div></div>';
   });
-  if(!rows.length) h += '<div class="wb-strip-none">No one with this job title.</div>';
+  if(isAc){
+    (aircraftCache || []).forEach(function(a){
+      const owned = live.acIdx[a.id] || {};
+      const visible = schedSuppressedDays(owned, isos);
+      h += '<div class="wb-strip-row"><div class="wb-strip-who wb-strip-who-tail">' +
+           escHtml(a.tail_number || '') + '</div><div class="wb-strip-days">';
+      isos.forEach(function(iso){
+        const ents = visible[iso] || [];
+        const kinds = [];
+        ents.forEach(function(e){ if(kinds.indexOf(e.kind) === -1) kinds.push(e.kind); });
+        let style = '';
+        if(kinds.length === 1) style = 'background:' + schedKindColor(kinds[0], 'aircraft');
+        else if(kinds.length > 1) style = 'background:linear-gradient(135deg,' + schedKindColor(kinds[0], 'aircraft') + ' 50%,' + schedKindColor(kinds[1], 'aircraft') + ' 50%)';
+        h += '<div class="wb-strip-day"' + (style ? ' style="' + style + '"' : '') + '></div>';
+      });
+      // Empty tally, kept for width: the day track must be the same length on
+      // every band or the blocks jump when the band changes.
+      h += '</div><div class="wb-strip-tally"><span></span><span></span><span></span></div></div>';
+    });
+  }
+  else if(!rows.length) h += '<div class="wb-strip-none">No one with this job title.</div>';
   h += '</div>';
   el.innerHTML = h;
   el.hidden = false;
