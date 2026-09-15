@@ -542,7 +542,8 @@
   /* Kyle, 15 Sep 2026: the three full-width rows read as three slabs against
      the pair below. Same title size -- they are meant to be prominent -- but
      thinner bands, so the weight comes from the lettering, not the box. */
-  .home-btn-row-wide .home-btn{ padding:9px 10px; gap:2px; }
+  .home-btn-row-wide .home-btn{ padding:9px 14px; gap:10px; flex-direction:row; align-items:baseline; justify-content:flex-start; }
+  .home-btn-row-wide .home-btn-count{ text-align:right; margin-left:auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
   @media (max-width: 700px){
     /* Mobile: stack the checklist strip - Legs row on top (right-justified), Status row below (left) */
     .leg-nav-strip:not(.leg-nav-strip-end){ flex-direction:column; align-items:stretch; }
@@ -568,7 +569,7 @@
     .home-btn-row .home-btn{ width:auto; padding:11px 8px; gap:3px; }
     .home-btn-row .home-btn-title{ font-size:16px; }
     .home-btn-row .home-btn-count{ font-size:11px; }
-    .home-btn-row-wide .home-btn{ padding:6px 8px; gap:1px; }
+    .home-btn-row-wide .home-btn{ padding:6px 10px; gap:8px; }
     .home-brand-mark{ font-size:64px; }
     .home-watermark-img{ width:371px; height:371px; }
     .home-btn{ padding:16px 24px; min-width:0; width:min(300px, 82vw); }
@@ -5095,7 +5096,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T16:30:00Z';
+const BUILD_VERSION = '2026-09-15T16:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
