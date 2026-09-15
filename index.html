@@ -5106,7 +5106,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T17:45:00Z';
+const BUILD_VERSION = '2026-09-15T18:00:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13388,19 +13388,20 @@ function crewScheduleReportHTML(crewIdx, a, b, span){
   people.forEach(function(p){ hires[p.id] = p.hireDate || null; });
   const counts = tallyCountRange(crewIdx, schedISO(new Date(a.y, a.m, 1)),
                                  schedISO(new Date(b.y, b.m + 1, 0)), hires, new Date());
-  // Duty and Home are the totals (duty + home == available). Training sits
-  // inside Duty and PTO inside Home; the two-row header pairs each breakdown
-  // under its total. Available itself is not printed (Kyle, 15 Sep 2026).
+  // Duty and Home are the totals (duty + home == available) and sit together
+  // in bold; Training and PTO are the breakdown -- training inside duty, PTO
+  // inside home -- and sit together in a quieter grey. The footnote explains
+  // the nesting; the header does not. Available is not printed. A paired
+  // two-row header was tried first and replaced with this (Kyle, 15 Sep 2026).
   let tally = '<section class="mo"><h2>Days per person</h2>' +
-    '<table class="trips tally"><thead>' +
-    '<tr><th rowspan="2"></th><th colspan="2">Duty</th><th colspan="2">Home</th></tr>' +
-    '<tr><th class="tot">All</th><th class="sub">Training</th><th class="tot">All</th><th class="sub">PTO</th></tr>' +
-    '</thead><tbody>';
+    '<table class="trips tally"><thead><tr><th></th>' +
+    '<th class="tot">Duty</th><th class="tot">Home</th><th class="sub">Training</th><th class="sub">PTO</th>' +
+    '</tr></thead><tbody>';
   people.forEach(function(p){
     const c = counts[p.id] || { duty: 0, training: 0, home: 0, pto: 0 };
     tally += '<tr><td><b>' + esc(abbrevOf(p)) + '</b> ' + esc(nameOf(p)) + '</td>' +
-      '<td class="tot">' + c.duty + '</td><td class="sub">' + (c.training || 0) + '</td>' +
-      '<td class="tot">' + c.home + '</td><td class="sub">' + c.pto + '</td></tr>';
+      '<td class="tot">' + c.duty + '</td><td class="tot">' + c.home + '</td>' +
+      '<td class="sub">' + (c.training || 0) + '</td><td class="sub">' + c.pto + '</td></tr>';
   });
   tally += '</tbody></table>' +
     '<p class="none">Duty is any day on a trip, in training or on a call; training days are counted within it. Home is every day on the books that is not duty; PTO is counted within it.</p></section>';
@@ -13416,7 +13417,7 @@ function crewScheduleReportHTML(crewIdx, a, b, span){
     'body{font-family:system-ui,-apple-system,Helvetica,Arial,sans-serif;color:#1a1a1a;margin:0;padding:16px;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     'h1{font-size:20px;margin:0 0 2px}h2{font-size:15px;margin:0 0 8px}h3{font-size:12px;margin:14px 0 4px}' +
     '.meta{color:#666;margin:0 0 10px}' +
-    '.tally th{text-align:right}.tally th:first-child{text-align:left}.tally thead tr:first-child th{border-bottom:none;padding-bottom:0}.tally .sub{color:#666;font-weight:normal}.tally td.sub{color:#666}' +
+    '.tally th{text-align:right}.tally th:first-child{text-align:left}.tally th.tot{color:#1a1a1a;font-weight:700}.tally td.tot{font-weight:700}.tally .sub{color:#888;font-weight:normal}' +
     '.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 6px}' +
     '.legend span{display:inline-flex;align-items:center;gap:6px}' +
     '.legend i{display:inline-block;width:14px;height:14px;border-radius:3px}' +
