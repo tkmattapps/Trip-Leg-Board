@@ -5106,7 +5106,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T17:20:00Z';
+const BUILD_VERSION = '2026-09-15T17:45:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13388,14 +13388,22 @@ function crewScheduleReportHTML(crewIdx, a, b, span){
   people.forEach(function(p){ hires[p.id] = p.hireDate || null; });
   const counts = tallyCountRange(crewIdx, schedISO(new Date(a.y, a.m, 1)),
                                  schedISO(new Date(b.y, b.m + 1, 0)), hires, new Date());
+  // Duty and Home are the totals (duty + home == available). Training sits
+  // inside Duty and PTO inside Home; the two-row header pairs each breakdown
+  // under its total. Available itself is not printed (Kyle, 15 Sep 2026).
   let tally = '<section class="mo"><h2>Days per person</h2>' +
-    '<table class="trips"><thead><tr><th></th><th>Duty</th><th>Home</th><th>of which PTO</th><th>Available</th></tr></thead><tbody>';
+    '<table class="trips tally"><thead>' +
+    '<tr><th rowspan="2"></th><th colspan="2">Duty</th><th colspan="2">Home</th></tr>' +
+    '<tr><th class="tot">All</th><th class="sub">Training</th><th class="tot">All</th><th class="sub">PTO</th></tr>' +
+    '</thead><tbody>';
   people.forEach(function(p){
-    const c = counts[p.id] || { duty: 0, home: 0, pto: 0, available: 0 };
-    tally += '<tr><td><b>' + esc(abbrevOf(p)) + '</b> ' + esc(nameOf(p)) + '</td><td>' + c.duty + '</td><td>' + c.home + '</td><td>' + c.pto + '</td><td>' + c.available + '</td></tr>';
+    const c = counts[p.id] || { duty: 0, training: 0, home: 0, pto: 0 };
+    tally += '<tr><td><b>' + esc(abbrevOf(p)) + '</b> ' + esc(nameOf(p)) + '</td>' +
+      '<td class="tot">' + c.duty + '</td><td class="sub">' + (c.training || 0) + '</td>' +
+      '<td class="tot">' + c.home + '</td><td class="sub">' + c.pto + '</td></tr>';
   });
   tally += '</tbody></table>' +
-    '<p class="none">Duty is any day on a trip, in training or on a call. Home is every available day that is not duty; PTO is counted within it.</p></section>';
+    '<p class="none">Duty is any day on a trip, in training or on a call; training days are counted within it. Home is every day on the books that is not duty; PTO is counted within it.</p></section>';
 
   const range = span === 1 ? monthYear(a.y, a.m)
               : monthYear(a.y, a.m) + ' \u2013 ' + monthYear(b.y, b.m);
@@ -13408,6 +13416,7 @@ function crewScheduleReportHTML(crewIdx, a, b, span){
     'body{font-family:system-ui,-apple-system,Helvetica,Arial,sans-serif;color:#1a1a1a;margin:0;padding:16px;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     'h1{font-size:20px;margin:0 0 2px}h2{font-size:15px;margin:0 0 8px}h3{font-size:12px;margin:14px 0 4px}' +
     '.meta{color:#666;margin:0 0 10px}' +
+    '.tally th{text-align:right}.tally th:first-child{text-align:left}.tally thead tr:first-child th{border-bottom:none;padding-bottom:0}.tally .sub{color:#666;font-weight:normal}.tally td.sub{color:#666}' +
     '.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 6px}' +
     '.legend span{display:inline-flex;align-items:center;gap:6px}' +
     '.legend i{display:inline-block;width:14px;height:14px;border-radius:3px}' +
@@ -26937,7 +26946,7 @@ function tallyCountRange(crewIdx, lo, hi, hireDatesById, today){
   const out = {};
   Object.keys(crewIdx || {}).forEach(function(userId){
     const byDay = crewIdx[userId] || {};
-    let duty = 0, pto = 0, soft = 0;
+    let duty = 0, pto = 0, soft = 0, training = 0;
     Object.keys(byDay).forEach(function(day){
       // *** THE WINDOW IS WIDER THAN THE RANGE. *** schedWindow loads a full
       // year plus a lead and trail month, so December 2025 and January 2027 are
@@ -26945,9 +26954,10 @@ function tallyCountRange(crewIdx, lo, hi, hireDatesById, today){
       // are too. Without this clip they would all land in the count.
       if(day < lo || day > hi) return;
       const entries = byDay[day] || [];
-      let isDuty = false, isPto = false, isSoft = false;
+      let isDuty = false, isPto = false, isSoft = false, isTraining = false;
       entries.forEach(function(e){
         if(TALLY_DUTY_KINDS[e.kind]) isDuty = true;
+        if(e.kind === 'training') isTraining = true;
         if(TALLY_PTO_KINDS[e.kind])  isPto  = true;
         if(TALLY_SOFT_KINDS[e.kind]) isSoft = true;
       });
@@ -26956,16 +26966,19 @@ function tallyCountRange(crewIdx, lo, hi, hireDatesById, today){
       // this count exists to answer "who is asking for more of them", which is
       // a different question from where the day itself belongs.
       if(isSoft) soft++;
-      if(isDuty) duty++;
+      // Training is a SUBSET of duty (it is in TALLY_DUTY_KINDS), counted here
+      // for the report's breakdown. A day is still a day: a training day that
+      // also touches a trip is one duty day and one training day, not two.
+      if(isDuty){ duty++; if(isTraining) training++; }
       else if(isPto) pto++;
     });
-    out[userId] = { duty: duty, pto: pto, soft: soft, home: 0, available: 0 };
+    out[userId] = { duty: duty, pto: pto, soft: soft, training: training, home: 0, available: 0 };
   });
   // Availability and home are per PERSON, not per day, so they are filled from
   // the roster rather than the index -- somebody with an empty year has no key
   // in crewIdx at all and would otherwise vanish from a fairness comparison.
   Object.keys(hireDatesById || {}).forEach(function(userId){
-    if(!out[userId]) out[userId] = { duty: 0, pto: 0, soft: 0, home: 0, available: 0 };
+    if(!out[userId]) out[userId] = { duty: 0, pto: 0, soft: 0, training: 0, home: 0, available: 0 };
     const avail = tallyAvailableRange(hireDatesById[userId], lo, hi, today);
     out[userId].available = avail;
     // *** PTO IS A DAY AT HOME. *** Kyle, 4 Sep 2026. Home is every available
