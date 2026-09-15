@@ -5148,7 +5148,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T22:20:00Z';
+const BUILD_VERSION = '2026-09-15T22:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -16421,7 +16421,7 @@ function workbenchTableHTML(trips){
     + '<th>Tail</th><th>Routing</th><th>Start</th><th>End</th><th>Days</th>'
     + '<th>PIC</th><th>SIC</th><th>FA</th>'
     + (anyExtra ? '<th></th>' : '')
-    + '<th>Seen</th><th></th></tr></thead><tbody>';
+    + '<th>Seen by</th><th></th></tr></thead><tbody>'; // 15 Sep: "Seen" read as a fact about the trip; the cell counts people
 
   trips.forEach(function(t){
     const days = wbDayCount(t.start_date, t.end_date);
@@ -16541,12 +16541,12 @@ function wbShowSeenNames(tripId){
     showConfirm(rosterViewerIsAdmin()
       ? 'Nobody has days on this trip yet, so there is nothing to acknowledge.'
       : 'Only an admin can see who has acknowledged a schedule change.',
-      { alertOnly: true, title: 'Seen' });
+      { alertOnly: true, title: 'Seen by' });
     return;
   }
   const msg = (o.seen.length ? 'Seen: ' + o.seen.join(', ') : 'Seen: nobody yet')
     + '\n' + (o.not.length ? 'Not yet: ' + o.not.join(', ') : 'Not yet: nobody \u2014 everyone has seen it');
-  showConfirm(msg, { alertOnly: true, title: 'Seen' });
+  showConfirm(msg, { alertOnly: true, title: 'Seen by' });
 }
 
 // Seats a person, clears a seat, or moves one. Writes the WHOLE crew object,
