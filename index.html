@@ -4328,6 +4328,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   .feedback-item-type.guide{ background:rgba(126,143,172,0.18); color:var(--paper-050); }
   .feedback-item-date{ font-size:10px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
   .feedback-item-from{ font-size:11px; color:var(--fog-300); font-family:system-ui,'Inter',sans-serif; margin-bottom:4px; }
+  .feedback-item-dev{ display:inline-block; font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--amber-500); border:1px solid var(--amber-500); border-radius:4px; padding:0 5px; }
   .feedback-item-text{ font-size:13px; color:var(--paper-050); line-height:1.5; white-space:pre-wrap; }
 
   .subpanel{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:18px; }
@@ -5173,7 +5174,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-16T00:50:00Z';
+const BUILD_VERSION = '2026-09-16T01:05:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -17720,8 +17721,8 @@ async function loadRoster(){
     // the query is retried without it. The grid then falls back to the
     // alphabetical sort below, which is exactly what a department that has
     // never set an order gets anyway.
-    const _base = 'user_id, membership_role, is_admin, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname, hire_date)';
-    const _withOrder = 'user_id, membership_role, is_admin, roster_order, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname, hire_date)';
+    const _base = 'user_id, membership_role, is_admin, is_developer, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname, hire_date)';
+    const _withOrder = 'user_id, membership_role, is_admin, is_developer, roster_order, users(id, email, display_name, role, crew_abbrev, legal_given_name, legal_surname, hire_date)';
     function _rosterQuery(cols){
       return sb.from('memberships')
         .select(cols)
@@ -17757,6 +17758,7 @@ async function loadRoster(){
         hireDate: m.users.hire_date || '',
         membershipRole: m.membership_role || 'member',
         isAdmin: !!m.is_admin,
+        isDeveloper: !!m.is_developer,   // migration 108; marks feedback, grants nothing
         // The department's own row order for the schedule grid. Null until set.
         rosterOrder: (m.roster_order == null) ? null : Number(m.roster_order)
       }))
@@ -17938,6 +17940,14 @@ function rosterViewerIsAdmin(){
   if(!rosterCache || !currentUserProfile) return false;
   const me = rosterCache.find(x => x.id === currentUserProfile.id);
   return !!(me && me.isAdmin);
+}
+
+// Developer level (migration 108). Not a bigger admin: the only thing it does
+// is mark this person's feedback so the dev list can sort it first.
+function rosterViewerIsDeveloper(){
+  if(!rosterCache || !currentUserProfile) return false;
+  const me = rosterCache.find(x => x.id === currentUserProfile.id);
+  return !!(me && me.isDeveloper);
 }
 
 // Exactly four characters, A-Z and 0-9, upper case. Mirrors the database
@@ -25543,8 +25553,10 @@ function feedbackItemHTML(item){
       '<span class="feedback-item-type ' + escapeHtml(item.type || 'idea') + '">' + escapeHtml(feedbackTypeLabel(item.type)) + '</span>' +
       '<span class="feedback-item-date">' + escapeHtml(when) + '</span>' +
     '</div>' +
-    (item.from && (item.from.abbrev || item.from.name)
-      ? '<div class="feedback-item-from">' + escapeHtml(item.from.abbrev || '') +
+    (item.from && (item.from.abbrev || item.from.name || item.from.developer)
+      ? '<div class="feedback-item-from">' +
+        (item.from.developer ? '<span class="feedback-item-dev">Developer</span> ' : '') +
+        escapeHtml(item.from.abbrev || '') +
         (item.from.name ? ' \u00b7 ' + escapeHtml(item.from.name) : '') + '</div>'
       : '') +
     '<div class="feedback-item-text">' + escapeHtml(item.text || '') + '</div>' +
@@ -25564,7 +25576,12 @@ async function loadFeedbackList(){
         if(r && r.value) items.push(JSON.parse(r.value));
       }catch(e){ console.error('failed to load feedback', k, e); }
     }
-    items.sort((a,b) => (b.submittedAt||0) - (a.submittedAt||0));
+    // Developer feedback first, then newest first.
+    items.sort((a,b) => {
+      const da = !!(a.from && a.from.developer), db = !!(b.from && b.from.developer);
+      if(da !== db) return da ? -1 : 1;
+      return (b.submittedAt||0) - (a.submittedAt||0);
+    });
     listEl.innerHTML = items.length === 0
       ? '<div class="empty-list">No feedback submitted yet \u2014 be the first!</div>'
       : items.map(feedbackItemHTML).join('');
@@ -32074,7 +32091,8 @@ async function askTellSend(){
     // the readable form so the dev list can show a name without a roster join.
     from: {
       abbrev: (currentUserProfile && currentUserProfile.crewAbbrev) || '',
-      name: (currentUserProfile && currentUserProfile.displayName) || ''
+      name: (currentUserProfile && currentUserProfile.displayName) || '',
+      developer: rosterViewerIsDeveloper()
     },
     context: { view: state.view || null, build: BUILD_VERSION }
   };
