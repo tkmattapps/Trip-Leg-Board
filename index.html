@@ -4302,6 +4302,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   .feedback-item-type.broken{ background:rgba(226,87,76,0.18); color:var(--alert-600); }
   .feedback-item-type.guide{ background:rgba(126,143,172,0.18); color:var(--paper-050); }
   .feedback-item-date{ font-size:10px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
+  .feedback-item-from{ font-size:11px; color:var(--fog-300); font-family:system-ui,'Inter',sans-serif; margin-bottom:4px; }
   .feedback-item-text{ font-size:13px; color:var(--paper-050); line-height:1.5; white-space:pre-wrap; }
 
   .subpanel{ background:var(--panel-800); border:1px solid var(--hairline); border-radius:6px; padding:18px; }
@@ -5147,7 +5148,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T21:30:00Z';
+const BUILD_VERSION = '2026-09-15T22:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -25409,6 +25410,10 @@ function feedbackItemHTML(item){
       '<span class="feedback-item-type ' + escapeHtml(item.type || 'idea') + '">' + escapeHtml(feedbackTypeLabel(item.type)) + '</span>' +
       '<span class="feedback-item-date">' + escapeHtml(when) + '</span>' +
     '</div>' +
+    (item.from && (item.from.abbrev || item.from.name)
+      ? '<div class="feedback-item-from">' + escapeHtml(item.from.abbrev || '') +
+        (item.from.name ? ' \u00b7 ' + escapeHtml(item.from.name) : '') + '</div>'
+      : '') +
     '<div class="feedback-item-text">' + escapeHtml(item.text || '') + '</div>' +
   '</div>';
 }
@@ -31769,7 +31774,7 @@ function askSetMode(mode){
   if(tt) tt.classList.toggle('is-on', tell);
   const pv = document.getElementById('askPrivacy');
   if(pv) pv.textContent = tell
-    ? 'Something confusing, broken, or missing? Say it. Nothing is sent until you tap Send to Beacon.'
+    ? 'Something confusing, broken, or missing? Say it. We\u2019ll see your name with it, and nothing is sent until you tap Send to Beacon.'
     : 'Your questions are saved so I can see where Beacon is confusing and fix it. Ask anything.';
   const st = document.getElementById('askStarters');
   if(st) st.style.display = tell ? 'none' : '';
@@ -31932,6 +31937,12 @@ async function askTellSend(){
     raw: p.raw,
     type: p.category,
     submittedAt: Date.now(),
+    // Who to answer. The row's submitted_by column is the trusted id; this is
+    // the readable form so the dev list can show a name without a roster join.
+    from: {
+      abbrev: (currentUserProfile && currentUserProfile.crewAbbrev) || '',
+      name: (currentUserProfile && currentUserProfile.displayName) || ''
+    },
     context: { view: state.view || null, build: BUILD_VERSION }
   };
   const btn = document.getElementById('askTellSendBtn');
