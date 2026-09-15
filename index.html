@@ -4957,6 +4957,14 @@ a.chat-open{ text-decoration:none; display:inline-block; }
     <!-- pre-line so a message can carry paragraph breaks. Existing callers all
          pass a single line, so this changes nothing for them. -->
     <p id="confirmMessage" style="font-size:13px; color:var(--paper-050); line-height:1.6; margin:0 0 18px; white-space:pre-line;"></p>
+    <!-- Mirror of the section's weather/NOTAM/ARP box. Hidden unless showConfirm
+         is given attestInput; ticking it here ticks the real box on the page. -->
+    <div class="wx-attest" id="confirmAttestWrap" style="display:none; margin:-6px 0 18px;">
+      <label class="wx-attest-row" for="confirmAttestBox">
+        <input type="checkbox" id="confirmAttestBox" class="wx-attest-box">
+        <span class="wx-attest-label">Weather, NOTAMs and Airport Reference Pages reviewed</span>
+      </label>
+    </div>
     <div style="display:flex; gap:10px;">
       <button class="btn" id="confirmCancelBtn" style="flex:1;">Cancel</button>
       <button class="btn btn-danger" id="confirmOkBtn" style="flex:1; border-color:var(--alert-600);">Confirm</button>
@@ -5056,7 +5064,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-14T19:30:00Z';
+const BUILD_VERSION = '2026-09-15T13:10:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -8952,10 +8960,36 @@ function showConfirm(message, opts){
       }
     }
     if(opts.cancelLabel) cancelBtn.textContent = opts.cancelLabel;
+    // opts.attestInput: the real weather/NOTAM/ARP checkbox on the page. The
+    // dialog shows a mirror of it; ticking the mirror ticks the real box
+    // through its own change handler, so the write path is the existing one.
+    // OK stays disabled until the box is ticked -- the dialog exists because
+    // it was not.
+    const attestWrap = document.getElementById('confirmAttestWrap');
+    const attestBox = document.getElementById('confirmAttestBox');
+    const attestReal = opts.attestInput || null;
+    function onAttestChange(){
+      if(attestReal && attestReal.checked !== attestBox.checked){
+        attestReal.checked = attestBox.checked;
+        attestReal.dispatchEvent(new Event('change'));
+      }
+      okBtn.disabled = !attestBox.checked;
+    }
+    if(attestReal){
+      attestBox.checked = !!attestReal.checked;
+      okBtn.disabled = !attestBox.checked;
+      attestWrap.style.display = '';
+      attestBox.addEventListener('change', onAttestChange);
+    }
     overlay.classList.add('open');
 
     function cleanup(result){
       overlay.classList.remove('open');
+      if(attestReal){
+        attestBox.removeEventListener('change', onAttestChange);
+        attestWrap.style.display = 'none';
+        okBtn.disabled = false;
+      }
       cancelBtn.style.display = '';
       cancelBtn.textContent = 'Cancel';
       okBtn.textContent = 'Confirm';
@@ -23244,7 +23278,7 @@ function renderMain(){
   if(!leg._fieldValueBaseline) leg._fieldValueBaseline = snapshotEditorFieldValues();
   // Section-level Verify: stamps every field in the section green in one action.
   main.querySelectorAll('.section-verify-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const key = btn.getAttribute('data-verify-key');
       // The button is disabled until hydration; this is the belt to that braces.
       // Acting on an unknown signature state is how a real sign-off gets deleted.
@@ -23282,9 +23316,14 @@ function renderMain(){
           return;
         }
         if(attest && !attest.checked){
-          showConfirm('Confirm you have reviewed weather, NOTAMs and the Airport Reference Pages for this ' +
-                      (gateEnd === 'dep' ? 'departure' : 'arrival') + ' before checking off the section.', {alertOnly:true});
-          return;
+          // The dialog carries a mirror of the box, so the tick and the
+          // sign-off are one visit instead of dismiss-scroll-tick-scroll-tap.
+          const go = await showConfirm('Confirm you have reviewed weather, NOTAMs and the Airport Reference Pages for this ' +
+                      (gateEnd === 'dep' ? 'departure' : 'arrival') + ' before checking off the section.',
+                      {attestInput: attest, title:'Before you verify', okLabel:'Verify section', danger:false});
+          if(!go || !attest.checked) return;
+          // The signature state may have moved while the dialog was open.
+          if(iVerified(key)) return;
         }
         // A MISSING box deliberately does not block. Its absence would be a
         // rendering fault the user has no way to clear, and locking every
