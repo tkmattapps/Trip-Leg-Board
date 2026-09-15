@@ -3128,8 +3128,15 @@
   /* Seen replaced Notes on 15 Sep 2026 (Kyle): the month sheet is a snapshot
      with doorways, and free text of unknown length is now a cell that is
      always about five characters wide. The report keeps its own notes. */
-  .wb-c-seen{ color:var(--fog-500); white-space:nowrap; cursor:pointer; }
-  .wb-c-seen.wb-seen-all{ color:var(--ok-500); }
+  /* 15 Sep 2026 (Kyle): the count is the one live control on a read-only
+     row, and plain text did not say so. It is a small ghost button now --
+     fog until everyone seated has seen the trip, then green. The dash for a
+     trip with nobody on it stays plain text and taps through to the row. */
+  .wb-c-seen{ white-space:nowrap; }
+  .wb-seen-btn{ font:inherit; font-size:12px; padding:3px 9px; border-radius:7px; background:transparent;
+    border:1px solid var(--hairline,#24384f); color:var(--fog-300); cursor:pointer; }
+  .wb-seen-btn:hover{ background:var(--panel-700); }
+  .wb-seen-btn.wb-seen-all{ color:var(--ok-500); border-color:var(--ok-500); }
   /* A cell with nothing in it stays visibly empty. This is the placeholder for
      an em-dash or similar, kept faint enough to read as absence, not as data. */
   .wb-blank{ color:var(--panel-700); }
@@ -5148,7 +5155,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T22:40:00Z';
+const BUILD_VERSION = '2026-09-15T22:55:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -16530,8 +16537,8 @@ async function wbFillSeenCells(trips){
     if(!o) return;
     const n = o.seen.length + o.not.length;
     if(!n){ c.innerHTML = WB_BLANK; return; }
-    c.textContent = o.seen.length + ' of ' + n;
-    c.classList.toggle('wb-seen-all', o.seen.length === n);
+    c.innerHTML = '<button type="button" class="wb-seen-btn' + (o.seen.length === n ? ' wb-seen-all' : '') + '">'
+      + o.seen.length + ' of ' + n + '</button>';
   });
 }
 
@@ -31366,8 +31373,8 @@ document.addEventListener('click', async function(e){
   // The editor is a separate page now and is never inside [data-wb-trip].
   // The Seen cell is its own control on a row that is otherwise one doorway;
   // it is tested first so the row's open does not swallow it.
-  const seenCell = t.closest('[data-wb-seen]');
-  if(seenCell){ wbShowSeenNames(seenCell.getAttribute('data-wb-seen') || ''); return; }
+  const seenBtn = t.closest('.wb-seen-btn');   // the dash is not a control; only the count button is
+  if(seenBtn){ wbShowSeenNames((seenBtn.closest('[data-wb-seen]') || seenBtn).getAttribute('data-wb-seen') || ''); return; }
   const wbRow = t.closest('[data-wb-trip]');
   if(wbRow){ openWorkbenchTrip(wbRow.getAttribute('data-wb-trip') || ''); return; }
   const schedYearSet = t.closest('[data-sched-yearset]');
