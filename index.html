@@ -4560,7 +4560,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   .archive-doc-row{ display:flex; gap:10px; align-items:baseline; margin-bottom:8px; }
   .archive-doc-link{ flex:1 1 auto; text-align:left; font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--amber-500); background:none; border:none; padding:0; text-decoration:underline; cursor:pointer; }
   .archive-note-text{ flex:1 1 auto; font-family:system-ui,'Inter',sans-serif; font-size:12px; line-height:1.5; color:var(--fog-300); white-space:pre-wrap; }
-  .trip-archive-block{ margin:28px 0 8px; padding-top:16px; border-top:1px solid var(--hairline); display:flex; flex-wrap:wrap; align-items:center; gap:12px; justify-content:space-between; }
+  .trip-archive-block{ margin:28px 0 8px; padding-top:16px; /* on the Trip Plan since 15 Sep 2026 */ border-top:1px solid var(--hairline); display:flex; flex-wrap:wrap; align-items:center; gap:12px; justify-content:space-between; }
   .trip-archive-hint{ font-family:system-ui,'Inter',sans-serif; font-size:11px; line-height:1.5; color:var(--fog-500); flex:1 1 220px; }
   .trip-archive-btn{ flex:0 0 auto; font-family:system-ui,'Inter',sans-serif; font-size:12px; letter-spacing:0.5px; color:var(--fog-300); background:none; border:1px solid var(--fog-500); border-radius:6px; padding:8px 14px; cursor:pointer; }
   .trip-archive-btn:hover{ color:var(--paper-050); border-color:var(--fog-300); }
@@ -5167,7 +5167,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T23:30:00Z';
+const BUILD_VERSION = '2026-09-15T23:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -11671,7 +11671,7 @@ async function archiveTrip(tripKey){
       if(error.code === '23505'){
         await loadArchivedTrips();
         showToast('Trip ' + tripNo + ' is already archived');
-        state.view = 'dashboard';
+        if(state.view !== 'wbTrip') state.view = 'dashboard';   // from the plan, stay on the plan
         renderMain();
         return;
       }
@@ -11688,7 +11688,7 @@ async function archiveTrip(tripKey){
 
     archivedTripsCache.unshift(data[0]);
     showToast('Trip ' + tripNo + ' archived');
-    state.view = 'dashboard';
+    if(state.view !== 'wbTrip') state.view = 'dashboard';   // from the plan, stay on the plan; the block is gone on re-render
     renderMain();
   }catch(e){
     await showConfirm('Could not archive this trip: ' + (e && e.message ? e.message : 'unknown error'),
@@ -15902,7 +15902,16 @@ function wbTripFormHTML(t){
     + '<div class="wb-card-label wb-card-label-legs">Leg details</div>'
     + '<div class="wb-card-sub">' + wbLegsSmartSentence() + '</div>'
     + wbLegsCardHTML(t)
-    + '</div>';
+    + '</div>'
+    + wbArchiveBlocksHTML(t);
+}
+
+// One archive block per linked trip, below the legs card. Nothing at all when
+// the plan has no linked trip yet, when the viewer is not an admin, or when
+// the trip is already archived -- tripArchiveBlockHTML decides each.
+function wbArchiveBlocksHTML(t){
+  const cards = cardsSharingWbTrip(t.id, '');
+  return cards.map(function(c){ return tripArchiveBlockHTML(c, cards.length > 1); }).join('');
 }
 
 // *** THE SECOND CARD -- WHAT THE TRIP DOES. ***
@@ -17155,6 +17164,9 @@ function renderWorkbenchTripView(){
     actionsHTML: wbTripDeleteButtonHTML(t)
   });
   main.innerHTML = wbTripFormHTML(t);
+  main.querySelectorAll('[data-archive-key]').forEach(function(btn){
+    btn.addEventListener('click', function(){ archiveTrip(btn.getAttribute('data-archive-key') || ''); });
+  });
   // *** WIRED AFTER THE MARKUP, NEVER BEFORE. ***
   // Same contract as renderWorkbenchBody: the fields are painted from the cache,
   // which is already the real row, so no blur can read a blank box and save it
@@ -20912,7 +20924,13 @@ function duplicateLegNumbers(trip){
 // Deliberately at the BOTTOM of the trip page and deliberately not styled as a
 // primary action: archiving is irreversible, and an irreversible thing should
 // not sit where a thumb lands by accident.
-function tripArchiveBlockHTML(trip){
+// 15 Sep 2026 (Kyle): this block moved from the Crew Brief to the bottom of
+// the Trip Plan. The brief is the flying view; archiving is an admin act about
+// a finished trip, and the plan is the workbench. It sits below Leg details,
+// past every leg, well away from Delete in the header. A plan can link two
+// trip numbers, so the button is keyed by trip, not by a single id, and the
+// hint names the number when there is more than one block on the page.
+function tripArchiveBlockHTML(trip, nameIt){
   if(!trip || !trip.tripNumber) return '';
   if(tripIsArchived(trip.tripNumber)) return '';
   if(!rosterViewerIsAdmin()) return '';
@@ -20925,8 +20943,8 @@ function tripArchiveBlockHTML(trip){
        'but will be permanently marked incomplete.');
 
   return '<div class="trip-archive-block">' +
-    '<div class="trip-archive-hint">' + escapeHtml(hint) + '</div>' +
-    '<button type="button" class="trip-archive-btn" id="tripArchiveBtn">Archive trip</button>' +
+    '<div class="trip-archive-hint">' + (nameIt ? 'Trip ' + escapeHtml(trip.tripNumber) + ': ' : '') + escapeHtml(hint) + '</div>' +
+    '<button type="button" class="trip-archive-btn" data-archive-key="' + escapeHtml(trip.key) + '">Archive trip</button>' +
   '</div>';
 }
 
@@ -21404,16 +21422,8 @@ function renderTripDetailView(){
     tripDocsBlockHTML(trip) +
     (tripLastEditedText(trip) ? ('<div class="save-bar trip-edited-bar"><span class="save-hint">' + escapeHtml(tripLastEditedText(trip)) +
       ' <button type="button" class="review-history-btn" id="tripReviewHistoryBtn">Review history</button></span></div>' +
-      '<div id="tripHistoryPanel" class="leg-history-panel" style="display:none;"></div>') : '') +
-    tripArchiveBlockHTML(trip);
-
-  const archiveBtn = document.getElementById('tripArchiveBtn');
-  if(archiveBtn){
-    archiveBtn.addEventListener('click', function(){
-      autoSaveIfEditing();
-      archiveTrip(trip.key);
-    });
-  }
+      '<div id="tripHistoryPanel" class="leg-history-panel" style="display:none;"></div>') : '');
+  // Archive trip left this page for the Trip Plan, 15 Sep 2026 -- see tripArchiveBlockHTML.
 
   // (trip-detail back is now handled by the fixed header's back button)
   // Bottom-bar paperclip: jump to this trip's documents block, mirroring the
