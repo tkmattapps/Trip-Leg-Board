@@ -3031,6 +3031,7 @@
   .wb-strip-tally span{ width:22px; text-align:right; }
   .wb-strip-tally .dev{ color:var(--fog-300); }
   .wb-strip-none{ font-size:12px; color:var(--fog-500); padding:4px 0; }
+  .wb-strip-foot{ margin-top:8px; border-top:1px solid var(--hairline); }
   /* A tail is six characters in a 40px column. 10px, no tracking: 6 x ~6px
      = 36px, which is a prediction, not a measurement. */
   .wb-strip-who-tail{ font-size:10px; letter-spacing:0; }
@@ -5105,7 +5106,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T17:10:00Z';
+const BUILD_VERSION = '2026-09-15T17:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -14354,6 +14355,11 @@ function renderWorkbenchStrip(){
   }
   else if(!rows.length) h += '<div class="wb-strip-none">No one with this job title.</div>';
   h += '</div>';
+  // Closing hairline. Kyle, 15 Sep 2026: a line above and nothing below read
+  // as something that could be scrolled into. Capped top and bottom it reads
+  // as a fixed panel. Sits under the last row with room to breathe; the
+  // strip's own bottom padding keeps the safe area under the line.
+  h += '<div class="wb-strip-foot"></div>';
   el.innerHTML = h;
   el.hidden = false;
 }
