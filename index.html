@@ -457,7 +457,9 @@
      stays visible underneath, never behind a toggle -- it is the only way in on
      a flight deck or beside a passenger. Ask goes to the ask-beacon edge
      function, which answers from the guide (beacon-ask-beacon-guide.md) and
-     logs the question. Send feedback opens the existing feedback modal. The
+     logs the question. Tell is the second door at the top: the same mic and
+     box, one AI pass to tidy and categorise, a confirm strip, then a row in
+     the feedback table. Nothing is written until Send to Beacon is tapped. The
      starters are written per screen in ASK_STARTERS below and painted on open;
      guide (section 15) and are not yet swapped in per screen. */
   .ask-privacy{ font-family:system-ui,'Inter',sans-serif; font-size:13px; line-height:1.45; color:var(--fog-300); margin-bottom:18px; }
@@ -503,17 +505,27 @@
   .ask-a{ font-family:system-ui,'Inter',sans-serif; font-size:15px; line-height:1.5; color:var(--paper-050); white-space:pre-wrap; }
   .ask-a.is-error{ color:var(--amber-500); }
   .ask-a-meta{ font-family:system-ui,'Inter',sans-serif; font-size:11px; color:var(--fog-500); margin-top:8px; }
-  .ask-feedback-row{
-    margin-top:22px; padding-top:16px; border-top:1px solid var(--hairline);
-    display:flex; align-items:center; justify-content:space-between; gap:12px;
+  /* The two doors. Same type as .sheet-title so the lit one reads as the
+     title of the sheet; the other is the door you did not take. */
+  .ask-tabs{ display:flex; gap:18px; align-items:baseline; }
+  .ask-tab{
+    background:none; border:none; padding:0; cursor:pointer;
+    font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:22px;
+    color:var(--fog-500); border-bottom:2px solid transparent; padding-bottom:2px;
   }
-  .ask-feedback-text{ font-family:system-ui,'Inter',sans-serif; font-size:13px; color:var(--fog-300); line-height:1.4; }
-  .ask-feedback-btn{
-    background:none; border:1px solid var(--hairline); color:var(--paper-050); border-radius:6px;
-    padding:8px 12px; font-family:system-ui,'Inter',sans-serif; font-size:13px; font-weight:600;
-    cursor:pointer; white-space:nowrap;
-  }
-  .ask-feedback-btn:hover{ border-color:var(--fog-500); }
+  .ask-tab.is-on{ color:var(--paper-050); border-bottom-color:var(--amber-500); }
+  .ask-tab:hover{ color:var(--paper-050); }
+  .ask-send.is-primary{ border-color:var(--amber-500); color:var(--amber-500); }
+  .ask-tell-confirm{ display:none; margin-top:18px; padding:14px; background:var(--panel-800); border:1px solid var(--hairline); border-radius:8px; }
+  .ask-tell-confirm.is-open{ display:block; }
+  .ask-tell-head{ font-family:system-ui,'Inter',sans-serif; font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--amber-500); margin-bottom:8px; }
+  .ask-tell-tidy{ font-family:system-ui,'Inter',sans-serif; font-size:15px; line-height:1.5; color:var(--paper-050); white-space:pre-wrap; }
+  .ask-tell-rawbtn{ background:none; border:none; padding:0; margin-top:8px; cursor:pointer; font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--fog-500); text-decoration:underline; }
+  .ask-tell-raw{ display:none; margin-top:6px; font-family:system-ui,'Inter',sans-serif; font-size:13px; line-height:1.45; color:var(--fog-300); white-space:pre-wrap; }
+  .ask-tell-raw.is-open{ display:block; }
+  .ask-tell-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
+  .ask-dev-link{ display:none; margin-top:22px; background:none; border:none; padding:0; cursor:pointer; font-family:system-ui,'Inter',sans-serif; font-size:12px; color:var(--fog-500); text-decoration:underline; }
+  .ask-dev-link.is-on{ display:inline-block; }
 
   body:not(.authed) .bottom-bar{ display:none; }
 
@@ -4286,7 +4298,9 @@ a.chat-open{ text-decoration:none; display:inline-block; }
   .feedback-item-type{ font-size:10px; font-family:system-ui,'Inter',sans-serif; text-transform:uppercase; letter-spacing:0.5px; padding:2px 6px; border-radius:2px; }
   .feedback-item-type.idea{ background:rgba(242,169,59,0.18); color:var(--amber-500); }
   .feedback-item-type.bug{ background:rgba(226,87,76,0.18); color:var(--alert-600); }
-  .feedback-item-type.general{ background:rgba(126,143,172,0.18); color:var(--fog-300); }
+  .feedback-item-type.general, .feedback-item-type.comment{ background:rgba(126,143,172,0.18); color:var(--fog-300); }
+  .feedback-item-type.broken{ background:rgba(226,87,76,0.18); color:var(--alert-600); }
+  .feedback-item-type.guide{ background:rgba(126,143,172,0.18); color:var(--paper-050); }
   .feedback-item-date{ font-size:10px; color:var(--fog-500); font-family:system-ui,'Inter',sans-serif; }
   .feedback-item-text{ font-size:13px; color:var(--paper-050); line-height:1.5; white-space:pre-wrap; }
 
@@ -4800,14 +4814,17 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 <div class="sheet-backdrop" id="askBackdrop"></div>
 <div class="sheet sheet-full" id="askSheet" role="dialog" aria-label="Ask Beacon" aria-hidden="true">
   <div class="sheet-head">
-    <div>
-      <div class="sheet-title">Ask Beacon</div>
-      <div class="sheet-sub">Help with using Beacon</div>
+    <!-- Two doors, not a title. Kyle, 15 Sep 2026: feedback should arrive the
+         same way questions do -- spoken, from the same place -- so Tell sits
+         beside Ask at the top instead of as a form under the thread. -->
+    <div class="ask-tabs" role="tablist">
+      <button type="button" class="ask-tab is-on" id="askTabAsk" role="tab" data-mode="ask">Ask Beacon</button>
+      <button type="button" class="ask-tab" id="askTabTell" role="tab" data-mode="tell">Tell Beacon</button>
     </div>
     <button type="button" class="sheet-close" id="askCloseBtn" aria-label="Close">&times;</button>
   </div>
   <div class="sheet-body">
-    <div class="ask-privacy">Your questions are saved so I can see where Beacon is confusing and fix it. Ask anything.</div>
+    <div class="ask-privacy" id="askPrivacy">Your questions are saved so I can see where Beacon is confusing and fix it. Ask anything.</div>
     <div class="ask-starters" id="askStarters"></div>
     <div class="ask-mic-wrap">
       <button type="button" class="ask-mic" id="askMicBtn" aria-label="Tap to talk">
@@ -4824,10 +4841,20 @@ a.chat-open{ text-decoration:none; display:inline-block; }
       <div class="ask-a" id="askThreadA"></div>
       <div class="ask-a-meta" id="askThreadMeta"></div>
     </div>
-    <div class="ask-feedback-row">
-      <div class="ask-feedback-text">Something confusing or broken? Nothing is sent until you choose to send it.</div>
-      <button type="button" class="ask-feedback-btn" id="askFeedbackBtn">Send feedback</button>
+    <!-- Tell: confirmation before send. Not a read-back -- the tidied version
+         on top, the person's own words a tap below, one Send. Nothing is
+         written until that tap. -->
+    <div class="ask-tell-confirm" id="askTellConfirm">
+      <div class="ask-tell-head">Send this to Beacon?</div>
+      <div class="ask-tell-tidy" id="askTellTidy"></div>
+      <button type="button" class="ask-tell-rawbtn" id="askTellRawBtn">Show my words</button>
+      <div class="ask-tell-raw" id="askTellRaw"></div>
+      <div class="ask-tell-actions">
+        <button type="button" class="ask-send" id="askTellCancelBtn">Not now</button>
+        <button type="button" class="ask-send is-primary" id="askTellSendBtn">Send to Beacon</button>
+      </div>
     </div>
+    <button type="button" class="ask-dev-link" id="askDevListBtn">Feedback received (dev)</button>
   </div>
 </div>
 <div class="sheet-backdrop" id="schedYearBackdrop"></div>
@@ -5108,32 +5135,19 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 <div class="feedback-overlay" id="feedbackOverlay">
   <div class="feedback-modal">
     <div class="feedback-modal-head">
-      <span class="feedback-modal-title">Send feedback</span>
+      <span class="feedback-modal-title">Feedback received</span>
       <button class="feedback-close-btn" id="feedbackCloseBtn" aria-label="Close">&times;</button>
     </div>
-    <div class="field">
-      <label>Type</label>
-      <select id="feedbackType">
-        <option value="idea">Idea / request</option>
-        <option value="bug">Something's broken</option>
-        <option value="general">General comment</option>
-      </select>
-    </div>
-    <div class="field" style="margin-top:10px">
-      <label>What's on your mind?</label>
-      <textarea id="feedbackText" placeholder="Tell us what's working, what's not, or what you'd like to see..." rows="4"></textarea>
-    </div>
-    <button class="btn btn-primary" id="feedbackSubmitBtn" style="margin-top:12px; width:100%;">Send feedback</button>
-    <div id="feedbackDevSection" style="display:none;">
-      <div class="feedback-list-head">Previous feedback (dev view)</div>
-      <div class="feedback-list" id="feedbackList"><div class="empty-list">Loading...</div></div>
-    </div>
+    <!-- The sending half of this modal is gone (15 Sep 2026): feedback goes in
+         through Tell Beacon. What is left is the reading side, dev mode only,
+         until a real place for it exists in the app. -->
+    <div class="feedback-list" id="feedbackList"><div class="empty-list">Loading...</div></div>
   </div>
 </div>
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T20:40:00Z';
+const BUILD_VERSION = '2026-09-15T21:30:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -25382,8 +25396,9 @@ const appRoot = document.getElementById('appRoot');
 function feedbackUid(){ return 'fb_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
 function feedbackTypeLabel(type){
-  if(type === 'bug') return 'Bug';
-  if(type === 'general') return 'General';
+  if(type === 'bug' || type === 'broken') return 'Broken';
+  if(type === 'general' || type === 'comment') return 'Comment';
+  if(type === 'guide') return 'Guide correction';
   return 'Idea';
 }
 
@@ -25422,11 +25437,10 @@ async function loadFeedbackList(){
 }
 
 function openFeedbackModal(){
+  // Reading side only, dev mode only. Sending is Tell Beacon.
+  if(localStorage.getItem('tlb_dev_mode') !== '1') return;
   document.getElementById('feedbackOverlay').classList.add('open');
-  const devSection = document.getElementById('feedbackDevSection');
-  const isDev = localStorage.getItem('tlb_dev_mode') === '1';
-  devSection.style.display = isDev ? 'block' : 'none';
-  if(isDev) loadFeedbackList();
+  loadFeedbackList();
 }
 function closeFeedbackModal(){
   document.getElementById('feedbackOverlay').classList.remove('open');
@@ -25455,7 +25469,7 @@ if(devTapTarget) devTapTarget.addEventListener('click', () => {
       showToast('Dev mode off');
     } else {
       localStorage.setItem('tlb_dev_mode', '1');
-      showToast('Dev mode on \u2014 feedback will show in the Feedback panel');
+      showToast('Dev mode on \u2014 Feedback received is under Tell Beacon');
     }
   }
 });
@@ -31549,7 +31563,9 @@ function openInstallOverlay(){
 /* ASK BEACON. Open from the hairline bubble, close from the x or the backdrop.
    Ask sends the question to the ask-beacon edge function with the caller's own
    token and the screen it was asked from; the function answers from the guide
-   and logs the question as the caller. Send feedback reuses the feedback modal.
+   and logs the question as the caller. Tell Beacon is the same sheet's second
+   door: one pass through the function in tell mode, a confirm, then the
+   feedback table. See askTell below.
 
    VOICE, STEP 1 OF THE STAIRCASE (Kyle, 13 Sep 2026): tap-to-talk. One tap on
    the mic starts the browser's speech recognition; the first result fills the
@@ -31741,9 +31757,46 @@ function askPaintStarters(){
   ).join('');
 }
 
-function openAskBeacon(){
+let askMode = 'ask';          // 'ask' | 'tell'
+let askTellHistory = [];      // the tell exchange so far; cleared on send or cancel
+let askTellPending = null;    // { tidy, raw, category } waiting for Send to Beacon
+function askSetMode(mode){
+  askMode = mode === 'tell' ? 'tell' : 'ask';
+  const tell = askMode === 'tell';
+  const ta = document.getElementById('askTabAsk');
+  const tt = document.getElementById('askTabTell');
+  if(ta) ta.classList.toggle('is-on', !tell);
+  if(tt) tt.classList.toggle('is-on', tell);
+  const pv = document.getElementById('askPrivacy');
+  if(pv) pv.textContent = tell
+    ? 'Something confusing, broken, or missing? Say it. Nothing is sent until you tap Send to Beacon.'
+    : 'Your questions are saved so I can see where Beacon is confusing and fix it. Ask anything.';
+  const st = document.getElementById('askStarters');
+  if(st) st.style.display = tell ? 'none' : '';
+  const inp = document.getElementById('askInput');
+  if(inp) inp.placeholder = tell ? 'Or type it' : 'Or type a question';
+  const send = document.getElementById('askSendBtn');
+  if(send) send.textContent = tell ? 'Tell' : 'Ask';
+  const t = document.getElementById('askThread');
+  if(t) t.classList.remove('has-answer');
+  askTellClear();
+  const dev = document.getElementById('askDevListBtn');
+  if(dev) dev.classList.toggle('is-on', tell && localStorage.getItem('tlb_dev_mode') === '1');
+}
+function askTellClear(){
+  askTellHistory = [];
+  askTellPending = null;
+  const c = document.getElementById('askTellConfirm');
+  if(c) c.classList.remove('is-open');
+  const r = document.getElementById('askTellRaw');
+  if(r) r.classList.remove('is-open');
+  const rb = document.getElementById('askTellRawBtn');
+  if(rb) rb.textContent = 'Show my words';
+}
+function openAskBeacon(mode){
   const sh = document.getElementById('askSheet');
   const bd = document.getElementById('askBackdrop');
+  askSetMode(typeof mode === 'string' ? mode : 'ask');
   askPaintStarters();
   if(sh){ sh.classList.add('open'); sh.setAttribute('aria-hidden','false'); }
   if(bd) bd.classList.add('open');
@@ -31771,6 +31824,7 @@ function askShow(q, a, meta, isError){
 async function askBeacon(question, spoken){
   question = String(question || '').trim();
   if(!question || askBusy) return;
+  if(askMode === 'tell'){ askTell(question, spoken); return; }
   askBusy = true;
   askStopSpeaking();
   const send = document.getElementById('askSendBtn');
@@ -31813,6 +31867,86 @@ async function askBeacon(question, spoken){
     askBusy = false;
     if(send) send.disabled = false;
     if(mic) mic.disabled = false;
+  }
+}
+
+// TELL BEACON. One AI pass: tidy the words, name a category, and -- only on
+// the first turn -- ask at most one question back if something essential is
+// missing. Then the confirm strip. Nothing is written until Send to Beacon.
+async function askTell(text, spoken){
+  askBusy = true;
+  askStopSpeaking();
+  const send = document.getElementById('askSendBtn');
+  const mic = document.getElementById('askMicBtn');
+  const inp = document.getElementById('askInput');
+  if(send) send.disabled = true;
+  if(mic) mic.disabled = true;
+  askShow(text, '\u2026', '', false);
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    if(!session || !session.access_token){
+      throw new Error('Not signed in. Sign in again and try once more.');
+    }
+    const history = askTellHistory.slice();
+    const res = await fetch(ASK_BEACON_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'authorization': 'Bearer ' + session.access_token },
+      body: JSON.stringify({ mode: 'tell', question: text, history: history, screen: state.view || '', buildVersion: BUILD_VERSION })
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok || data.error) throw new Error(data.error || ('Tell Beacon failed (' + res.status + ')'));
+    if(!data.ready && data.ask){
+      // One question back, once. The function enforces the once; this only paints it.
+      askTellHistory.push({ role:'user', content: text }, { role:'assistant', content: data.ask });
+      askShow(text, data.ask, '', false);
+      if(spoken) askSpeak(data.ask);
+      if(inp) inp.value = '';
+      return;
+    }
+    const raw = history.filter(m => m.role === 'user').map(m => m.content).concat([text]).join('\n');
+    askTellPending = { tidy: data.tidy || text, raw: raw, category: data.category || 'comment', spoken: !!spoken };
+    const t = document.getElementById('askThread');
+    if(t) t.classList.remove('has-answer');
+    const ty = document.getElementById('askTellTidy');
+    const rw = document.getElementById('askTellRaw');
+    if(ty) ty.textContent = askTellPending.tidy;
+    if(rw) rw.textContent = raw;
+    const c = document.getElementById('askTellConfirm');
+    if(c) c.classList.add('is-open');
+    if(inp) inp.value = '';
+    if(spoken) askSpeak('Here is what I have. Tap send if that is right.');
+  }catch(e){
+    askShow(text, (e && e.message) || 'Something went wrong.', '', true);
+  }finally{
+    askBusy = false;
+    if(send) send.disabled = false;
+    if(mic) mic.disabled = false;
+  }
+}
+async function askTellSend(){
+  const p = askTellPending;
+  if(!p) return;
+  const item = {
+    id: feedbackUid(),
+    text: p.tidy,
+    raw: p.raw,
+    type: p.category,
+    submittedAt: Date.now(),
+    context: { view: state.view || null, build: BUILD_VERSION }
+  };
+  const btn = document.getElementById('askTellSendBtn');
+  if(btn) btn.disabled = true;
+  try{
+    const result = await storage.set('feedback:' + item.id, JSON.stringify(item), true);
+    if(!result) throw new Error('no result');
+    askTellClear();
+    showToast('Sent');
+    if(p.spoken) askSpeak('Sent. Thanks.');
+  }catch(e){
+    console.error('tell send failed', e);
+    showToast('Couldn\u2019t send that. Try again.');
+  }finally{
+    if(btn) btn.disabled = false;
   }
 }
 
@@ -31873,8 +32007,26 @@ function askStartListening(){
   if(cb) cb.addEventListener('click', closeAskBeacon);
   const bd = document.getElementById('askBackdrop');
   if(bd) bd.addEventListener('click', closeAskBeacon);
-  const fb = document.getElementById('askFeedbackBtn');
-  if(fb) fb.addEventListener('click', function(){ closeAskBeacon(); openFeedbackModal(); });
+  const tabs = document.querySelector('.ask-tabs');
+  if(tabs) tabs.addEventListener('click', function(e){
+    const b = e.target.closest('.ask-tab');
+    if(!b || b.classList.contains('is-on')) return;
+    askStopListening(); askStopSpeaking();
+    askSetMode(b.dataset.mode);
+  });
+  const ts = document.getElementById('askTellSendBtn');
+  if(ts) ts.addEventListener('click', askTellSend);
+  const tc = document.getElementById('askTellCancelBtn');
+  if(tc) tc.addEventListener('click', askTellClear);
+  const tr = document.getElementById('askTellRawBtn');
+  if(tr) tr.addEventListener('click', function(){
+    const r = document.getElementById('askTellRaw');
+    if(!r) return;
+    const open = r.classList.toggle('is-open');
+    tr.textContent = open ? 'Hide my words' : 'Show my words';
+  });
+  const dv = document.getElementById('askDevListBtn');
+  if(dv) dv.addEventListener('click', function(){ closeAskBeacon(); openFeedbackModal(); });
   const inp = document.getElementById('askInput');
   const send = document.getElementById('askSendBtn');
   // While listening, Send is the same as the second mic tap: it takes what is
@@ -31994,7 +32146,7 @@ function askStartListening(){
   const hb = document.getElementById('drawerHomeBtn');
   if(hb) hb.addEventListener('click', function(){ closeDrawer(); state.view = 'home'; if(typeof updateNavTabs === 'function') updateNavTabs(); renderMain(); });
   const fb = document.getElementById('drawerFeedbackBtn');
-  if(fb) fb.addEventListener('click', function(){ closeDrawer(); openFeedbackModal(); });
+  if(fb) fb.addEventListener('click', function(){ closeDrawer(); openAskBeacon('tell'); });
   const ib = document.getElementById('drawerInstallBtn');
   if(ib) ib.addEventListener('click', function(){ closeDrawer(); openInstallOverlay(); });
   const arb = document.getElementById('drawerArchiveBtn');
@@ -32124,31 +32276,6 @@ document.getElementById('installOverlay').addEventListener('click', (e) => {
 document.getElementById('feedbackCloseBtn').addEventListener('click', closeFeedbackModal);
 document.getElementById('feedbackOverlay').addEventListener('click', (e) => {
   if(e.target.id === 'feedbackOverlay') closeFeedbackModal();
-});
-
-document.getElementById('feedbackSubmitBtn').addEventListener('click', async () => {
-  const textEl = document.getElementById('feedbackText');
-  const typeEl = document.getElementById('feedbackType');
-  const text = textEl.value.trim();
-  if(!text){ showToast('Add a few words before sending'); return; }
-  const leg = state.legs.find(l => l.id === state.activeId);
-  const item = {
-    id: feedbackUid(),
-    text: text,
-    type: typeEl.value,
-    submittedAt: Date.now(),
-    context: { view: state.view, leg: leg ? legLabel(leg) : null }
-  };
-  try{
-    const result = await storage.set('feedback:' + item.id, JSON.stringify(item), true);
-    if(!result) throw new Error('no result');
-    textEl.value = '';
-    showToast('Thanks \u2014 feedback sent!');
-    loadFeedbackList();
-  }catch(e){
-    console.error('feedback submit failed', e);
-    showToast('Couldn\u2019t send feedback. Try again.');
-  }
 });
 
 function showLoginOverlay(){
