@@ -193,7 +193,10 @@
   .rp-field{ display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--fog-300); }
   .rp-field input{ font:inherit; font-size:15px; color:var(--paper-050); background:var(--panel-700); border:1px solid var(--hairline); border-radius:6px; padding:8px 10px; min-width:150px; }
   .rp-note{ font-size:12px; color:var(--amber-500); min-height:16px; margin:2px 0 8px; }
-  .rp-go{ width:100%; }
+  /* The button matches the From/To pair above it, not the note text: two
+     inputs at min-width 150 plus the form's 12px gap = 312 (Kyle, 15 Sep 2026).
+     max-width lets it shrink with the fields on a narrow phone. */
+  .rp-go{ width:312px; max-width:100%; }
 
   /* ---------- Department settings page ----------
      Full page rather than an overlay: settings contains sub-lists (aircraft
@@ -5106,7 +5109,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T18:30:00Z';
+const BUILD_VERSION = '2026-09-15T18:40:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
