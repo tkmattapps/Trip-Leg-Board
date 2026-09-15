@@ -5174,7 +5174,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-16T01:05:00Z';
+const BUILD_VERSION = '2026-09-16T01:15:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -18017,6 +18017,7 @@ function rosterRowHTML(p){
   // email gets a clean one below.
   const badges = [];
   if(p.isAdmin) badges.push('Admin');
+  if(p.isDeveloper) badges.push('Developer');   // migration 108; a label, not a permission
   if(p.membershipRole === 'contractor') badges.push('Contractor');
   const abb = (p.abbrev || '').toUpperCase();
   return '' +
