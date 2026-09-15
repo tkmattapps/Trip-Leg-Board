@@ -590,12 +590,13 @@
      actually does the work of saying this is not the third member of a set. */
   .home-btn-action{
     background:var(--panel-800); border-color:var(--amber-500); color:var(--amber-500);
-    margin-top:10px; position:relative;
+    position:relative;
   }
-  .home-btn-action::before{
-    content:''; position:absolute; top:-15px; left:12%; right:12%;
-    border-top:1px solid var(--hairline);
-  }
+  /* Kyle, 15 Sep 2026: Home is two groups. The top three are about the person
+     reading them; the bottom three are the department's. One hairline between
+     them, no heading (a "What's..." header was killed 13 Sep). The action tile
+     used to carry its own separator; that went with the regrouping. */
+  .home-divider{ border-top:1px solid var(--hairline); margin:6px 8% 6px; }
   .home-btn-action:hover{ border-color:var(--amber-500); filter:brightness(1.08); }
   .home-btn-action .home-btn-count{ color:var(--fog-300); }
   .app{ display:flex; min-height:100vh; min-height:100dvh; max-width:1800px; margin:0 auto; }
@@ -5066,7 +5067,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T13:40:00Z';
+const BUILD_VERSION = '2026-09-15T14:20:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -12757,6 +12758,31 @@ function wireCardClicks(originView){
   });
 }
 
+// The soonest leg, today or later, on a non-archived trip, that seats THIS
+// user in any of the four seats. Personal by definition -- the top group of
+// Home is about the reader, so nothing here counts the department's trips.
+// Null when there is none; the tile then says so in words, not with a zero.
+function homeNextUp(allTrips){
+  const me = myUserId();
+  if(!me) return null;
+  const today = schedISO(new Date());
+  let best = null;
+  allTrips.forEach(t => {
+    if(tripIsArchived(t.tripNumber)) return;
+    t.legs.forEach(leg => {
+      const d = (leg && typeof leg.date === 'string') ? leg.date.trim() : '';
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(d) || d < today) return;
+      if(legCrewSeatedIds(leg).indexOf(me) === -1) return;
+      if(!best || d < best.date) best = { date: d, leg: leg, tripKey: t.key };
+    });
+  });
+  if(!best) return null;
+  const leg = best.leg;
+  const route = leg.cityPair || [leg.dep && leg.dep.airportId, leg.arr && leg.arr.airportId].filter(Boolean).join(' \u2192 ') || '';
+  best.sub = formatISODateDisplay(best.date) + (route ? ' \u00b7 ' + route : '');
+  return best;
+}
+
 function renderHomeView(){
   const main = document.getElementById('mainPanel');
   const allTrips = groupIntoTrips(state.legs);
@@ -12766,6 +12792,7 @@ function renderHomeView(){
   // last leg flew is what made the active page rot.
   const activeCount = allTrips.filter(t => !tripIsArchived(t.tripNumber)).length;
   const historicCount = allTrips.filter(t => tripIsArchived(t.tripNumber)).length;
+  const nextUp = homeNextUp(allTrips);
   main.innerHTML =
     '<div class="home-view">' +
       '<div class="home-left-col">' +
@@ -12792,6 +12819,21 @@ function renderHomeView(){
       // The buttons stay in the DOM even when hidden: they are wired by id
       // immediately after this render, and removing them would throw on null.
       '<div class="home-right-col"' + (_noDepartment ? ' hidden' : '') + '>' +
+        // Personal group. Next up reads the board; the other two wait on the
+        // open-items work (beacon-open-items-design.md) and toast until then.
+        '<button type="button" class="home-btn" id="homeNextBtn">' +
+          '<span class="home-btn-title">Next Up</span>' +
+          '<span class="home-btn-count">' + (_legsLoaded ? escapeHtml(nextUp ? nextUp.sub : 'Nothing scheduled') : 'Loading trips…') + '</span>' +
+        '</button>' +
+        '<button type="button" class="home-btn" id="homeAttentionBtn">' +
+          '<span class="home-btn-title">Needs Attention</span>' +
+          '<span class="home-btn-count">Coming soon</span>' +
+        '</button>' +
+        '<button type="button" class="home-btn" id="homeNewBtn">' +
+          '<span class="home-btn-title">What\'s New</span>' +
+          '<span class="home-btn-count">Coming soon</span>' +
+        '</button>' +
+        '<div class="home-divider"></div>' +
         '<button type="button" class="home-btn" id="homeActiveBtn">' +
           '<span class="home-btn-title">Active Trips</span>' +
           '<span class="home-btn-count">' + (_legsLoaded ? (activeCount + ' active trip' + (activeCount === 1 ? '' : 's')) : 'Loading trips…') + '</span>' +
@@ -12814,6 +12856,12 @@ function renderHomeView(){
         '</button>' +
       '</div>' +
     '</div>';
+  document.getElementById('homeNextBtn').addEventListener('click', () => {
+    if(nextUp) openTripDetail(nextUp.tripKey, 'home');
+    else showToast('Nothing on your schedule yet.');
+  });
+  document.getElementById('homeAttentionBtn').addEventListener('click', () => showToast('Coming soon.'));
+  document.getElementById('homeNewBtn').addEventListener('click', () => showToast('Coming soon.'));
   document.getElementById('homeActiveBtn').addEventListener('click', () => goToListView('dashboard'));
   document.getElementById('homeHistoryBtn').addEventListener('click', () => goToListView('history'));
   document.getElementById('homeImportBtn').addEventListener('click', () => goToListView('importPreview'));
@@ -20768,7 +20816,8 @@ function renderTripDetailView(){
     renderMain();
     return;
   }
-  const backLabel = state.tripDetailOrigin === 'history' ? 'Archived Trips' : 'Active Trips';
+  const backLabel = state.tripDetailOrigin === 'history' ? 'Archived Trips'
+                  : state.tripDetailOrigin === 'home' ? 'Home' : 'Active Trips';
   setPageHeader({
     // The trip NUMBER moved into the strip below, so the title is free to name
     // the document. This page is what a crew reads on the way out the door.
@@ -20782,7 +20831,8 @@ function renderTripDetailView(){
             ? 'CHECK LEG NUMBERS: ' + duplicateLegNumbers(trip).join(', ') + ' DUPLICATED'
             : trip.legs.length + ' leg' + (trip.legs.length === 1 ? '' : 's')),
     backLabel: backLabel,
-    backTo: state.tripDetailOrigin === 'history' ? 'history' : 'dashboard',
+    backTo: state.tripDetailOrigin === 'history' ? 'history'
+          : state.tripDetailOrigin === 'home' ? 'home' : 'dashboard',
     barDocHTML: '<button type="button" class="doc-jump-btn" id="tripDocJumpBtn" title="Jump to documents" aria-label="Jump to documents">' +
       DOC_PAPERCLIP_SVG +
       '<span class="doc-jump-count" data-doc-jump-count="' + escapeHtml(trip.key) +
