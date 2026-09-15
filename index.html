@@ -193,10 +193,16 @@
   .rp-field{ display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--fog-300); }
   .rp-field input{ font:inherit; font-size:15px; color:var(--paper-050); background:var(--panel-700); border:1px solid var(--hairline); border-radius:6px; padding:8px 10px; min-width:150px; }
   .rp-note{ font-size:12px; color:var(--amber-500); min-height:16px; margin:2px 0 8px; }
-  /* The button matches the From/To pair above it, not the note text: two
-     inputs at min-width 150 plus the form's 12px gap = 312 (Kyle, 15 Sep 2026).
-     max-width lets it shrink with the fields on a narrow phone. */
-  .rp-go{ width:312px; max-width:100%; }
+  /* The button is as wide as the From/To pair and their gap, no wider (Kyle,
+     15 Sep 2026). NOT a number: 150px was a min-width, and summing it to 312
+     undershot because a month input sizes to its content. Instead the stack
+     shrink-wraps its widest child (the field pair) and the button fills it.
+     The note is kept from setting the width with the width:0/min-width:100%
+     trick, so long note text wraps under the fields rather than stretching
+     the button. */
+  .rp-stack{ display:inline-flex; flex-direction:column; max-width:100%; }
+  .rp-note{ width:0; min-width:100%; }
+  .rp-go{ width:100%; }
 
   /* ---------- Department settings page ----------
      Full page rather than an overlay: settings contains sub-lists (aircraft
@@ -5109,7 +5115,7 @@ a.chat-open{ text-decoration:none; display:inline-block; }
 
 <script>
 /* BUILD_VERSION: stamped on each push. Invisible to users; used only by the update checker. */
-const BUILD_VERSION = '2026-09-15T18:40:00Z';
+const BUILD_VERSION = '2026-09-15T18:50:00Z';
 
 // ---- THE TERMS GATE ------------------------------------------------------
 //
@@ -13211,12 +13217,14 @@ function renderReportsView(){
       '<p class="set-section-note">A colour grid of every crew member by month, the trips in each month, ' +
         'and a count of days per person across the range. It opens as a plain page in a new tab ' +
         '\u2014 use your browser\u2019s Print or Save as PDF from there.</p>' +
-      '<div class="rp-form">' +
-        '<label class="rp-field"><span>From</span><input type="month" id="rpStart" value="' + thisYM + '" /></label>' +
-        '<label class="rp-field"><span>To</span><input type="month" id="rpEnd" value="' + thisYM + '" /></label>' +
+      '<div class="rp-stack">' +
+        '<div class="rp-form">' +
+          '<label class="rp-field"><span>From</span><input type="month" id="rpStart" value="' + thisYM + '" /></label>' +
+          '<label class="rp-field"><span>To</span><input type="month" id="rpEnd" value="' + thisYM + '" /></label>' +
+        '</div>' +
+        '<div class="rp-note" id="rpNote"></div>' +
+        '<button type="button" class="btn btn-primary rp-go" id="rpGoBtn">Open the printable page</button>' +
       '</div>' +
-      '<div class="rp-note" id="rpNote"></div>' +
-      '<button type="button" class="btn btn-primary rp-go" id="rpGoBtn">Open the printable page</button>' +
     '</div>';
   const go = document.getElementById('rpGoBtn');
   if(go) go.addEventListener('click', runCrewScheduleReport);
